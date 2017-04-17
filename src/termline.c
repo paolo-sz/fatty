@@ -750,7 +750,7 @@ fetch_line(struct term* term, int y)
     line = lines[y];
   }
   else {
-    assert(y < term->sblines);
+    assert(-y <= term->sblines);
     y += term->sbpos;
     if (y < 0)
       y += term->sblen; // Scrollback has wrapped round
