@@ -67,7 +67,7 @@ typedef enum {
  */
 enum { UCSWIDE = 0 };
 
-/* Three attribute types:
+/* Three character attribute types:
  * The ATTRs (normal attributes) are stored with the characters in
  * the main display arrays
  *
@@ -80,9 +80,6 @@ enum { UCSWIDE = 0 };
  * before sending to the front end.
  *
  * ATTR_INVALID is an illegal colour combination.
- *
- * The LATTRs (line attributes) are an entirely disjoint space of
- * flags.
  */
 enum {
   ATTR_FGSHIFT    = 0,
@@ -109,7 +106,11 @@ enum {
 
   DATTR_STARTRUN  = 0x80000000u, /* start of redraw run */
   DATTR_MASK      = 0xF0000000u,
+};
 
+/* Line attributes.
+ */
+enum {
   LATTR_NORM      = 0x00000000u,
   LATTR_WIDE      = 0x00000001u,
   LATTR_TOP       = 0x00000002u,
