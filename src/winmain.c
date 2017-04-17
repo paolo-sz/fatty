@@ -11,6 +11,8 @@
 #include "child.h"
 #include "charset.h"
 
+#include <CommCtrl.h>
+#include <Windows.h>
 #include <locale.h>
 #include <getopt.h>
 #include <pwd.h>
@@ -19,7 +21,7 @@
 #include <sys/cygwin.h>
 
 HINSTANCE inst;
-HWND wnd;
+HWND wnd, tab_wnd;
 HIMC imc;
 
 bool win_is_full_screen;
@@ -708,6 +710,13 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
     when WM_INITMENU:
       win_update_menus();
       return 0;
+    when WM_NOTIFY:
+      switch (((LPNMHDR)lp)->code) {
+        when TCN_SELCHANGE:
+          win_tab_mouse_click(TabCtrl_GetCurSel(tab_wnd));
+      }
+    when WM_DRAWITEM:
+      win_paint_tabs(lp, 0);
   }
  /*
   * Any messages we don't process completely above are passed through to
@@ -1063,6 +1072,12 @@ main(int argc, char *argv[])
                         WS_OVERLAPPEDWINDOW | (cfg.scrollbar ? WS_VSCROLL : 0),
                         cfg.x, cfg.y, width, height,
                         null, null, inst, null);
+                        
+  tab_wnd = CreateWindowW(WC_TABCONTROLW, 0, 
+                          WS_CHILD | WS_CLIPSIBLINGS | TCS_FOCUSNEVER | TCS_OWNERDRAWFIXED, 
+                          0, 0, width, win_tab_height(), 
+                          wnd, NULL, inst, NULL);
+  TabCtrl_SetMinTabWidth(tab_wnd, 100);
 
   // The input method context.
   imc = ImmGetContext(wnd);

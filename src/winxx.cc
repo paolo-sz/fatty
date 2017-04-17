@@ -16,6 +16,8 @@
 
 extern "C" {
 #include "winpriv.h"
+
+#include <CommCtrl.h>
 }
 
 #define lengthof(array) (sizeof(array) / sizeof(*(array)))
@@ -50,6 +52,7 @@ Tab::Tab() : terminal(new term), chld(new child) {
     memset(chld.get(), 0, sizeof(struct child));
     info.attention = false;
     info.titles_i = 0;
+    info.idx = 0;
 }
 Tab::~Tab() {
     if (terminal)
@@ -124,6 +127,7 @@ static void update_window_state() {
 
 static void set_active_tab(unsigned int index) {
     active_tab = index;
+    SendMessage(tab_wnd, TCM_SETCURSEL, index, 0);
     Tab* active = &tabs.at(active_tab);
     for (auto& tab : tabs) {
         term_set_focus(tab.terminal.get(), &tab == active);
@@ -143,6 +147,13 @@ void win_tab_change(int change) {
 void win_tab_move(int amount) {
     auto new_idx = rel_index(amount);
     std::swap(tabs[active_tab], tabs[new_idx]);
+    TCITEMW tie; 
+    tie.mask = TCIF_TEXT; 
+    tie.pszText = win_tab_get_title(active_tab);
+    SendMessageW(tab_wnd, TCM_SETITEMW, active_tab, (LPARAM)&tie);
+    tie.mask = TCIF_TEXT; 
+    tie.pszText = win_tab_get_title(new_idx);
+    SendMessageW(tab_wnd, TCM_SETITEMW, new_idx, (LPARAM)&tie);
     set_active_tab(new_idx);
 }
 
@@ -167,10 +178,17 @@ static void newtab(
     tab.chld->home = g_home;
     struct winsize wsz{rows, cols, width, height};
     child_create(tab.chld.get(), tab.terminal.get(), g_argv, &wsz, cwd);
-    if (title)
+    tab.info.idx = tabs.size()-1;
+    TCITEM tie; 
+    tie.mask = TCIF_TEXT; 
+    if (title) {
       win_set_title(tab.terminal.get(), title);
-    else
+      tie.pszText = title;
+    } else {
       win_set_title(tab.terminal.get(), g_cmd);
+      tie.pszText = g_cmd;
+    }
+    SendMessage(tab_wnd, TCM_INSERTITEM, tabs.size()-1, (LPARAM)&tie);
 }
 
 static void set_tab_bar_visibility(bool b);
@@ -213,6 +231,7 @@ void win_tab_clean() {
             }
           }
         }
+        SendMessage(tab_wnd, TCM_DELETEITEM, (*it).info.idx, 0);
         tabs.erase(it);
     }
     if (invalidate && tabs.size() > 0) {
@@ -235,6 +254,10 @@ void win_tab_set_title(struct term* term, wchar_t* title) {
     if (tab.info.titles[tab.info.titles_i] != title) {
         tab.info.titles[tab.info.titles_i] = title;
         invalidate_tabs();
+        TCITEMW tie; 
+        tie.mask = TCIF_TEXT; 
+        tie.pszText = title;
+        SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
     }
 }
 
@@ -246,7 +269,9 @@ bool win_should_die() { return tabs.size() == 0; }
 
 static int tabheight() {
     init_scale_factors();
-    return 23 * g_yscale;
+    RECT tr;
+    SendMessage(tab_wnd, TCM_GETITEMRECT, 0, (LPARAM)&tr);
+    return tr.bottom;
 }
 
 static bool tab_bar_visible = false;
@@ -283,14 +308,6 @@ static HGDIOBJ new_active_tab_font() {
     return CreateFont(tab_font_size(),0,0,0,FW_BOLD,0,0,0,1,0,0,CLEARTYPE_QUALITY,0,0);
 }
 
-// paint a tab to dc (where dc draws to buffer)
-static void paint_tab(HDC dc, int width, int tabheight, const Tab& tab) {
-    MoveToEx(dc, 0, tabheight, nullptr);
-    LineTo(dc, 0, 0);
-    LineTo(dc, width, 0);
-    TextOutW(dc, width/2, (tabheight - tab_font_size()) / 2, tab.info.titles[tab.info.titles_i].data(), tab.info.titles[tab.info.titles_i].size());
-}
-
 // Wrap GDI object for automatic release
 struct SelectWObj {
     HDC tdc;
@@ -299,25 +316,48 @@ struct SelectWObj {
     ~SelectWObj() { DeleteObject(SelectObject(tdc, old)); }
 };
 
-static int tab_paint_width = 0;
-void win_paint_tabs(HDC dc, int width) {
+void win_paint_tabs(LPARAM lp, int width) {
+    RECT loc_tabrect;
+    GetWindowRect(tab_wnd, &loc_tabrect);
+    if (width) 
+      loc_tabrect.right = loc_tabrect.left + width;
+    else
+      width = loc_tabrect.right - loc_tabrect.left;
+    SetWindowPos(tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
+
     if (!tab_bar_visible) return;
 
-    // the sides of drawable area are not visible, so we really should draw to
-    // coordinates 1..(width-2)
-    width = width - 2 * PADDING;
+    HDC dc = GetDC(wnd);
+    SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
+    const auto brush = CreateSolidBrush(cfg.tab_bg_colour);
+    FillRect(dc, &loc_tabrect, brush);
+    DeleteObject(brush);
+    ReleaseDC(wnd, dc);
+    
+    if (lp == 0) return;
+
+    LPDRAWITEMSTRUCT lpdis = (DRAWITEMSTRUCT *)lp;
+      
+    // index of tab being drawn
+    unsigned int Index = (unsigned int)lpdis->itemID;
+    if (Index >= tabs.size()) return;
+
+    // device context to draw on
+    dc = lpdis->hDC;
+    if (dc == NULL) return;
+
+    // bounding rectangle of current tab
+    RECT tabrect = lpdis->rcItem;
 
     const auto bg = cfg.tab_bg_colour;
     const auto fg = cfg.tab_fg_colour;
     const auto active_bg = cfg.tab_active_bg_colour;
     const auto attention_bg = cfg.tab_attention_bg_colour;
 
-    const int tabwidth = (width / tabs.size()) > 200 ? 200 : width / tabs.size();
-    const int loc_tabheight = 18 * g_yscale;
-    tab_paint_width = tabwidth;
-    RECT tabrect;
-    SetRect(&tabrect, 0, 0, tabwidth, loc_tabheight+1);
+    const int tabwidth = tabrect.right - tabrect.left;
+    const int tabheight = tabrect.bottom - tabrect.top;
 
+    SetRect(&loc_tabrect, 0, 0, tabwidth, tabheight);
     HDC bufdc = CreateCompatibleDC(dc);
     SetBkMode(bufdc, TRANSPARENT);
     SetTextColor(bufdc, fg);
@@ -327,48 +367,31 @@ void win_paint_tabs(HDC dc, int width) {
         auto obrush = SelectWObj(bufdc, brush);
         auto open = SelectWObj(bufdc, CreatePen(PS_SOLID, 0, fg));
         auto obuf = SelectWObj(bufdc,
-                CreateCompatibleBitmap(dc, tabwidth, tabheight()));
+                CreateCompatibleBitmap(dc, tabwidth, tabheight));
 
         auto ofont = SelectWObj(bufdc, new_tab_font());
 
-        for (size_t i = 0; i < tabs.size(); i++) {
-            bool  active = i == active_tab;
-            if (active) {
-                auto activebrush = CreateSolidBrush(active_bg);
-                FillRect(bufdc, &tabrect, activebrush);
-                DeleteObject(activebrush);
-            } else if (tabs[i].info.attention) {
-                auto activebrush = CreateSolidBrush(attention_bg);
-                FillRect(bufdc, &tabrect, activebrush);
-                DeleteObject(activebrush);
-            } else {
-                FillRect(bufdc, &tabrect, brush);
-            }
-
-            if (active) {
-                auto _f = SelectWObj(bufdc, new_active_tab_font());
-                paint_tab(bufdc, tabwidth, loc_tabheight, tabs[i]);
-            } else {
-                MoveToEx(bufdc, 0, loc_tabheight, nullptr);
-                LineTo(bufdc, tabwidth, loc_tabheight);
-                paint_tab(bufdc, tabwidth, loc_tabheight, tabs[i]);
-            }
-
-            BitBlt(dc, i*tabwidth+PADDING, PADDING, tabwidth, tabheight(),
-                    bufdc, 0, 0, SRCCOPY);
+        if (Index == active_tab) {
+            auto activebrush = CreateSolidBrush(active_bg);
+            FillRect(bufdc, &loc_tabrect, activebrush);
+            DeleteObject(activebrush);
+        } else if (tabs[Index].info.attention) {
+            auto activebrush = CreateSolidBrush(attention_bg);
+            FillRect(bufdc, &loc_tabrect, activebrush);
+            DeleteObject(activebrush);
+        } else {
+            FillRect(bufdc, &loc_tabrect, brush);
         }
-        
-        if ((int)tabs.size() * tabwidth < width) {
-            SetRect(&tabrect, 0, 0, width - (tabs.size() * tabwidth), loc_tabheight+1);
-            auto obrush = SelectWObj(bufdc, brush);
-            auto obuf = SelectWObj(bufdc, CreateCompatibleBitmap(dc, width - (tabs.size() * tabwidth), tabheight()));
-            FillRect(bufdc, &tabrect, brush);
-            MoveToEx(bufdc, 0, 0, nullptr);
-            LineTo(bufdc, 0, loc_tabheight);
-            LineTo(bufdc, width - (tabs.size() * tabwidth), loc_tabheight);
-            BitBlt(dc, tabs.size()*tabwidth+PADDING, PADDING, width - (tabs.size() * tabwidth), tabheight(),
-                    bufdc, 0, 0, SRCCOPY);
+
+        if (Index == active_tab) {
+            auto _f = SelectWObj(bufdc, new_active_tab_font());
+            TextOutW(bufdc, tabwidth/2, (tabheight - tab_font_size()) / 2, win_tab_get_title(Index), wcslen(win_tab_get_title(Index)));
+        } else {
+            TextOutW(bufdc, tabwidth/2, (tabheight - tab_font_size()) / 2, win_tab_get_title(Index), wcslen(win_tab_get_title(Index)));
         }
+
+        BitBlt(dc, tabrect.left, tabrect.top, tabwidth, tabheight,
+                bufdc, 0, 0, SRCCOPY);
     }
     DeleteDC(bufdc);
 }
@@ -379,10 +402,7 @@ void win_for_each_term(void (*cb)(struct term* term)) {
 }
 
 void win_tab_mouse_click(int x) {
-    unsigned int tab = x / tab_paint_width;
-    if (tab >= tabs.size())
-        return;
-    set_active_tab(tab);
+    set_active_tab(x);
 }
 
 }

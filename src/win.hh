@@ -27,6 +27,7 @@ struct Tab {
         std::wstring titles[16];
         uint titles_i;
         bool attention;
+        unsigned int idx;
     } info;
 
     Tab();

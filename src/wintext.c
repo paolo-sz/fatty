@@ -346,7 +346,7 @@ win_paint(void)
   if (update_state != UPDATE_PENDING)
     term_paint(term);
 
-  win_paint_tabs(dc, p.rcPaint.right - p.rcPaint.left);
+  win_paint_tabs(0, p.rcPaint.right - p.rcPaint.left);
 
   if (p.fErase || p.rcPaint.left < PADDING ||
       p.rcPaint.top < PADDING ||

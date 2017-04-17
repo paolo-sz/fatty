@@ -227,7 +227,6 @@ get_mouse_pos(LPARAM lp)
 static bool tab_bar_click(LPARAM lp) {
   int y = GET_Y_LPARAM(lp);
   if (y >= PADDING && y < PADDING + g_render_tab_height) {
-    win_tab_mouse_click(GET_X_LPARAM(lp));
     return true;
   }
   return false;

@@ -10,7 +10,7 @@
 #include <imm.h>
 
 extern HINSTANCE inst;  // The all-important instance handle
-extern HWND wnd;        // the main terminal window
+extern HWND wnd, tab_wnd;        // the main terminal window
 extern HIMC imc;        // the input method context
 extern HWND config_wnd; // the options window
 
@@ -76,7 +76,7 @@ wchar_t* win_active_tab_title_pop();
 
 void win_tab_mouse_click(int x);
 int win_tab_height();
-void win_paint_tabs(HDC dc, int width);
+void win_paint_tabs(LPARAM lp, int width);
 void win_for_each_term(void (*cb)(struct term* term));
 
 bool win_should_die();
