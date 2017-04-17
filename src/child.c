@@ -370,8 +370,52 @@ child_fork(struct child* child, int argc, char *argv[])
       close(child_log_fd);
     close(child_win_fd);
 
-    (void)argc;
-    execv("/proc/self/exe", argv);
+    // add child parameters
+    int newparams = 0;
+    char * * newargv = malloc((argc + newparams + 1) * sizeof(char *));
+    int i = 0, j = 0;
+    int addnew = 1;
+    while (1) {
+      // hotfix, clean up later
+      if (0 && addnew && (! argv[i] || strcmp (argv[i], "-e") == 0)) {
+        addnew = 0;
+        // insert additional parameters here
+        newargv[j++] = "-o";
+        char parbuf1[28];
+        sprintf (parbuf1, "Rows=%d", child->term->rows);
+        newargv[j++] = parbuf1;
+        newargv[j++] = "-o";
+        char parbuf2[31];
+        sprintf (parbuf2, "Columns=%d", child->term->cols);
+        newargv[j++] = parbuf2;
+      }
+      newargv[j] = argv[i];
+      if (! argv[i])
+        break;
+      i++;
+      j++;
+    }
+
+    char parbuf1[34];
+    sprintf (parbuf1, "MINTTY_ROWS=%d", child->term->rows);
+    putenv (parbuf1);
+    char parbuf2[34];
+    sprintf (parbuf2, "MINTTY_COLS=%d", child->term->cols);
+    putenv (parbuf2);
+
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
+    execv("/proc/self/exe", newargv);
+#else
+    // /proc/self/exe isn't available before Cygwin 1.5, so use argv[0] instead.
+    // Strip enclosing quotes if present.
+    char *path = argv[0];
+    int len = strlen(path);
+    if (path[0] == '"' && path[len - 1] == '"') {
+      path = strdup(path + 1);
+      path[len - 2] = 0;
+    }
+    execvp(path, newargv);
+#endif
     exit(255);
   }
 }

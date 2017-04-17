@@ -849,6 +849,13 @@ main(int argc, char *argv[])
   for (int i = 0; i < 32; i++)
     tablist_title[i] = NULL;
 
+  if (getenv("MINTTY_ROWS")) {
+    set_arg_option("Rows", getenv("MINTTY_ROWS"));
+  }
+  if (getenv("MINTTY_COLS")) {
+    set_arg_option("Columns", getenv("MINTTY_COLS"));
+  }
+
   for (;;) {
     int opt = getopt_long(argc, argv, short_opts, opts, 0);
     if (opt == -1 || opt == 'e')
