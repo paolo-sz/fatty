@@ -81,6 +81,8 @@ const config default_cfg = {
   // Command line
   .classname = "",
   .hold = HOLD_START,
+  .exit_write = false,
+  .exit_title = "",
   .icon = "",
   .log = "",
   .utmp = false,
@@ -203,6 +205,8 @@ options[] = {
   // Command line
   {"Class", OPT_STRING, offcfg(classname)},
   {"Hold", OPT_HOLD, offcfg(hold)},
+  {"ExitWrite", OPT_BOOL, offcfg(exit_write)},
+  {"ExitTitle", OPT_STRING, offcfg(exit_title)},
   {"Icon", OPT_STRING, offcfg(icon)},
   {"Log", OPT_STRING, offcfg(log)},
   {"Title", OPT_STRING, offcfg(title)},

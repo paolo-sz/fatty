@@ -33,6 +33,7 @@ static ATOM class_atom;
 static int extra_width, extra_height;
 static bool fullscr_on_max;
 static bool resizing;
+static string border_style = 0;
 
 static HBITMAP caretbm;
 
@@ -374,7 +375,14 @@ clear_fullscreen(void)
 
  /* Reinstate the window furniture. */
   LONG style = GetWindowLong(wnd, GWL_STYLE);
-  style |= WS_CAPTION | WS_BORDER | WS_THICKFRAME;
+  if (border_style) {
+    if (strcmp (border_style, "void") != 0) {
+      style |= WS_THICKFRAME;
+    }
+  }
+  else {
+    style |= WS_CAPTION | WS_BORDER | WS_THICKFRAME;
+  }
   SetWindowLong(wnd, GWL_STYLE, style);
   SetWindowPos(wnd, null, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
@@ -751,7 +759,7 @@ static const char help[] =
   "  -V, --version         Print version information and exit\n"
 ;
 
-static const char short_opts[] = "+:b:c:eh:i:l:o:p:s:t:T:uw:HV:";
+static const char short_opts[] = "+:b:c:eh:i:l:o:p:s:t:T:B:uw:HV:";
 
 static const struct option
 opts[] = {
@@ -767,6 +775,7 @@ opts[] = {
   {"size",     required_argument, 0, 's'},
   {"title",    required_argument, 0, 't'},
   {"Title",    required_argument, 0, 'T'},
+  {"Border",   required_argument, 0, 'B'},
   {"window",   required_argument, 0, 'w'},
   {"class",    required_argument, 0, 'C'},
   {"help",     no_argument,       0, 'H'},
@@ -880,6 +889,8 @@ main(int argc, char *argv[])
       when 'T':
         set_arg_option("Title", optarg);
         cfg.title_settable = false;
+      when 'B':
+        border_style = strdup (optarg);
       when 'u': cfg.utmp = true;
       when 'w': set_arg_option("Window", optarg);
       when 'b':
@@ -1085,6 +1096,19 @@ main(int argc, char *argv[])
                           0, 0, width, win_tab_height(), 
                           wnd, NULL, inst, NULL);
   TabCtrl_SetMinTabWidth(tab_wnd, 100);
+
+  if (border_style) {
+    LONG style = GetWindowLong(wnd, GWL_STYLE);
+    if (strcmp (border_style, "void") == 0) {
+      style &= ~(WS_CAPTION | WS_BORDER | WS_THICKFRAME);
+    }
+    else {
+      style &= ~(WS_CAPTION | WS_BORDER);
+    }
+    SetWindowLong(wnd, GWL_STYLE, style);
+    SetWindowPos(wnd, null, 0, 0, 0, 0,
+                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+  }
 
   // The input method context.
   imc = ImmGetContext(wnd);

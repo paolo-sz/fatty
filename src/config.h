@@ -97,6 +97,8 @@ typedef struct {
   // Command line
   string classname;
   char hold;
+  bool exit_write;
+  string exit_title;
   string icon;
   string log;
   string title;
