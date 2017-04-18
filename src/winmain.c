@@ -137,7 +137,7 @@ wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp)) {
 }
 
 void
-win_switch(bool back)
+win_switch(bool back, bool alternate)
 {
   first_wnd = 0, last_wnd = 0;
   EnumWindows(wnd_enum_proc, 0);
@@ -145,7 +145,8 @@ win_switch(bool back)
     if (back)
       first_wnd = last_wnd;
     else
-      SetWindowPos(wnd, last_wnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+      SetWindowPos(wnd, last_wnd, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE
+                       | (alternate ? SWP_NOZORDER : SWP_NOREPOSITION));
     BringWindowToTop(first_wnd);
   }
 }
@@ -235,11 +236,31 @@ win_set_pixels(int height, int width)
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
 }
 
+static void
+win_fix_position(void)
+{
+    RECT wr;
+    GetWindowRect(wnd, &wr);
+    MONITORINFO mi;
+    get_monitor_info(&mi);
+    RECT ar = mi.rcWork;
+
+    // Correct edges. Top and left win if the window is too big.
+    wr.left -= max(0, wr.right - ar.right);
+    wr.top -= max(0, wr.bottom - ar.bottom);
+    wr.left = max(wr.left, ar.left);
+    wr.top = max(wr.top, ar.top);
+
+    SetWindowPos(wnd, 0, wr.left, wr.top, 0, 0,
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+}
+
 void
 win_set_chars(int rows, int cols)
 {
   trace_resize(("--- win_set_chars %d×%d\n", rows, cols));
   win_set_pixels(rows * font_height + win_tab_height(), cols * font_width);
+  win_fix_position();
 }
 
 
@@ -305,6 +326,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   struct term* term = win_active_terminal();
   if (sync_size_with_font && !win_is_fullscreen) {
     win_set_chars(term->rows, term->cols);
+    //win_fix_position();
     win_invalidate_all();
     return;
   }
@@ -1176,20 +1198,7 @@ main(int argc, char *argv[])
   // Correct autoplacement, which likes to put part of the window under the
   // taskbar when the window size approaches the work area size.
   if (cfg.x == (int)CW_USEDEFAULT) {
-    RECT wr;
-    GetWindowRect(wnd, &wr);
-    MONITORINFO mi;
-    get_monitor_info(&mi);
-    RECT ar = mi.rcWork;
-
-    // Correct edges. Top and left win if the window is too big.
-    wr.left -= max(0, wr.right - ar.right);
-    wr.top -= max(0, wr.bottom - ar.bottom);
-    wr.left = max(wr.left, ar.left);
-    wr.top = max(wr.top, ar.top);
-
-    SetWindowPos(wnd, 0, wr.left, wr.top, 0, 0,
-                 SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
+    win_fix_position();
   }
 
   // Initialise the terminal.

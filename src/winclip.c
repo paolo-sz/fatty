@@ -20,6 +20,12 @@ static DWORD WINAPI
 shell_exec_thread(void *data)
 {
   wchar *wpath = data;
+
+#ifdef __CYGWIN__
+  /* Need to sync the Windows environment */
+  cygwin_internal (CW_SYNC_WINENV);
+#endif
+
   if ((INT_PTR)ShellExecuteW(wnd, 0, wpath, 0, 0, SW_SHOWNORMAL) <= 32) {
     uint error = GetLastError();
     if (error != ERROR_CANCELLED) {
@@ -46,7 +52,7 @@ win_open(wstring wpath)
 {
   wstring p = wpath;
   while (iswalpha(*p)) p++;
-  
+
   if (*wpath == '\\' || *p == ':') {
     // Looks like it's a Windows path or URI
     shell_exec(wpath);
@@ -433,7 +439,7 @@ paste_hdrop(HDROP drop)
 #endif
   uint n = DragQueryFileW(drop, -1, 0, 0);
   for (uint i = 0; i < n; i++) {
-    
+
 #if CYGWIN_VERSION_DLL_MAJOR >= 1007
     uint wfn_len = DragQueryFileW(drop, i, 0, 0);
     wchar wfn[wfn_len + 1];
@@ -455,7 +461,7 @@ paste_hdrop(HDROP drop)
       needs_dollar = iscntrl(c) || (needs_quotes && has_tick);
     }
     needs_quotes |= needs_dollar;
-    
+
     if (needs_dollar)
       buf_add('$');
     if (needs_quotes)
@@ -510,7 +516,7 @@ void
 win_paste(void)
 {
   if (!OpenClipboard(null))
-    return;  
+    return;
   HGLOBAL data;
   win_active_terminal()->selected = false;
   if ((data = GetClipboardData(CF_HDROP)))
@@ -533,7 +539,7 @@ dt_query_interface(IDropTarget *this, REFIID iid, void **p)
     InterlockedIncrement(&dt_ref_count);
     *p = this;
     return S_OK;
-  }  
+  }
   else {
     *p = null;
     return E_NOINTERFACE;
@@ -564,11 +570,11 @@ dt_drag_over(IDropTarget *unused(this),
   }
   return S_OK;
 }
-  
+
 static bool
 try_format(IDataObject *obj, CLIPFORMAT format)
 {
-  dt_format.cfFormat = format; 
+  dt_format.cfFormat = format;
   return obj->lpVtbl->QueryGetData(obj, &dt_format) == S_OK;
 }
 
@@ -581,8 +587,8 @@ dt_drag_enter(IDropTarget *this, IDataObject *obj,
   try_format(obj, CF_TEXT) ||
   (dt_format.cfFormat = 0);
   return dt_drag_over(this, keys, pos, effect_p);
-}  
-  
+}
+
 static __stdcall HRESULT
 dt_drag_leave(IDropTarget *unused(this))
 { return S_OK; }
@@ -590,7 +596,7 @@ dt_drag_leave(IDropTarget *unused(this))
 static __stdcall HRESULT
 dt_drop(IDropTarget *this, IDataObject *obj,
         DWORD keys, POINTL pos, DWORD *effect_p)
-{ 
+{
   dt_drag_enter(this, obj, keys, pos, effect_p);
   if (!effect_p)
     return 0;
