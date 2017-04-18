@@ -3,6 +3,14 @@
 
 #include "term.h"
 
+#define dont_debug_resize
+
+#ifdef debug_resize
+#define trace_resize(params)	printf params
+#else
+#define trace_resize(params)
+#endif
+
 void win_reconfig(void);
 
 void win_update(void);
@@ -17,7 +25,6 @@ void win_bell(struct term* term);
 void win_set_title(struct term* term, char *);
 void win_save_title(void);
 void win_restore_title(void);
-void win_prefix_title(const char *);
 
 colour win_get_colour(colour_i);
 void win_set_colour(colour_i, colour);
@@ -39,8 +46,8 @@ void win_get_pixels(int *height_p, int *width_p);
 void win_get_screen_chars(int *rows_p, int *cols_p);
 void win_popup_menu(void);
 
-void win_zoom_font(int);
-void win_set_font_size(int);
+void win_zoom_font(int, bool sync_size_with_font);
+void win_set_font_size(int, bool sync_size_with_font);
 unsigned int win_get_font_size(void);
 
 void win_check_glyphs(wchar_t *wcs, unsigned int num);

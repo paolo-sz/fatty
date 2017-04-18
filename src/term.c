@@ -320,6 +320,7 @@ term_clear_scrollback(struct term* term)
 void
 term_resize(struct term* term, int newrows, int newcols)
 {
+  trace_resize(("--- term_resize %d %d\n", newrows, newcols));
   bool on_alt_screen = term->on_alt_screen;
   term_switch_screen(term, 0, false);
 

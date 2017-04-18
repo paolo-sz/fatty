@@ -122,7 +122,7 @@ static void update_window_state() {
     win_update_menus();
     if (cfg.title_settable)
       SetWindowTextW(wnd, win_tab_get_title(active_tab));
-    win_adapt_term_size();
+    win_adapt_term_size(false, false);
 }
 
 static void set_active_tab(unsigned int index) {
@@ -280,7 +280,7 @@ static void fix_window_size() {
     // tab bar, but it's not too terrible (just looks little off) so I
     // don't care. Maybe fix it later?
     if (win_is_fullscreen) {
-        win_adapt_term_size();
+        win_adapt_term_size(false, false);
     } else {
         auto& t = *tabs[active_tab].terminal;
         win_set_chars(t.rows, t.cols);
