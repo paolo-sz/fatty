@@ -74,6 +74,7 @@ typedef struct {
   bool clicks_place_cursor;
   char middle_click_action;
   char right_click_action;
+  bool zoom_mouse;
   bool clicks_target_app;
   char click_target_mod;
   bool hide_mouse;
@@ -106,6 +107,7 @@ typedef struct {
   bool utmp;
   char window;
   int x, y;
+  bool daemonize;
   // "Hidden"
   string app_id;
   int col_spacing, row_spacing;

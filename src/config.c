@@ -57,6 +57,7 @@ const config default_cfg = {
   .clicks_place_cursor = false,
   .middle_click_action = MC_PASTE,
   .right_click_action = RC_MENU,
+  .zoom_mouse = true,
   .clicks_target_app = true,
   .click_target_mod = MDK_SHIFT,
   .hide_mouse = true,
@@ -88,6 +89,7 @@ const config default_cfg = {
   .utmp = false,
   .title = "",
   .title_settable = true,
+  .daemonize = true,
   // "Hidden"
   .app_id = "",
   .col_spacing = 0,
@@ -178,6 +180,7 @@ options[] = {
   {"ClicksPlaceCursor", OPT_BOOL, offcfg(clicks_place_cursor)},
   {"MiddleClickAction", OPT_MIDDLECLICK, offcfg(middle_click_action)},
   {"RightClickAction", OPT_RIGHTCLICK, offcfg(right_click_action)},
+  {"ZoomMouse", OPT_BOOL, offcfg(zoom_mouse)},
   {"ClicksTargetApp", OPT_BOOL, offcfg(clicks_target_app)},
   {"ClickTargetMod", OPT_MOD, offcfg(click_target_mod)},
   {"HideMouse", OPT_BOOL, offcfg(hide_mouse)},
@@ -205,6 +208,7 @@ options[] = {
   // Command line
   {"Class", OPT_STRING, offcfg(classname)},
   {"Hold", OPT_HOLD, offcfg(hold)},
+  {"Daemonize", OPT_BOOL, offcfg(daemonize)},
   {"ExitWrite", OPT_BOOL, offcfg(exit_write)},
   {"ExitTitle", OPT_STRING, offcfg(exit_title)},
   {"Icon", OPT_STRING, offcfg(icon)},

@@ -345,6 +345,10 @@ term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int co
       if (!alt)
         win_popup_menu();
     }
+    else if (b == MBT_MIDDLE && (mods & ~MDK_SHIFT) == MDK_CTRL) {
+      if (cfg.zoom_mouse)
+        win_zoom_font(0, mods & MDK_SHIFT);
+    }
     else if ((b == MBT_RIGHT && rca == RC_PASTE) ||
              (b == MBT_MIDDLE && mca == MC_PASTE)) {
       if (!alt)
@@ -538,10 +542,12 @@ term_mouse_wheel(struct term* term, int delta, int lines_per_notch, mod_keys mod
     }
   }
   else if ((mods & ~MDK_SHIFT) == MDK_CTRL) {
-    int zoom = accu / NOTCH_DELTA;
-    if (zoom) {
-      accu -= NOTCH_DELTA * zoom;
-      win_zoom_font(zoom, mods & MDK_SHIFT);
+    if (cfg.zoom_mouse) {
+      int zoom = accu / NOTCH_DELTA;
+      if (zoom) {
+        accu -= NOTCH_DELTA * zoom;
+        win_zoom_font(zoom, mods & MDK_SHIFT);
+      }
     }
   }
   else if (!(mods & ~MDK_SHIFT)) {

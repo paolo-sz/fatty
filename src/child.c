@@ -36,7 +36,7 @@ static void
 error(struct term* term, char *action)
 {
   char *msg;
-  int len = asprintf(&msg, "Failed to %s: %s.", action, strerror(errno));
+  int len = asprintf(&msg, "\033[30;41m\033[KFailed to %s: %s.", action, strerror(errno));
   if (len > 0) {
     term_write(term, msg, len);
     free(msg);
@@ -363,7 +363,29 @@ child_conv_path(struct child* child, wstring wpath)
 void
 child_fork(struct child* child, int argc, char *argv[])
 {
-  if (fork() == 0) {
+  pid_t clone = fork();
+
+  if (cfg.daemonize) {
+    if (clone < 0) {
+      error (child->term, "fork child daemon");
+      return;  // assume next fork will fail too
+    }
+    if (clone > 0) {  // parent waits for intermediate child
+      int status;
+      waitpid (clone, &status, 0);
+      return;
+    }
+
+    clone = fork();
+    if (clone < 0) {
+      exit(255);
+    }
+    if (clone > 0) {  // new parent / previous child
+      exit (0);  // exit and make the grandchild a daemon
+    }
+  }
+
+  if (clone == 0) {  // prepare child process to spawn new terminal
     if (child->pty_fd >= 0)
       close(child->pty_fd);
     if (child_log_fd >= 0)
