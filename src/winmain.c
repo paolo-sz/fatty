@@ -4,6 +4,7 @@
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define dont_debug_resize
 #include "winpriv.h"
 
 #include "term.h"
@@ -33,6 +34,7 @@ static ATOM class_atom;
 static int extra_width, extra_height;
 static bool fullscr_on_max;
 static bool resizing;
+static int zoom_token = 0;
 static string border_style = 0;
 static bool center = false;
 
@@ -617,9 +619,18 @@ confirm_multi_tab(void)
          );
 }
 
+#define dont_debug_windows_messages
+
 static LRESULT CALLBACK
 win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
 {
+#ifdef debug_windows_messages
+  if (message != WM_TIMER && message != WM_NCHITTEST && message != WM_MOUSEMOVE && message != WM_SETCURSOR && message != WM_NCMOUSEMOVE
+     && (message != WM_KEYDOWN || !(lp & 0x40000000))
+     )
+    printf ("[%d] win_proc %04X (%04X %04X)\n", (int)time(0), message, wp, (int)lp);
+#endif
+
   struct term* term = 0;
   if (term_initialized) term = win_active_terminal();
   switch (message) {
@@ -649,8 +660,22 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(term); win_update();
         when IDM_RESET: term_reset(term); win_update();
-        when IDM_DEFSIZE: default_size();
-        when IDM_FULLSCREEN: win_maximise(win_is_fullscreen ? 0 : 2);
+        when IDM_DEFSIZE:
+          default_size();
+        when IDM_DEFSIZE_ZOOM:
+          default_size();
+#ifdef doesnotwork_after_shift_drag
+          if (GetKeyState(VK_SHIFT) & 0x80) {
+            win_set_font_size(cfg.font.size, false);
+            default_size();
+          }
+#endif
+        when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM:
+          if ((wp & ~0xF) == IDM_FULLSCREEN_ZOOM)
+            zoom_token = 1;
+          else
+            zoom_token = -4;
+          win_maximise(win_is_fullscreen ? 0 : 2);
         when IDM_FLIPSCREEN: term_flip_screen(term);
         when IDM_OPTIONS: win_open_config();
         when IDM_NEW: child_fork(term->child, main_argc, main_argv);
@@ -720,12 +745,17 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
       win_paint();
       return 0;
     when WM_SETFOCUS:
+      trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       term_set_focus(term, true);
       CreateCaret(wnd, caretbm, 0, 0);
       flash_taskbar(false);  /* stop */
       win_update();
       update_transparency();
       ShowCaret(wnd);
+      zoom_token = -4;
+    when WM_MOVING:
+      trace_resize(("# WM_MOVING VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      zoom_token = -4;
     when WM_KILLFOCUS:
       win_show_mouse();
       term_set_focus(term, false);
@@ -733,18 +763,20 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
       win_update();
       update_transparency();
     when WM_ENTERSIZEMOVE:
-      trace_resize(("--- WM_ENTERSIZEMOVE VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_ENTERSIZEMOVE VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       resizing = true;
     when WM_EXITSIZEMOVE or WM_CAPTURECHANGED:  // after mouse-drag resizing
-      trace_resize(("--- WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      bool shift = GetKeyState(VK_SHIFT) & 0x80;
       if (resizing) {
         resizing = false;
         win_destroy_tip();
-        trace_resize((" (win_proc -> win_adapt_term_size)\n"));
-        win_adapt_term_size(GetKeyState(VK_SHIFT) & 0x80, false);
+        trace_resize((" (win_proc (WM_EXITSIZEMOVE) -> win_adapt_term_size)\n"));
+        win_adapt_term_size(shift, false);
       }
     when WM_SIZING: {  // mouse-drag window resizing
-      trace_resize(("--- WM_SIZING (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_SIZING (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      zoom_token = 2;
      /*
       * This does two jobs:
       * 1) Keep the tip uptodate
@@ -778,7 +810,7 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
       return ew || eh;
     }
     when WM_SIZE: {
-      trace_resize(("--- WM_SIZE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_SIZE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
       if (wp == SIZE_RESTORED && win_is_fullscreen)
         clear_fullscreen();
       else if (wp == SIZE_MAXIMIZED && fullscr_on_max) {
@@ -787,8 +819,22 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
       }
 
       if (!resizing) {
-        trace_resize((" (win_proc -> win_adapt_term_size)\n"));
-        win_adapt_term_size(false, GetKeyState(VK_SHIFT) & 0x80);
+        trace_resize((" (win_proc (WM_SIZE) -> win_adapt_term_size)\n"));
+        // enable font zooming on Shift unless
+#ifdef does_not_enable_shift_maximize_initially
+        // - triggered by Windows shortcut (with Windows key)
+        // - triggered by Ctrl+Shift+F (zoom_token < 0)
+        if ((zoom_token >= 0) && !(GetKeyState(VK_LWIN) & 0x80))
+          zoom_token = 1;
+#else
+        // - triggered by Windows shortcut (with Windows key)
+        if (!(GetKeyState(VK_LWIN) & 0x80))
+          zoom_token = 1;
+#endif
+        bool scale_font = (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80);
+        win_adapt_term_size(false, scale_font);
+        if (zoom_token > 0)
+          zoom_token = zoom_token >> 1;
       }
 
       return 0;
@@ -998,12 +1044,16 @@ main(int argc, char *argv[])
   // if started from console, try to detach from caller's terminal (~daemonizing)
   // in order to not suppress signals
   // (indicated by isatty if linked with -mwindows as ttyname() is null)
-  if (cfg.daemonize && !isatty(0)) {
+  bool daemonize = cfg.daemonize && !isatty(0);
+  // disable daemonizing if started from ConEmu
+  if (getenv("ConEmuPID"))
+    daemonize = false;
+  if (daemonize) {  // detach from parent process and terminal
     pid_t pid = fork();
     if (pid < 0)
       error("could not detach from caller");
     if (pid > 0)
-      exit(0);    // exit parent process
+      exit(0);  // exit parent process
 
     setsid();  // detach child process
   }
