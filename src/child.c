@@ -132,7 +132,7 @@ child_create(struct child* child, struct term* term,
     execvp(child->cmd, argv);
 
     // If we get here, exec failed.
-    fprintf(stderr, "%s: %s\r\n", child->cmd, strerror(errno));
+    fprintf(stderr, "\033[30;41m\033[KFailed to run %s: %s\r\n", child->cmd, strerror(errno));
 
 #if CYGWIN_VERSION_DLL_MAJOR < 1005
     // Before Cygwin 1.5, the message above doesn't appear if we exit
