@@ -275,23 +275,12 @@ static int tabheight() {
 }
 
 static bool tab_bar_visible = false;
-static void fix_window_size() {
-    // doesn't work fully when you put fullscreen and then show or hide
-    // tab bar, but it's not too terrible (just looks little off) so I
-    // don't care. Maybe fix it later?
-    if (win_is_fullscreen) {
-        win_adapt_term_size(false, false);
-    } else {
-        auto& t = *tabs[active_tab].terminal;
-        win_set_chars(t.rows, t.cols);
-    }
-}
 static void set_tab_bar_visibility(bool b) {
     if (b == tab_bar_visible) return;
 
     tab_bar_visible = b;
     g_render_tab_height = win_tab_height();
-    fix_window_size();
+    win_adapt_term_size(false, false);
     win_invalidate_all();
 }
 int win_tab_height() { return tab_bar_visible ? tabheight() : 0; }
