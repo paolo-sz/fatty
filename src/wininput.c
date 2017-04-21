@@ -16,6 +16,10 @@
 #include <termios.h>
 
 static HMENU menu, sysmenu;
+static bool alt_F2_pending = false;
+static uint alt_F2_modifier = 0;
+static bool alt_F2_home = false;
+static int alt_F2_monix = 0, alt_F2_moniy = 0;
 
 void
 win_update_menus(void)
@@ -318,6 +322,12 @@ win_mouse_wheel(WPARAM wp, LPARAM lp)
 /* Keyboard handling */
 
 static void
+send_syscommand2(WPARAM cmd, LPARAM p)
+{
+  SendMessage(wnd, WM_SYSCOMMAND, cmd, p);
+}
+
+static void
 send_syscommand(WPARAM cmd)
 {
   SendMessage(wnd, WM_SYSCOMMAND, cmd, ' ');
@@ -400,6 +410,26 @@ win_key_down(WPARAM wp, LPARAM lp)
     return 1;
   }
 
+  if (alt_F2_pending) {
+    if (!extended) {
+      alt_F2_modifier = key;
+      switch (key) {
+        when VK_HOME : alt_F2_monix--; alt_F2_moniy--;
+        when VK_UP   : alt_F2_moniy--;
+        when VK_PRIOR: alt_F2_monix++; alt_F2_moniy--;
+        when VK_LEFT : alt_F2_monix--;
+        when VK_CLEAR: alt_F2_monix = 0; alt_F2_moniy = 0; alt_F2_home = true;
+        when VK_RIGHT: alt_F2_monix++;
+        when VK_END  : alt_F2_monix--; alt_F2_moniy++;
+        when VK_DOWN : alt_F2_moniy++;
+        when VK_NEXT : alt_F2_monix++; alt_F2_moniy++;
+        when VK_INSERT or VK_DELETE:
+                       alt_F2_monix = 0; alt_F2_moniy = 0; alt_F2_home = false;
+      }
+    }
+    return 1;
+  }
+
   if (!active_term->shortcut_override) {
 
     // Copy&paste
@@ -442,7 +472,11 @@ win_key_down(WPARAM wp, LPARAM lp)
     if (cfg.alt_fn_shortcuts && alt && VK_F1 <= key && key <= VK_F24) {
       if (!ctrl) {
         switch (key) {
-          when VK_F2:  send_syscommand(IDM_NEW);
+          when VK_F2:
+            // send_syscommand(IDM_NEW);
+            alt_F2_modifier = 0;
+            alt_F2_home = false; alt_F2_monix = 0; alt_F2_moniy = 0;
+            alt_F2_pending = true;
           when VK_F3:  send_syscommand(IDM_SEARCH);
           when VK_F4:  send_syscommand(SC_CLOSE);
           when VK_F8:  send_syscommand(IDM_RESET);
@@ -576,10 +610,19 @@ win_key_down(WPARAM wp, LPARAM lp)
       mods ? mod_csi(code) : active_term->app_cursor_keys ? ss3(code) : csi(code);
   }
 
+static struct {
+  unsigned int combined;
+  unsigned int base;
+  unsigned int spacing;
+} comb_subst[] = {
+#include "combined.t"
+};
+
   // Keyboard layout
   bool layout(void) {
     // ToUnicode returns up to 4 wchars according to
-    // http://blogs.msdn.com/b/michkap/archive/2006/03/24/559169.aspx.
+    // http://blogs.msdn.com/b/michkap/archive/2006/03/24/559169.aspx
+    // https://web.archive.org/web/20120103012712/http://blogs.msdn.com/b/michkap/archive/2006/03/24/559169.aspx
     wchar wbuf[4];
     int wlen = ToUnicode(key, scancode, kbd, wbuf, lengthof(wbuf), 0);
     if (!wlen)     // Unassigned.
@@ -589,9 +632,26 @@ win_key_down(WPARAM wp, LPARAM lp)
 
     esc_if(alt);
 
+    // Substitute accent compositions not supported by Windows
+    if (wlen == 2)
+      for (unsigned int i = 0; i < lengthof(comb_subst); i++)
+        if (comb_subst[i].spacing == wbuf[0] && comb_subst[i].base == wbuf[1]) {
+          wbuf[0] = comb_subst[i].combined;
+          wlen = 1;
+          break;
+        }
+
     // Check that the keycode can be converted to the current charset
     // before returning success.
     int mblen = cs_wcntombn(buf + len, wbuf, lengthof(buf) - len, wlen);
+#ifdef debug_ToUnicode
+    printf("wlen %d:", wlen);
+    for (int i = 0; i < wlen; i ++) printf(" %04X", wbuf[i] & 0xFFFF);
+    printf("\n");
+    printf("mblen %d:", mblen);
+    for (int i = 0; i < mblen; i ++) printf(" %02X", buf[i] & 0xFF);
+    printf("\n");
+#endif
     bool ok = mblen > 0;
     len = ok ? len + mblen : 0;
     return ok;
@@ -824,9 +884,11 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (VK_OEM_PLUS <= key && key <= VK_OEM_PERIOD)
         app_pad_code(key - VK_OEM_PLUS + '+');
     when VK_PACKET:
-      layout();
+      if (!layout())
+        return false;
     otherwise:
-      return 0;
+      if (!layout())
+        return false;
   }
 
   hide_mouse();
@@ -845,6 +907,42 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
 {
   struct term* active_term = win_active_terminal();
   win_update_mouse();
+
+  if (alt_F2_pending) {
+    if ((uint)wp == VK_F2) {
+      alt_F2_pending = false;
+
+      // Calculate heuristic approximation of selected monitor position
+      int x, y;
+      MONITORINFO mi;
+      search_monitors(&x, &y, 0, alt_F2_home, &mi);
+      RECT r = mi.rcMonitor;
+      int refx, refy;
+      if (alt_F2_monix < 0)
+        refx = r.left + 10;
+      else if (alt_F2_monix > 0)
+        refx = r.right - 10;
+      else
+        refx = (r.left + r.right) / 2;
+      if (alt_F2_moniy < 0)
+        refy = r.top + 10;
+      else if (alt_F2_monix > 0)
+        refy = r.bottom - 10;
+      else
+        refy = (r.top + r.bottom) / 2;
+      POINT pt;
+      pt.x = refx + alt_F2_monix * x;
+      pt.y = refy + alt_F2_moniy * y;
+      // Find monitor over or nearest to point
+      HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+      int moni = search_monitors(&x, &y, mon, true, 0);
+
+#ifdef debug_multi_monitors
+      printf("NEW @ %d,%d @ monitor %d\n", pt.x, pt.y, moni);
+#endif
+      send_syscommand2(IDM_NEW, ' ' + moni);
+    }
+  }
 
   if (wp != VK_MENU)
     return false;

@@ -15,22 +15,22 @@ struct child
   struct term* term;
 };
 
-void child_create(struct child* child, struct term* term,
+extern void child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path);
-void child_free(struct child* child);
-void child_proc();
-void child_kill();
-void child_terminate(struct child* child);
-void child_write(struct child* child, const char *, unsigned int len);
-void child_printf(struct child* child, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
-void child_send(struct child* child, const char *, uint len);
-void child_sendw(struct child* child, const wchar *, uint len);
-void child_resize(struct child* child, struct winsize *winp);
-bool child_is_alive(struct child* child);
-bool child_is_parent(struct child* child);
-bool child_is_any_parent();
-wstring child_conv_path(struct child*, wstring);
-void child_fork(struct child* child, int argc, char *argv[]);
+extern void child_free(struct child* child);
+extern void child_proc();
+extern void child_kill();
+extern void child_terminate(struct child* child);
+extern void child_write(struct child* child, const char *, unsigned int len);
+extern void child_printf(struct child* child, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+extern void child_send(struct child* child, const char *, uint len);
+extern void child_sendw(struct child* child, const wchar *, uint len);
+extern void child_resize(struct child* child, struct winsize *winp);
+extern bool child_is_alive(struct child* child);
+extern bool child_is_parent(struct child* child);
+extern bool child_is_any_parent();
+extern wstring child_conv_path(struct child*, wstring);
+extern void child_fork(struct child* child, int argc, char *argv[], int moni);
 
 void child_onexit(int sig);
 void child_init();

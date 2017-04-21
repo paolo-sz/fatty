@@ -24,6 +24,12 @@
 
 #include <sys/cygwin.h>
 
+#if CYGWIN_VERSION_DLL_MAJOR >= 1007
+#include <propsys.h>
+#include <propkey.h>
+#endif
+
+
 HINSTANCE inst;
 HWND wnd, tab_wnd;
 HIMC imc;
@@ -50,7 +56,8 @@ static bool left = false;
 static bool top = false;
 static bool maxwidth = false;
 static bool maxheight = false;
-static bool setup_properties = false;
+static bool store_taskbar_properties = false;
+static bool prevent_pinning = false;
 
 static HBITMAP caretbm;
 
@@ -118,7 +125,7 @@ load_shcore_funcs(void)
 {
   HMODULE shc = load_sys_library("shcore.dll");
 #ifdef debug_dpi
-  printf ("load_shcore_funcs shc %d\n", !!shc);
+  printf("load_shcore_funcs shc %d\n", !!shc);
 #endif
   if (shc) {
     pGetProcessDpiAwareness =
@@ -126,7 +133,7 @@ load_shcore_funcs(void)
     pSetProcessDpiAwareness =
       (void *)GetProcAddress(shc, "SetProcessDpiAwareness");
 #ifdef debug_dpi
-      printf ("SetProcessDpiAwareness %d GetProcessDpiAwareness %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness);
+      printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness);
 #endif
   }
 }
@@ -228,8 +235,10 @@ get_my_monitor_info(MONITORINFO *mip)
 }
 
 static void
-get_monitor_info (int moni, MONITORINFO *mip)
+get_monitor_info(int moni, MONITORINFO *mip)
 {
+  mip->cbSize = sizeof(MONITORINFO);
+
   BOOL CALLBACK
   monitor_enum (HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
   {
@@ -240,8 +249,134 @@ get_monitor_info (int moni, MONITORINFO *mip)
     return --moni > 0;
   }
 
-  mip->cbSize = sizeof(MONITORINFO);
   EnumDisplayMonitors(0, 0, monitor_enum, 0);
+}
+
+#define dont_debug_display_monitors_mockup
+#define dont_debug_display_monitors
+
+#ifdef debug_display_monitors_mockup
+# define debug_display_monitors
+static const RECT monitors[] = {
+  //(RECT){.left = 0, .top = 0, .right = 1920, .bottom = 1200},
+    //    44
+    // 3  11  2
+    //     5   6
+  {0, 0, 1920, 1200},
+  {1920, 0, 3000, 1080},
+  {-800, 200, 0, 600},
+  {0, -1080, 1920, 0},
+  {1300, 1200, 2100, 1800},
+  {2100, 1320, 2740, 1800},
+};
+static long primary_monitor = 2 - 1;
+static long current_monitor = 1 - 1;  // assumption for MonitorFromWindow
+#endif
+
+/*
+   search_monitors(&x, &y, 0, false, &moninfo)
+     returns number of monitors;
+       stores smallest width/height of all monitors
+       stores info of current monitor
+   search_monitors(&x, &y, 0, true, &moninfo)
+     returns number of monitors;
+       stores smallest width/height of all monitors
+       stores info of primary monitor
+   search_monitors(&x, &y, mon, false/true, 0)
+     returns index of given monitor (0/primary if not found)
+ */
+int
+search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, MONITORINFO *mip)
+{
+#ifdef debug_display_monitors_mockup
+  BOOL
+  EnumDisplayMonitors(HDC hdc, LPCRECT lprcClip, MONITORENUMPROC lpfnEnum, LPARAM dwData)
+  {
+    (void)lprcClip;
+    for (unsigned long moni = 0; moni < lengthof(monitors); moni++) {
+      RECT monrect = monitors[moni];
+      HMONITOR hMonitor = (HMONITOR)(moni + 1);
+      HDC hdcMonitor = hdc;
+      //if (hdc) hdcMonitor = (HDC)...;
+      //if (hdc) monrect = intersect(hdc.rect, monrect);
+      //if (hdc) hdcMonitor.rect = intersection(hdc.rect, lprcClip, monrect);
+      if (lpfnEnum(hMonitor, hdcMonitor, &monrect, dwData) == FALSE)
+        return TRUE;
+    }
+    return TRUE;
+  }
+
+  BOOL GetMonitorInfo(HMONITOR hMonitor, LPMONITORINFO lpmi)
+  {
+    long moni = (long)hMonitor - 1;
+    lpmi->rcMonitor = monitors[moni];
+    lpmi->rcWork = monitors[moni];
+    lpmi->dwFlags = 0;
+    if (moni == primary_monitor)
+      lpmi->dwFlags = MONITORINFOF_PRIMARY;
+    return TRUE;
+  }
+
+  HMONITOR MonitorFromWindow(HWND hwnd, DWORD dwFlags)
+  {
+    (void)hwnd, (void)dwFlags;
+    return (HMONITOR)current_monitor + 1;
+  }
+#endif
+
+  int moni = 0;
+  int moni_found = 0;
+  * minx = 0;
+  * miny = 0;
+  HMONITOR refmon = 0;
+
+  BOOL CALLBACK
+  monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
+  {
+    (void)hdcMonitor, (void)monp, (void)dwData;
+
+    moni ++;
+    if (hMonitor == lookup_mon) {
+      // looking for index of specific monitor
+      moni_found = moni;
+      return FALSE;
+    }
+
+    MONITORINFO mi;
+    mi.cbSize = sizeof(MONITORINFO);
+    GetMonitorInfo(hMonitor, &mi);
+
+    if (get_primary && (mi.dwFlags & MONITORINFOF_PRIMARY)) {
+      moni_found = moni;  // fallback to be overridden by monitor found later
+      refmon = hMonitor;
+    }
+
+    // determining smallest monitor width and height
+    RECT fr = mi.rcMonitor;
+    if (*minx == 0 || *minx > fr.right - fr.left)
+      *minx = fr.right - fr.left;
+    if (*miny == 0 || *miny > fr.bottom - fr.top)
+      *miny = fr.bottom - fr.top;
+
+#ifdef debug_display_monitors
+    if (!lookup_mon)
+      printf("Monitor %d: %d,%d...%d,%d %s\n", moni, fr.left, fr.top, fr.right, fr.bottom, mi.dwFlags & MONITORINFOF_PRIMARY ? "primary" : "");
+#endif
+
+    return TRUE;
+  }
+
+  EnumDisplayMonitors(0, 0, monitor_enum, 0);
+  if (lookup_mon) {
+    return moni_found;
+  }
+  else {
+    if (!refmon)
+      refmon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+    mip->cbSize = sizeof(MONITORINFO);
+    GetMonitorInfo(refmon, mip);
+    return moni;  // number of monitors
+  }
 }
 
 /*
@@ -747,6 +882,7 @@ confirm_multi_tab(void)
 }
 
 #define dont_debug_windows_messages
+#define dont_debug_windows_mouse_messages
 
 static LRESULT CALLBACK
 win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
@@ -764,10 +900,14 @@ static struct {
       wm_name = wm_names[i].wm_name;
       break;
     }
-  if (message != WM_TIMER && message != WM_NCHITTEST && message != WM_MOUSEMOVE && message != WM_SETCURSOR && message != WM_NCMOUSEMOVE
-      && (message != WM_KEYDOWN || !(lp & 0x40000000))
+  if ((message != WM_KEYDOWN || !(lp & 0x40000000))
+      && message != WM_TIMER && message != WM_NCHITTEST
+#ifndef debug_windows_mouse_messages
+      && message != WM_SETCURSOR
+      && message != WM_MOUSEMOVE && message != WM_NCMOUSEMOVE
+#endif
      )
-    printf ("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
+    printf("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
   struct term* term = 0;
@@ -821,7 +961,7 @@ static struct {
         when IDM_SEARCH: win_open_search();
         when IDM_FLIPSCREEN: term_flip_screen(term);
         when IDM_OPTIONS: win_open_config();
-        when IDM_NEW: child_fork(term->child, main_argc, main_argv);
+        when IDM_NEW: child_fork(term->child, main_argc, main_argv, (int)lp - ' ');
         when IDM_COPYTITLE: win_copy_title();
         when IDM_NEWTAB: win_tab_create();
         when IDM_KILLTAB: child_terminate(term->child);
@@ -998,7 +1138,7 @@ static struct {
       win_paint_tabs(lp, 0);
     when WM_DPICHANGED:
 #ifdef debug_dpi
-      printf ("WM_DPICHANGED %d\n", per_monitor_dpi_aware);
+      printf("WM_DPICHANGED %d\n", per_monitor_dpi_aware);
 #endif
       if (per_monitor_dpi_aware) {
         LPRECT r = (LPRECT) lp;
@@ -1068,7 +1208,8 @@ opts[] = {
   {"help",       no_argument,       0, 'H'},
   {"version",    no_argument,       0, 'V'},
   {"nodaemon",   no_argument,       0, 'd'},
-  {"properties", no_argument,       0, ''},  // short option not enabled
+  {"nopin",      no_argument,       0, ''},  // short option not enabled
+  {"store-taskbar-properties", no_argument, 0, ''},  // no short option
   {0, 0, 0, 0}
 };
 
@@ -1106,9 +1247,161 @@ warn(char *format, ...)
 }
 
 static void
-configure_properties()
+configure_taskbar()
 {
-  // insert patch #471 here if desired
+#ifdef patch_jumplist
+#include "jumplist.h"
+  // test data
+  char ** jump_list_title = {
+    "title1", "", "", "mä€", "", "", "", "", "", "", 
+  };
+  char ** jump_list_cmd = {
+    "-o Rows=15", "-o Rows=20", "", "-t mö€", "", "", "", "", "", "", 
+  };
+  // the patch offered in issue #290 does not seem to work
+  setup_jumplist(jump_list_title, jump_list_cmd);
+#endif
+
+#if CYGWIN_VERSION_DLL_MAJOR >= 1007
+  // initial patch (issue #471) contributed by Johannes Schindelin
+  const char * app_id = cfg.app_id;
+  const char * relaunch_icon = cfg.icon;
+  const char * relaunch_display_name = cfg.app_name;
+  const char * relaunch_command = cfg.app_launch_cmd;
+
+#define dont_debug_properties
+
+  // If an icon is configured but no app_id, we can derive one from the 
+  // icon in order to enable proper taskbar grouping by common icon.
+  if (relaunch_icon && *relaunch_icon && (!app_id || !*app_id)) {
+    const char * iconbasename = strrchr(cfg.icon, '/');
+    if (iconbasename)
+      iconbasename ++;
+    else {
+      iconbasename = strrchr(cfg.icon, '\\');
+      if (iconbasename)
+        iconbasename ++;
+      else
+        iconbasename = cfg.icon;
+    }
+    char * derived_app_id = malloc(strlen(iconbasename) + 7 + 1);
+    strcpy(derived_app_id, "Mintty.");
+    strcat(derived_app_id, iconbasename);
+    app_id = derived_app_id;
+  }
+  // If app_name is configured but no app_launch_cmd, we need an app_id 
+  // to make app_name effective as taskbar title, so invent one.
+  if (relaunch_display_name && *relaunch_display_name && 
+      (!app_id || !*app_id)) {
+    app_id = "Mintty.AppID";
+  }
+
+  // Set the app ID explicitly, as well as the relaunch command and display name
+  if (prevent_pinning || (app_id && *app_id)) {
+    HMODULE shell = load_sys_library("shell32.dll");
+    HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
+      (void *)GetProcAddress(shell, "SHGetPropertyStoreForWindow");
+#ifdef debug_properties
+      printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
+#endif
+    if (pGetPropertyStore) {
+      size_t size;
+      IPropertyStore *pps;
+      HRESULT hr;
+      PROPVARIANT var;
+
+      hr = pGetPropertyStore(wnd, &IID_IPropertyStore, (void **) &pps);
+#ifdef debug_properties
+      printf("IPropertyStore found %d\n", SUCCEEDED(hr));
+#endif
+      if (SUCCEEDED(hr)) {
+        // doc: https://msdn.microsoft.com/en-us/library/windows/desktop/dd378459%28v=vs.85%29.aspx
+        // def: typedef struct tagPROPVARIANT PROPVARIANT: propidl.h
+        // def: enum VARENUM (VT_*): wtypes.h
+        // def: PKEY_*: propkey.h
+        if (relaunch_command && *relaunch_command && store_taskbar_properties
+            && (size = cs_mbstowcs(0, relaunch_command, 0) + 1)) {
+          var.pwszVal = malloc(size * sizeof(wchar));
+          if (var.pwszVal) {
+#ifdef debug_properties
+            printf("AppUserModel_RelaunchCommand=%s\n", relaunch_command);
+#endif
+            cs_mbstowcs(var.pwszVal, relaunch_command, size);
+            var.vt = VT_LPWSTR;
+            pps->lpVtbl->SetValue(pps,
+                &PKEY_AppUserModel_RelaunchCommand, &var);
+          }
+        }
+        if (relaunch_display_name && *relaunch_display_name &&
+            (size = cs_mbstowcs(0, relaunch_display_name, 0) + 1)) {
+          var.pwszVal = malloc(size * sizeof(wchar));
+          if (var.pwszVal) {
+#ifdef debug_properties
+            printf("AppUserModel_RelaunchDisplayNameResource=%s\n", relaunch_display_name);
+#endif
+            cs_mbstowcs(var.pwszVal, relaunch_display_name, size);
+            var.vt = VT_LPWSTR;
+            pps->lpVtbl->SetValue(pps,
+                &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
+          }
+        }
+        if (relaunch_icon && *relaunch_icon &&
+            (size = cs_mbstowcs(0, relaunch_icon, 0) + 1)) {
+          var.pwszVal = malloc(size * sizeof(wchar));
+          if (var.pwszVal) {
+#ifdef debug_properties
+            printf("AppUserModel_RelaunchIconResource=%s\n", relaunch_icon);
+#endif
+            cs_mbstowcs(var.pwszVal, relaunch_icon, size);
+            var.vt = VT_LPWSTR;
+            pps->lpVtbl->SetValue(pps,
+                &PKEY_AppUserModel_RelaunchIconResource, &var);
+          }
+        }
+        if (prevent_pinning) {
+          var.boolVal = VARIANT_TRUE;
+#ifdef debug_properties
+          printf("AppUserModel_PreventPinning=%d\n", var.boolVal);
+#endif
+          var.vt = VT_BOOL;
+          // PreventPinning must be set before setting ID
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_PreventPinning, &var);
+        }
+#ifdef set_userpinned
+DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0xa8,0xd0,0xe1,0xd4,0x2d,0xe1,0xd5,0xf3,12);
+#define APPUSERMODEL_STARTPINOPTION_USERPINNED 2
+#warning needs Windows 8/10 to build...
+        {
+          var.uintVal = APPUSERMODEL_STARTPINOPTION_USERPINNED;
+#ifdef debug_properties
+          printf("AppUserModel_StartPinOption=%d\n", var.uintVal);
+#endif
+          var.vt = VT_UINT;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_StartPinOption, &var);
+        }
+#endif
+        if (app_id && *app_id &&
+            (size = cs_mbstowcs(0, app_id, 0) + 1)) {
+          var.pwszVal = malloc(size * sizeof(wchar));
+          if (var.pwszVal) {
+#ifdef debug_properties
+            printf("AppUserModel_ID=%s\n", app_id);
+#endif
+            cs_mbstowcs(var.pwszVal, app_id, size);
+            var.vt = VT_LPWSTR;  // VT_EMPTY should remove but has no effect
+            pps->lpVtbl->SetValue(pps,
+                &PKEY_AppUserModel_ID, &var);
+          }
+        }
+
+        pps->lpVtbl->Commit(pps);
+        pps->lpVtbl->Release(pps);
+      }
+    }
+  }
+#endif
 }
 
 int
@@ -1152,13 +1445,6 @@ main(int argc, char *argv[])
   for (int i = 0; i < 32; i++)
     tablist_title[i] = NULL;
 
-  if (getenv("MINTTY_ROWS")) {
-    set_arg_option("Rows", getenv("MINTTY_ROWS"));
-  }
-  if (getenv("MINTTY_COLS")) {
-    set_arg_option("Columns", getenv("MINTTY_COLS"));
-  }
-
   for (;;) {
     int opt = getopt_long(argc, argv, short_opts, opts, 0);
     if (opt == -1 || opt == 'e')
@@ -1182,7 +1468,7 @@ main(int argc, char *argv[])
           left = true;
         else if (strcmp(optarg, "top") == 0)
           top = true;
-        else if (sscanf(optarg, "#%i%1s", &monitor, (char[2]){}) == 1)
+        else if (sscanf(optarg, "@%i%1s", &monitor, (char[2]){}) == 1)
           ;
         else if (sscanf(optarg, "%i,%i%1s", &cfg.x, &cfg.y, (char[2]){}) == 2)
           ;
@@ -1207,7 +1493,10 @@ main(int argc, char *argv[])
       when 'B':
         border_style = strdup (optarg);
       when 'u': cfg.utmp = true;
-      when '': setup_properties = true;
+      when '':
+        prevent_pinning = true;
+        store_taskbar_properties = true;
+      when '': store_taskbar_properties = true;
       when 'w': set_arg_option("Window", optarg);
       when 'b':
         tablist[current_tab_size] = optarg;
@@ -1227,6 +1516,16 @@ main(int argc, char *argv[])
         error("option '%s' requires an argument",
               longopt[1] == '-' ? longopt : shortopt);
     }
+  }
+
+  if (getenv("MINTTY_ROWS")) {
+    set_arg_option("Rows", getenv("MINTTY_ROWS"));
+  }
+  if (getenv("MINTTY_COLS")) {
+    set_arg_option("Columns", getenv("MINTTY_COLS"));
+  }
+  if (getenv("MINTTY_MONITOR")) {
+    monitor = atoi(getenv("MINTTY_MONITOR"));
   }
 
   finish_config();
@@ -1253,7 +1552,7 @@ main(int argc, char *argv[])
   load_shcore_funcs();
   per_monitor_dpi_aware = set_per_monitor_dpi_aware();
 #ifdef debug_dpi
-  printf ("per_monitor_dpi_aware %d\n", per_monitor_dpi_aware);
+  printf("per_monitor_dpi_aware %d\n", per_monitor_dpi_aware);
 #endif
 
   // Work out what to execute.
@@ -1442,7 +1741,7 @@ main(int argc, char *argv[])
 
 #define dont_debug_position
 #ifdef debug_position
-#define printpos(tag, x, y, mon)	printf ("%s %d %d (%ld %ld %ld %ld)\n", tag, x, y, mon.left, mon.top, mon.right, mon.bottom);
+#define printpos(tag, x, y, mon)	printf("%s %d %d (%ld %ld %ld %ld)\n", tag, x, y, mon.left, mon.top, mon.right, mon.bottom);
 #else
 #define printpos(tag, x, y, mon)
 #endif
@@ -1555,8 +1854,7 @@ main(int argc, char *argv[])
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
   }
 
-  if (setup_properties)
-    configure_properties ();
+  configure_taskbar();
 
   // The input method context.
   imc = ImmGetContext(wnd);
@@ -1620,6 +1918,21 @@ main(int argc, char *argv[])
   go_fullscr_on_max = (cfg.window == -1);
   ShowWindow(wnd, go_fullscr_on_max ? SW_SHOWMAXIMIZED : cfg.window);
   SetFocus(wnd);
+
+#ifdef debug_display_monitors_mockup
+  {
+    int x, y;
+    MONITORINFO mi;
+    int n = search_monitors(&x, &y, 0, false, &mi);
+    printf("%d monitors, smallest %dx%d, current %d,%d...%d,%d\n", n, x, y, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom);
+    n = search_monitors(&x, &y, 0, true, &mi);
+    printf("%d monitors, smallest %dx%d, primary %d,%d...%d,%d\n", n, x, y, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom);
+    n = search_monitors(&x, &y, (HMONITOR)(current_monitor + 1), false, 0);
+    printf("current monitor: %d\n", n);
+    n = search_monitors(&x, &y, (HMONITOR)(primary_monitor + 1), false, 0);
+    printf("primary monitor: %d\n", n);
+  }
+#endif
 
   // Message loop.
   do {
