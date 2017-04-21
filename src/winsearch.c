@@ -271,6 +271,9 @@ win_open_search()
 {
   struct term* term = win_active_terminal();
   
+  if (!(term->results.query) && search_initialised) {
+    SetWindowTextW(search_edit_wnd, L"");
+  }
   win_toggle_search(true, true);
   term->search_window_visible = true;
   win_adapt_term_size(false, false);

@@ -43,6 +43,18 @@ error(struct term* term, char *action)
   }
 }
 
+/*
+static void
+sigexit(int sig)
+{
+  if (pid)
+    kill(-pid, SIGHUP);
+  signal(sig, SIG_DFL);
+  report_pos();
+  kill(getpid(), sig);
+}
+*/
+
 void
 child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path)
@@ -381,7 +393,7 @@ child_fork(struct child* child, int argc, char *argv[])
       exit(255);
     }
     if (clone > 0) {  // new parent / previous child
-      exit (0);  // exit and make the grandchild a daemon
+      exit(0);  // exit and make the grandchild a daemon
     }
   }
 
