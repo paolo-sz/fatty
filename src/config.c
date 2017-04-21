@@ -21,6 +21,7 @@ static string rc_filename = 0;
 const config default_cfg = {
   // Looks
   .fg_colour = 0xBFBFBF,
+  .bold_colour = (colour)-1,
   .bg_colour = 0x000000,
   .tab_fg_colour = 0x00FF00,
   .tab_bg_colour = 0x000000,
@@ -143,6 +144,7 @@ static const struct {
 options[] = {
   // Looks
   {"ForegroundColour", OPT_COLOUR, offcfg(fg_colour)},
+  {"BoldColour", OPT_COLOUR, offcfg(bold_colour)},
   {"BackgroundColour", OPT_COLOUR, offcfg(bg_colour)},
   {"SearchForegroundColour", OPT_COLOUR, offcfg(search_fg_colour)},
   {"SearchBackgroundColour", OPT_COLOUR, offcfg(search_bg_colour)},
