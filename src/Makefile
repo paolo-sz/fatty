@@ -31,13 +31,16 @@ CXXFLAGS += $(extraflags)
 objfiles := $(addprefix $(BUILD_DIR), $(addsuffix .o, $(basename $(SRC))))
 depfiles := $(objfiles:.o=.d)
 
-$(BIN): rgb $(objfiles)
+$(BIN): rgb wm_names $(objfiles)
 	$(CXX) -o $(BIN) $(objfiles) $(LDFLAGS)
 
 #############################################################################
 # generate
 
-rgb:
+rgb:	# /usr/share/X11/rgb.txt X11 color names
+#	255 250 250		snow
+#	->
+#		{255, 250, 250, "snow"},
 	sed -e 's,	, ,g' -e 's/ *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([^ ].*[^ ]\) */	{\1, \2, \3, "\4"},/' /usr/share/X11/rgb.txt > rgb.t
 
 #############################################################################
@@ -61,3 +64,14 @@ $(BUILD_DIR)%.o: %.rc
 .PHONY: clean
 clean:
 	-rm -rf build $(BIN)
+
+#############################################################################
+# development and debug targets
+
+wm_names:	# Windows Message names, only for debugging
+#	#define WM_NULL 0x0000
+#	->
+#		{0x0000, "WM_NULL"},
+	sed -e 's/^#define \(WM_[^ ]*\) \(0x[0-9A-Fa-f]*\)$$/	{\2, "\1"},/' -e t -e d /usr/include/w32api/winuser.h > wm_names.t
+
+#############################################################################

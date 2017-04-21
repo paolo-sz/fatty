@@ -43,18 +43,6 @@ error(struct term* term, char *action)
   }
 }
 
-/*
-static void
-sigexit(int sig)
-{
-  if (pid)
-    kill(-pid, SIGHUP);
-  signal(sig, SIG_DFL);
-  report_pos();
-  kill(getpid(), sig);
-}
-*/
-
 void
 child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path)

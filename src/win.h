@@ -11,8 +11,6 @@
 #define trace_resize(params)
 #endif
 
-void exit_fatty();
-void report_pos();
 void win_reconfig(void);
 
 void win_update(void);

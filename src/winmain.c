@@ -39,7 +39,6 @@ static bool fullscr_on_max;
 static bool resizing;
 static int zoom_token = 0;  // for heuristic handling of Shift zoom (#467, #476)
 static string border_style = 0;
-static string report_geom = 0;
 static bool center = false;
 static bool maxwidth = false;
 static bool maxheight = false;
@@ -720,10 +719,22 @@ static LRESULT CALLBACK
 win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
 {
 #ifdef debug_windows_messages
+static struct {
+  uint wm_;
+  char * wm_name;
+} wm_names[] = {
+#include "wm_names.t"
+};
+  char * wm_name = "?";
+  for (uint i = 0; i < lengthof(wm_names); i++)
+    if (message == wm_names[i].wm_) {
+      wm_name = wm_names[i].wm_name;
+      break;
+    }
   if (message != WM_TIMER && message != WM_NCHITTEST && message != WM_MOUSEMOVE && message != WM_SETCURSOR && message != WM_NCMOUSEMOVE
      && (message != WM_KEYDOWN || !(lp & 0x40000000))
      )
-    printf ("[%d] win_proc %04X (%04X %04X)\n", (int)time(0), message, wp, (int)lp);
+    printf ("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
   struct term* term = 0;
@@ -1002,29 +1013,28 @@ static const char help[] =
   "  -V, --version         Print version information and exit\n"
 ;
 
-static const char short_opts[] = "+:b:c:eh:i:l:o:p:s:t:T:B:R:uw:HV:d";
+static const char short_opts[] = "+:b:c:eh:i:l:o:p:s:t:T:B:uw:HV:d";
 
 static const struct option
 opts[] = {
-  {"tab",       required_argument, 0, 'b'},
-  {"config",    required_argument, 0, 'c'},
-  {"exec",      no_argument,       0, 'e'},
-  {"hold",      required_argument, 0, 'h'},
-  {"icon",      required_argument, 0, 'i'},
-  {"log",       required_argument, 0, 'l'},
-  {"utmp",      no_argument,       0, 'u'},
-  {"option",    required_argument, 0, 'o'},
-  {"position",  required_argument, 0, 'p'},
-  {"size",      required_argument, 0, 's'},
-  {"title",     required_argument, 0, 't'},
-  {"Title",     required_argument, 0, 'T'},
-  {"Border",    required_argument, 0, 'B'},
-  {"Reportpos", required_argument, 0, 'R'},
-  {"window",    required_argument, 0, 'w'},
-  {"class",     required_argument, 0, 'C'},
-  {"help",      no_argument,       0, 'H'},
-  {"version",   no_argument,       0, 'V'},
-  {"nodaemon",  no_argument,       0, 'd'},
+  {"tab",      required_argument, 0, 'b'},
+  {"config",   required_argument, 0, 'c'},
+  {"exec",     no_argument,       0, 'e'},
+  {"hold",     required_argument, 0, 'h'},
+  {"icon",     required_argument, 0, 'i'},
+  {"log",      required_argument, 0, 'l'},
+  {"utmp",     no_argument,       0, 'u'},
+  {"option",   required_argument, 0, 'o'},
+  {"position", required_argument, 0, 'p'},
+  {"size",     required_argument, 0, 's'},
+  {"title",    required_argument, 0, 't'},
+  {"Title",    required_argument, 0, 'T'},
+  {"Border",   required_argument, 0, 'B'},
+  {"window",   required_argument, 0, 'w'},
+  {"class",    required_argument, 0, 'C'},
+  {"help",     no_argument,       0, 'H'},
+  {"version",  no_argument,       0, 'V'},
+  {"nodaemon", no_argument,       0, 'd'},
   {0, 0, 0, 0}
 };
 
@@ -1059,31 +1069,6 @@ warn(char *format, ...)
   va_end(va);
   msg = asform("%s: %s\n", main_argv[0], msg);
   show_msg(stderr, msg);
-}
-
-void
-report_pos()
-{
-  if (report_geom) {
-    int x, y;
-    win_get_pos(&x, &y);
-    printf("%s", main_argv[0]);
-    if (IsZoomed(wnd))
-      printf(*report_geom == 'o' ? " -o Window=full" : " -w full");
-    else if (IsIconic(wnd))
-      printf(*report_geom == 'o' ? " -o Window=min" : " -w min");
-    else
-      printf(*report_geom == 'o' ? " -o X=%d -o Y=%d" : " -p %d,%d", x, y);
-    printf(*report_geom == 'o' ? " -o Columns=%d -o Rows=%d" : " -s %d,%d", win_active_terminal()->cols, win_active_terminal()->rows);
-    printf("\n");
-  }
-}
-
-void
-exit_fatty()
-{
-  report_pos();
-  exit(0);
 }
 
 int
@@ -1168,8 +1153,6 @@ main(int argc, char *argv[])
         cfg.title_settable = false;
       when 'B':
         border_style = strdup (optarg);
-      when 'R':
-        report_geom = strdup (optarg);
       when 'u': cfg.utmp = true;
       when 'w': set_arg_option("Window", optarg);
       when 'b':
