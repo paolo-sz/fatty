@@ -28,13 +28,19 @@ endif
 CFLAGS += $(extraflags)
 CXXFLAGS += $(extraflags)
 
-# ---------------------------
-
 objfiles := $(addprefix $(BUILD_DIR), $(addsuffix .o, $(basename $(SRC))))
 depfiles := $(objfiles:.o=.d)
 
-$(BIN): $(objfiles)
+$(BIN): rgb $(objfiles)
 	$(CXX) -o $(BIN) $(objfiles) $(LDFLAGS)
+
+#############################################################################
+# generate
+
+rgb:
+	sed -e 's,	, ,g' -e 's/ *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([^ ].*[^ ]\) */	{\1, \2, \3, "\4"},/' /usr/share/X11/rgb.txt > rgb.t
+
+#############################################################################
 
 -include $(depfiles)
 

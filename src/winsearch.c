@@ -61,6 +61,7 @@ prev_result(struct term* term)
     }
   }
   else {
+    term->results.current = term->results.length - 1;
     term->searched = true;
   }
   scroll_to_result(term);
