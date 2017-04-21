@@ -9,6 +9,7 @@
 #include "ctrls.h"
 #include "winctrls.h"
 #include "winids.h"
+#include "res.h"
 #include "appinfo.h"
 
 #include <commctrl.h>
@@ -32,6 +33,7 @@ static controlbox *ctrlbox;
 static winctrls ctrls_base, ctrls_panel;
 
 windlg dlg;
+static int dialog_height;  // dummy
 
 enum {
   IDCX_TVSTATIC = 1001,
@@ -82,7 +84,7 @@ create_controls(HWND wnd, char *path)
    /*
     * Here we must create the basic standard controls.
     */
-    ctrlposinit(&cp, wnd, 3, 3, 135);
+    ctrlposinit(&cp, wnd, 3, 3, DIALOG_HEIGHT - 17);
     wc = &ctrls_base;
     base_id = IDCX_STDBASE;
   }
@@ -100,6 +102,24 @@ create_controls(HWND wnd, char *path)
     controlset *s = ctrlbox->ctrlsets[index];
     winctrl_layout(wc, &cp, s, &base_id);
   }
+}
+
+static void
+determine_geometry(HWND wnd)
+{
+  // determine height in dialog box coordinates
+  // as was configured in res.rc (IDD_MAINBOX) and applied magically
+  RECT r;
+  GetClientRect(wnd, &r);
+
+  RECT normr;
+  normr.left = 0;
+  normr.top = 0;
+  normr.right = 100;
+  normr.bottom = 100;
+  MapDialogRect(config_wnd, &normr);
+
+  dialog_height = 100 * (r.bottom - r.top) / normr.bottom;
 }
 
 /*
@@ -124,6 +144,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       RECT r;
       GetWindowRect(GetParent(wnd), &r);
       dlg.wnd = wnd;
+      // here we need the correct DIALOG_HEIGHT already
       create_controls(wnd, "");        /* Open and Cancel buttons etc */
       SendMessage(wnd, WM_SETICON, (WPARAM) ICON_BIG,
                   (LPARAM) LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)));
@@ -134,7 +155,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       r.left = 3;
       r.right = r.left + 64;
       r.top = 3;
-      r.bottom = r.top + 126;
+      r.bottom = r.top + DIALOG_HEIGHT - 26;
       MapDialogRect(wnd, &r);
       HWND treeview =
         CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
@@ -236,16 +257,17 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
           }
         }
         winctrl_cleanup(&ctrls_panel);
-        
+
+        // here we need the correct DIALOG_HEIGHT already
         create_controls(wnd, (char *) item.lParam);
         dlg_refresh(null); /* set up control values */
       }
     }
-    
+
     when WM_CLOSE:
       DestroyWindow(wnd);
 
-    when WM_COMMAND or WM_DRAWITEM: { 
+    when WM_COMMAND or WM_DRAWITEM: {
       int ret = winctrl_handle_command(msg, wParam, lParam);
       if (dlg.ended)
         DestroyWindow(wnd);
@@ -262,7 +284,7 @@ win_open_config(void)
 {
   if (config_wnd)
     return;
-  
+
   static bool initialised = false;
   if (!initialised) {
     InitCommonControls();
@@ -280,11 +302,18 @@ win_open_config(void)
     });
     initialised = true;
   }
-  
+
   config_wnd = CreateDialog(inst, MAKEINTRESOURCE(IDD_MAINBOX),
                             wnd, config_dialog_proc);
+  // At this point, we could actually calculate the size of the 
+  // dialog box used for the Options menu; however, the resulting 
+  // value(s) (here DIALOG_HEIGHT) is already needed before this point, 
+  // as the callback config_dialog_proc sets up dialog box controls.
+  // How insane is that resource concept! Shouldn't I know my own geometry?
+  determine_geometry(config_wnd);  // dummy call
+
   ShowWindow(config_wnd, SW_SHOW);
-}  
+}
 
 void
 win_show_about(void)

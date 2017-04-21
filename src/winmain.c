@@ -28,16 +28,19 @@ HINSTANCE inst;
 HWND wnd, tab_wnd;
 HIMC imc;
 
-bool win_is_full_screen;
-
 static char **main_argv;
 static int main_argc;
 static ATOM class_atom;
 
 static int extra_width, extra_height, norm_extra_width, norm_extra_height;
+
+// State
+bool win_is_fullscreen;
 static bool go_fullscr_on_max;
 static bool resizing;
 static int zoom_token = 0;  // for heuristic handling of Shift zoom (#467, #476)
+
+// Options
 static string border_style = 0;
 static int monitor = 0;
 static bool center = false;
@@ -47,6 +50,7 @@ static bool left = false;
 static bool top = false;
 static bool maxwidth = false;
 static bool maxheight = false;
+static bool setup_properties = false;
 
 static HBITMAP caretbm;
 
@@ -60,6 +64,10 @@ typedef struct {
   int cyTopHeight;
   int cyBottomHeight;
 } MARGINS;
+
+#else
+
+#include <uxtheme.h>
 
 #endif
 
@@ -1038,28 +1046,29 @@ static const char help[] =
   "  -V, --version         Print version information and exit\n"
 ;
 
-static const char short_opts[] = "+:b:c:eh:i:l:o:p:s:t:T:B:uw:HV:d";
+static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVd";
 
 static const struct option
 opts[] = {
-  {"tab",      required_argument, 0, 'b'},
-  {"config",   required_argument, 0, 'c'},
-  {"exec",     no_argument,       0, 'e'},
-  {"hold",     required_argument, 0, 'h'},
-  {"icon",     required_argument, 0, 'i'},
-  {"log",      required_argument, 0, 'l'},
-  {"utmp",     no_argument,       0, 'u'},
-  {"option",   required_argument, 0, 'o'},
-  {"position", required_argument, 0, 'p'},
-  {"size",     required_argument, 0, 's'},
-  {"title",    required_argument, 0, 't'},
-  {"Title",    required_argument, 0, 'T'},
-  {"Border",   required_argument, 0, 'B'},
-  {"window",   required_argument, 0, 'w'},
-  {"class",    required_argument, 0, 'C'},
-  {"help",     no_argument,       0, 'H'},
-  {"version",  no_argument,       0, 'V'},
-  {"nodaemon", no_argument,       0, 'd'},
+  {"config",     required_argument, 0, 'c'},
+  {"loadconfig", required_argument, 0, 'C'},
+  {"exec",       no_argument,       0, 'e'},
+  {"hold",       required_argument, 0, 'h'},
+  {"icon",       required_argument, 0, 'i'},
+  {"log",        required_argument, 0, 'l'},
+  {"utmp",       no_argument,       0, 'u'},
+  {"option",     required_argument, 0, 'o'},
+  {"position",   required_argument, 0, 'p'},
+  {"size",       required_argument, 0, 's'},
+  {"title",      required_argument, 0, 't'},
+  {"Title",      required_argument, 0, 'T'},
+  {"Border",     required_argument, 0, 'B'},
+  {"window",     required_argument, 0, 'w'},
+  {"class",      required_argument, 0, ''},  // short option not enabled
+  {"help",       no_argument,       0, 'H'},
+  {"version",    no_argument,       0, 'V'},
+  {"nodaemon",   no_argument,       0, 'd'},
+  {"properties", no_argument,       0, ''},  // short option not enabled
   {0, 0, 0, 0}
 };
 
@@ -1096,6 +1105,12 @@ warn(char *format, ...)
   show_msg(stderr, msg);
 }
 
+static void
+configure_properties()
+{
+  // insert patch #471 here if desired
+}
+
 int
 main(int argc, char *argv[])
 {
@@ -1125,9 +1140,9 @@ main(int argc, char *argv[])
   cfg.window = sui.dwFlags & STARTF_USESHOWWINDOW ? sui.wShowWindow : SW_SHOW;
   cfg.x = cfg.y = CW_USEDEFAULT;
 
-  load_config("/etc/minttyrc");
+  load_config("/etc/minttyrc", true);
   string rc_file = asform("%s/.minttyrc", home);
-  load_config(rc_file);
+  load_config(rc_file, true);
   delete(rc_file);
 
   char *tablist[32];
@@ -1150,7 +1165,8 @@ main(int argc, char *argv[])
       break;
     char *longopt = argv[optind - 1], *shortopt = (char[]){'-', optopt, 0};
     switch (opt) {
-      when 'c': load_config(optarg);
+      when 'c': load_config(optarg, true);
+      when 'C': load_config(optarg, false);
       when 'h': set_arg_option("Hold", optarg);
       when 'i': set_arg_option("Icon", optarg);
       when 'l': set_arg_option("Log", optarg);
@@ -1191,11 +1207,12 @@ main(int argc, char *argv[])
       when 'B':
         border_style = strdup (optarg);
       when 'u': cfg.utmp = true;
+      when '': setup_properties = true;
       when 'w': set_arg_option("Window", optarg);
       when 'b':
         tablist[current_tab_size] = optarg;
         current_tab_size++;
-      when 'C': set_arg_option("Class", optarg);
+      when '': set_arg_option("Class", optarg);
       when 'd':
         cfg.daemonize = false;
       when 'H':
@@ -1537,6 +1554,9 @@ main(int argc, char *argv[])
     SetWindowPos(wnd, null, 0, 0, 0, 0,
                  SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
   }
+
+  if (setup_properties)
+    configure_properties ();
 
   // The input method context.
   imc = ImmGetContext(wnd);
