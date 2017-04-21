@@ -92,22 +92,25 @@ enum {
   ATTR_ITALIC     = 0x00100000u,
   ATTR_UNDER      = 0x00200000u,
   ATTR_REVERSE    = 0x00400000u,
-  ATTR_STRIKEOUT  = 0x400000000u, /* not supported */
+  ATTR_STRIKEOUT  = 0x40000000u,
   ATTR_INVISIBLE  = 0x00800000u,
   ATTR_BLINK      = 0x01000000u,
-  ATTR_DOUBLYUND  = 0x200000000u, /* not supported */
-  ATTR_OVERL      = 0x100000000u, /* not supported */
+  ATTR_DOUBLYUND  = 0x20000000u,
+  ATTR_OVERL      = 0x10000000u,
   ATTR_PROTECTED  = 0x02000000u,
   ATTR_WIDE       = 0x04000000u,
   ATTR_NARROW     = 0x08000000u,
 
-  TATTR_RIGHTCURS = 0x10000000u, /* cursor-on-RHS */
-  TATTR_PASCURS   = 0x20000000u, /* passive cursor (box) */
-  TATTR_ACTCURS   = 0x40000000u, /* active cursor (block) */
-  TATTR_COMBINING = 0x80000000u, /* combining characters */
+  TATTR_RIGHTCURS = 0x0100000000u, /* cursor-on-RHS */
+  TATTR_PASCURS   = 0x0200000000u, /* passive cursor (box) */
+  TATTR_ACTCURS   = 0x0400000000u, /* active cursor (block) */
+  TATTR_COMBINING = 0x0800000000u, /* combining characters */
 
-  DATTR_STARTRUN  = 0x80000000u, /* start of redraw run */
-  DATTR_MASK      = 0xF0000000u,
+  TATTR_RESULT    = 0x1000000000u, /* search result */
+  TATTR_CURRESULT = 0x2000000000u, /* current search result */
+
+  DATTR_STARTRUN  = 0x0800000000u, /* start of redraw run */
+  DATTR_MASK      = 0x0F00000000u,
 };
 
 /* Line attributes.
@@ -225,6 +228,30 @@ typedef struct belltime {
   struct belltime *next;
   uint ticks;
 } belltime;
+
+enum {
+  NO_UPDATE = 0,
+  PARTIAL_UPDATE = 1,
+  FULL_UPDATE = 2,
+  DISABLE_UPDATE = 3
+};
+
+typedef struct {
+  termline ** buf;
+  int start;
+  int length;
+  int capacity;
+} circbuf;
+
+typedef struct {
+    pos * results;
+    wchar * query;
+    int query_length;
+    int capacity;
+    int current;
+    int length;
+    int update_type;
+} termresults;
 
 typedef struct {
   short x, y;
@@ -369,6 +396,11 @@ struct term {
   bidi_cache_entry *pre_bidi_cache, *post_bidi_cache;
   int bidi_cache_size;
 
+  // Search results
+  termresults results;
+  bool searched;
+  bool search_window_visible;
+
   struct child* child;
 };
 
@@ -399,5 +431,12 @@ void term_set_focus(struct term* term, bool has_focus);
 int  term_cursor_type(struct term* term);
 bool term_cursor_blinks(struct term* term);
 void term_hide_cursor(struct term* term);
+
+void term_set_search(struct term* term, wchar * needle);
+void term_schedule_search_partial_update(struct term* term);
+void term_schedule_search_update(struct term* term);
+void term_update_search(struct term* term);
+void term_clear_results(struct term* term);
+void term_clear_search(struct term* term);
 
 #endif

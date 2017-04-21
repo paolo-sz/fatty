@@ -1021,6 +1021,8 @@ do_cmd(struct term* term)
         child_printf(term->child, "\e]701;%s\e\\", cs_get_locale());
       else
         cs_set_locale(s);
+    when 7721:  // Copy window title to clipboard.
+        win_copy_title();
     when 7770:  // Change font size.
       if (!strcmp(s, "?"))
         child_printf(term->child, "\e]7770;%u\e\\", win_get_font_size());
@@ -1347,6 +1349,7 @@ term_write(struct term* term, const char *buf, uint len)
         }
     }
   }
+  term_schedule_search_partial_update(term);
   win_schedule_update();
   if (term->printing) {
     printer_write(term->printbuf, term->printbuf_pos);

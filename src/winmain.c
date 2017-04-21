@@ -5,7 +5,10 @@
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #define dont_debug_resize
+
+#include "term.h"
 #include "winpriv.h"
+#include "winsearch.h"
 
 #include "term.h"
 #include "appinfo.h"
@@ -34,7 +37,7 @@ static ATOM class_atom;
 static int extra_width, extra_height;
 static bool fullscr_on_max;
 static bool resizing;
-static int zoom_token = 0;
+static int zoom_token = 0;  // for heuristic handling of Shift zoom (#467, #476)
 static string border_style = 0;
 static bool center = false;
 
@@ -377,6 +380,10 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
       win_set_font_size(font_size1, false);
   }
 
+  if (win_search_visible()) {
+    term_height -= SEARCHBAR_HEIGHT;
+  }
+
   int cols = max(1, term_width / font_width);
   int rows = max(1, term_height / font_height);
   if (rows != term->rows || cols != term->cols) {
@@ -385,6 +392,10 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     child_resize(term->child, &ws);
   }
   win_invalidate_all();
+
+  win_update_search();
+  term_schedule_search_update(term);
+  win_schedule_update();
 }
 
 bool
@@ -672,10 +683,14 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
 #endif
         when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM:
           if ((wp & ~0xF) == IDM_FULLSCREEN_ZOOM)
-            zoom_token = 1;
+            zoom_token = 4;  // override cfg.zoom_font_with_window == 0
           else
             zoom_token = -4;
           win_maximise(win_is_fullscreen ? 0 : 2);
+
+          term_schedule_search_update(term);
+          win_update_search();
+        when IDM_SEARCH: win_open_search();
         when IDM_FLIPSCREEN: term_flip_screen(term);
         when IDM_OPTIONS: win_open_config();
         when IDM_NEW: child_fork(term->child, main_argc, main_argv);
@@ -826,13 +841,16 @@ win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
         // - triggered by Windows shortcut (with Windows key)
         // - triggered by Ctrl+Shift+F (zoom_token < 0)
         if ((zoom_token >= 0) && !(GetKeyState(VK_LWIN) & 0x80))
-          zoom_token = 1;
+          if (zoom_token < 1)  // accept overriding zoom_token 4
+            zoom_token = 1;
 #else
         // - triggered by Windows shortcut (with Windows key)
         if (!(GetKeyState(VK_LWIN) & 0x80))
-          zoom_token = 1;
+          if (zoom_token < 1)  // accept overriding zoom_token 4
+            zoom_token = 1;
 #endif
-        bool scale_font = (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80);
+        bool scale_font = (cfg.zoom_font_with_window || zoom_token > 2)
+                          && (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80);
         win_adapt_term_size(false, scale_font);
         if (zoom_token > 0)
           zoom_token = zoom_token >> 1;

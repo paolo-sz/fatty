@@ -44,6 +44,7 @@ typedef struct {
   // Looks
   colour fg_colour, bg_colour, cursor_colour;
   colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
+  colour search_fg_colour, search_bg_colour, search_current_colour;
   char transparency;
   bool opaque_when_focused;
   char cursor_type;
@@ -64,6 +65,7 @@ typedef struct {
   bool window_shortcuts;
   bool switch_shortcuts;
   bool zoom_shortcuts;
+  bool zoom_font_with_window;
   bool alt_fn_shortcuts;
   bool ctrl_shift_shortcuts;
   string break_string;
@@ -84,6 +86,7 @@ typedef struct {
   char scrollbar;
   char scroll_mod;
   bool pgupdn_scroll;
+  string search_bar;
   // Terminal
   string term;
   string answerback;

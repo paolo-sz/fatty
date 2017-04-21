@@ -14,10 +14,12 @@
 
 #include <d2d1.h>
 
+#include <CommCtrl.h>
+
 extern "C" {
 #include "winpriv.h"
+#include "winsearch.h"
 
-#include <CommCtrl.h>
 }
 
 #define lengthof(array) (sizeof(array) / sizeof(*(array)))
@@ -133,8 +135,25 @@ static void set_active_tab(unsigned int index) {
         term_set_focus(tab.terminal.get(), &tab == active);
     }
     active->info.attention = false;
+    SetFocus(wnd);
+    
+    struct term *term = active->terminal.get();
+    term->results.update_type = DISABLE_UPDATE;
+    if (IsWindowVisible(search_wnd) != term->search_window_visible) {
+      ShowWindow(search_wnd, term->search_window_visible ? SW_SHOW : SW_HIDE);
+    }
+    if (term->search_window_visible) {
+      if (term->results.query) {
+        SetWindowTextW(search_edit_wnd, term->results.query);
+      }
+      else {
+        SetWindowTextW(search_edit_wnd, L"");
+      }
+    }
+
     update_window_state();
     win_invalidate_all();
+    term->results.update_type = NO_UPDATE;
 }
 
 static unsigned int rel_index(int change) {

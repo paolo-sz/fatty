@@ -2,6 +2,8 @@
 
 #include <climits>
 
+#include <sys/termios.h>
+
 extern "C" {
 // some typedef for mintty header compat
 typedef unsigned int uint;
