@@ -262,10 +262,10 @@ term_reconfig(struct term* term)
     term->vt220_keys = strstr(new_cfg.term, "vt220");
 }
 
-bool in_result(struct term* term, pos abspos, pos respos) {
+bool in_result(struct term* term, pos abspos, result run) {
   return
-    (abspos.x + abspos.y * term->cols >= respos.x + respos.y * term->cols) &&
-    (abspos.x + abspos.y * term->cols <  respos.x + respos.y * term->cols + term->results.query_length);
+    (abspos.x + abspos.y * term->cols >= run.x + run.y * term->cols) &&
+    (abspos.x + abspos.y * term->cols <  run.x + run.y * term->cols + run.len);
 }
 
 bool
@@ -274,10 +274,10 @@ in_results_recurse(struct term* term, pos abspos, int lo, int hi) {
     return false;
   }
   int mid = (lo + hi) / 2;
-  pos respos = term->results.results[mid];
-  if (respos.x + respos.y * term->cols > abspos.x + abspos.y * term->cols) {
+  result run = term->results.results[mid];
+  if (run.x + run.y * term->cols > abspos.x + abspos.y * term->cols) {
     return in_results_recurse(term, abspos, lo, mid);
-  } else if (respos.x + respos.y * term->cols + term->results.query_length <= abspos.x + abspos.y * term->cols) {
+  } else if (run.x + run.y * term->cols + run.len <= abspos.x + abspos.y * term->cols) {
     return in_results_recurse(term, abspos, mid + 1, hi);
   }
   return true;
@@ -301,7 +301,7 @@ in_results(struct term* term, pos scrpos)
 }
 
 void
-results_add(struct term* term, pos abspos)
+results_add(struct term* term, result abspos)
 {
   assert(term->results.capacity > 0);
   if (term->results.length == term->results.capacity) {
@@ -419,7 +419,10 @@ term_update_search(struct term* term)
   }
 
   int cpos = term->cols * lcurr;
+  /* the number of matched chars in the current run */
   int npos = 0;
+  /* the number of matched cells in the current run (anpos >= npos) */
+  int anpos = 0;
   int end = term->cols * (term->rows + term->sblines);
 
   // Loop over every character and search for query.
@@ -442,23 +445,32 @@ term_update_search(struct term* term)
     if (chr->chr != term->results.query[npos]) {
       // Skip the second cell of any wide characters
       if (chr->chr == UCSWIDE) {
-        ++cpos; continue;
+        ++anpos;
+        ++cpos;
+        continue;
       }
       cpos -= npos - 1;
       npos = 0;
+      anpos = 0;
       continue;
     }
 
+    ++anpos;
     ++npos;
 
     if (term->results.query_length == npos) {
-      int start = cpos - npos + 1;
-      pos respos = {
+      int start = cpos - anpos + 1;
+      result run = {
         .x = start % term->cols,
         .y = start / term->cols,
+        .len = anpos
       };
-      results_add(term, respos);
+#ifdef debug_search
+      printf("%d, %d, %d\n", run.x, run.y, run.len);
+#endif
+      results_add(term, run);
       npos = 0;
+      anpos = 0;
     }
 
     ++cpos;

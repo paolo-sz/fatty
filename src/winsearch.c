@@ -17,7 +17,7 @@ scroll_to_result(struct term* term)
   }
 
   // If visible, don't do anything.
-  pos * res = term->results.results + term->results.current;
+  result * res = term->results.results + term->results.current;
   int y = res->y - term->sblines;
   int delta = 0;
   if (y < term->disptop) {
