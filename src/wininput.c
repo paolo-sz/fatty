@@ -333,11 +333,37 @@ send_syscommand(WPARAM cmd)
   SendMessage(wnd, WM_SYSCOMMAND, cmd, ' ');
 }
 
+#define debug_virtual_key_codes
+
+#ifdef debug_virtual_key_codes
+static struct {
+  uint vk_;
+  char * vk_name;
+} vk_names[] = {
+#include "vk_names.t"
+};
+
+static string
+vk_name(uint key)
+{
+  for (uint i = 0; i < lengthof(vk_names); i++)
+    if (key == vk_names[i].vk_)
+      return vk_names[i].vk_name;
+  static char vk_name[3];
+  sprintf(vk_name, "%02X", key & 0xFF);
+  return vk_name;
+}
+#endif
+
 bool
 win_key_down(WPARAM wp, LPARAM lp)
 {
   uint key = wp;
   struct term* active_term = win_active_terminal();
+
+#ifdef debug_virtual_key_codes
+  printf("win_key_down %s\n", vk_name(key));
+#endif
 
   if (key == VK_PROCESSKEY) {
     TranslateMessage(
@@ -411,7 +437,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   }
 
   if (alt_F2_pending) {
-    if (!extended) {
+    if (!extended) {  // only accept numeric keypad
       alt_F2_modifier = key;
       switch (key) {
         when VK_HOME : alt_F2_monix--; alt_F2_moniy--;
@@ -458,9 +484,15 @@ win_key_down(WPARAM wp, LPARAM lp)
     if (cfg.zoom_shortcuts && (mods & ~MDK_SHIFT) == MDK_CTRL) {
       int zoom;
       switch (key) {
-        when VK_OEM_PLUS or VK_ADD:       zoom = 1;
-        when VK_OEM_MINUS or VK_SUBTRACT: zoom = -1;
-        when '0' or VK_NUMPAD0:           zoom = 0;
+        // numeric keypad keys:
+        when VK_SUBTRACT:  zoom = -1;
+        when VK_ADD:       zoom = 1;
+        when VK_NUMPAD0:   zoom = 0;
+          // Shift+VK_NUMPAD0 would be VK_INSERT but don't mangle that!
+        // normal keys:
+        when VK_OEM_MINUS: zoom = -1; if (mods & MDK_SHIFT) goto not_zoom;
+        when VK_OEM_PLUS:  zoom = 1; if (mods & MDK_SHIFT) goto not_zoom;
+        when '0':          zoom = 0; if (mods & MDK_SHIFT) goto not_zoom;
         otherwise: goto not_zoom;
       }
       win_zoom_font(zoom, mods & MDK_SHIFT);
@@ -610,13 +642,13 @@ win_key_down(WPARAM wp, LPARAM lp)
       mods ? mod_csi(code) : active_term->app_cursor_keys ? ss3(code) : csi(code);
   }
 
-static struct {
-  unsigned int combined;
-  unsigned int base;
-  unsigned int spacing;
-} comb_subst[] = {
-#include "combined.t"
-};
+  static struct {
+    unsigned int combined;
+    unsigned int base;
+    unsigned int spacing;
+  } comb_subst[] = {
+  #include "combined.t"
+  };
 
   // Keyboard layout
   bool layout(void) {
@@ -634,7 +666,7 @@ static struct {
 
     // Substitute accent compositions not supported by Windows
     if (wlen == 2)
-      for (unsigned int i = 0; i < lengthof(comb_subst); i++)
+      for (size_t i = 0; i < lengthof(comb_subst); i++)
         if (comb_subst[i].spacing == wbuf[0] && comb_subst[i].base == wbuf[1]) {
           wbuf[0] = comb_subst[i].combined;
           wlen = 1;
@@ -731,8 +763,24 @@ static struct {
   }
 
   bool ctrl_key(void) {
+    bool try_appctrl(wchar wc) {
+      switch (wc) {
+        when '@' or '[' ... '_' or 'a' ... 'z':
+          if (win_active_terminal()->app_control & (1 << (wc & 0x1F))) {
+            mods = ctrl * MDK_CTRL;
+            other_code((wc & 0x1F) + '@');
+            return true;
+          }
+      }
+      return false;
+    }
+
     bool try_key(void) {
-      wchar wc = undead_keycode();
+      wchar wc = undead_keycode();  // should we fold that out into ctrl_key?
+
+      if (try_appctrl(wc))
+        return true;
+
       char c;
       switch (wc) {
         when '@' or '[' ... '_' or 'a' ... 'z': c = CTRL(wc);
@@ -905,6 +953,10 @@ static struct {
 bool
 win_key_up(WPARAM wp, LPARAM unused(lp))
 {
+#ifdef debug_virtual_key_codes
+  printf("  win_key_up %s\n", vk_name((uint)wp));
+#endif
+
   struct term* active_term = win_active_terminal();
   win_update_mouse();
 
