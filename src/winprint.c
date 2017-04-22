@@ -5,43 +5,12 @@
 #include <winspool.h>
 
 
-static PRINTER_INFO_4 *printer_info;
-
-uint
-printer_start_enum(void)
-{
-  DWORD size = 0, num = 0;
-  while (
-    !EnumPrinters(PRINTER_ENUM_LOCAL | PRINTER_ENUM_CONNECTIONS,
-                  0, 4, (LPBYTE)printer_info, size, &size, &num) &&
-    GetLastError() == ERROR_INSUFFICIENT_BUFFER
-  ) {
-    printer_info = realloc(printer_info, size);
-  }
-  
-  return num;
-}
-
-string
-printer_get_name(uint i)
-{
-  return printer_info[i].pPrinterName;
-}
-
-void
-printer_finish_enum(void)
-{
-  free(printer_info);
-  printer_info = 0;
-}
-
-
 static HANDLE printer;
 
 static const DOC_INFO_1 doc_info = {
-  .pDocName = "Remote printer output",
+  .pDocName = "Mintty ANSI printer output",
   .pOutputFile = null,
-  .pDatatype = "RAW"
+  .pDatatype = "TEXT"
 };
 
 void
@@ -59,7 +28,7 @@ printer_start_job(string printer_name)
 }
 
 void
-printer_write(void *data, uint len)
+printer_write(char *data, uint len)
 {
   if (printer) {
     DWORD written;

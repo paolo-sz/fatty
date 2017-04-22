@@ -3,6 +3,8 @@
 
 #include <sys/termios.h>
 
+extern bool icon_is_from_shortcut;
+
 struct term;
 
 struct child

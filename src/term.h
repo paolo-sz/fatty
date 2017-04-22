@@ -311,6 +311,7 @@ struct term {
 
   int  rows, cols;
   bool has_focus;
+  bool focus_reported;
   bool in_vbell;
 
   bool vt220_keys;
@@ -411,6 +412,7 @@ struct term {
   struct child* child;
 };
 
+//extern struct term term;
 
 void term_resize(struct term* term, int, int);
 void term_scroll(struct term* term, int, int);
@@ -434,7 +436,7 @@ void term_flip_screen(struct term* term);
 void term_reset_screen(struct term* term);
 void term_write(struct term* term, const char *, uint len);
 void term_flush(struct term* term);
-void term_set_focus(struct term* term, bool has_focus);
+void term_set_focus(struct term* term, bool has_focus, bool may_report);
 int  term_cursor_type(struct term* term);
 bool term_cursor_blinks(struct term* term);
 void term_hide_cursor(struct term* term);

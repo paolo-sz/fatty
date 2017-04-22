@@ -132,7 +132,7 @@ static void set_active_tab(unsigned int index) {
     SendMessage(tab_wnd, TCM_SETCURSEL, index, 0);
     Tab* active = &tabs.at(active_tab);
     for (auto& tab : tabs) {
-        term_set_focus(tab.terminal.get(), &tab == active);
+        term_set_focus(tab.terminal.get(), &tab == active, false);
     }
     active->info.attention = false;
     SetFocus(wnd);

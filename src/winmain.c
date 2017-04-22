@@ -989,19 +989,15 @@ static struct {
           term_scroll(term, 1, info.nTrackPos);
         }
       }
+    when WM_MOUSEMOVE: win_mouse_move(false, lp);
+    when WM_NCMOUSEMOVE: win_mouse_move(true, lp);
+    when WM_MOUSEWHEEL: win_mouse_wheel(wp, lp);
     when WM_LBUTTONDOWN: win_mouse_click(MBT_LEFT, lp);
     when WM_RBUTTONDOWN: win_mouse_click(MBT_RIGHT, lp);
     when WM_MBUTTONDOWN: win_mouse_click(MBT_MIDDLE, lp);
     when WM_LBUTTONUP: win_mouse_release(MBT_LEFT, lp);
     when WM_RBUTTONUP: win_mouse_release(MBT_RIGHT, lp);
     when WM_MBUTTONUP: win_mouse_release(MBT_MIDDLE, lp);
-    when WM_MOUSEMOVE: win_mouse_move(false, lp);
-    when WM_NCMOUSEMOVE: win_mouse_move(true, lp);
-    when WM_MOUSEWHEEL: win_mouse_wheel(wp, lp);
-    when WM_INPUTLANGCHANGEREQUEST:  // catch Shift-Control-0
-      if ((GetKeyState(VK_SHIFT) & 0x80) && (GetKeyState(VK_CONTROL) & 0x80))
-        if (win_key_down('0', 0x000B0001))
-          return 0;
     when WM_KEYDOWN or WM_SYSKEYDOWN:
       if (win_key_down(wp, lp))
         return 0;
@@ -1011,6 +1007,10 @@ static struct {
     when WM_CHAR or WM_SYSCHAR:
       child_sendw(term->child, &(wchar){wp}, 1);
       return 0;
+    when WM_INPUTLANGCHANGEREQUEST:  // catch Shift-Control-0
+      if ((GetKeyState(VK_SHIFT) & 0x80) && (GetKeyState(VK_CONTROL) & 0x80))
+        if (win_key_down('0', 0x000B0001))
+          return 0;
     when WM_INPUTLANGCHANGE:
       win_set_ime_open(ImmIsIME(GetKeyboardLayout(0)) && ImmGetOpenStatus(imc));
     when WM_IME_NOTIFY:
@@ -1031,24 +1031,30 @@ static struct {
     when WM_PAINT:
       win_paint();
       return 0;
+    when WM_ACTIVATE:
+      if((wp & 0xF) != WA_INACTIVE) {
+        flash_taskbar(false);  /* stop */
+        term_set_focus(term, true, true);
+      } else {
+        term_set_focus(term, false, true);
+      }
+      update_transparency();
     when WM_SETFOCUS:
       trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
-      term_set_focus(term, true);
+      term_set_focus(term, true, false);
       CreateCaret(wnd, caretbm, 0, 0);
-      flash_taskbar(false);  /* stop */
+      //flash_taskbar(false);  /* stop; not needed when leaving search bar */
       win_update();
-      update_transparency();
       ShowCaret(wnd);
-      zoom_token = -4;
-    when WM_MOVING:
-      trace_resize(("# WM_MOVING VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       zoom_token = -4;
     when WM_KILLFOCUS:
       win_show_mouse();
-      term_set_focus(term, false);
+      term_set_focus(term, false, false);
       DestroyCaret();
       win_update();
-      update_transparency();
+    when WM_MOVING:
+      trace_resize(("# WM_MOVING VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      zoom_token = -4;
     when WM_ENTERSIZEMOVE:
       trace_resize(("# WM_ENTERSIZEMOVE VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       resizing = true;
@@ -1249,17 +1255,69 @@ warn(char *format, ...)
   show_msg(stderr, msg);
 }
 
+#include <shlobj.h>
+
+static char *
+get_shortcut_icon_location(wchar * iconfile)
+{
+  IShellLinkW *shell_link;
+  IPersistFile *persist_file;
+  HRESULT hres = OleInitialize(NULL);
+  if (hres != S_FALSE && hres != S_OK)
+    return 0;
+
+  hres = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
+                          &IID_IShellLinkW, (void **) &shell_link);
+  if (!SUCCEEDED(hres))
+    return 0;
+
+  hres = shell_link->lpVtbl->QueryInterface(shell_link, &IID_IPersistFile,
+                                            (void **) &persist_file);
+  if (!SUCCEEDED(hres)) {
+    shell_link->lpVtbl->Release(shell_link);
+    return 0;
+  }
+
+  /* Load the shortcut.  */
+  hres = persist_file->lpVtbl->Load(persist_file, iconfile, STGM_READ);
+
+  char * result = 0;
+
+  if (SUCCEEDED(hres)) {
+    WCHAR wil[MAX_PATH];
+    static char il[MAX_PATH * 3];
+    int index;
+    shell_link->lpVtbl->GetIconLocation(shell_link, wil, sizeof wil, &index);
+    wcstombs(il, wil, sizeof il);
+    if (index) {
+      char _num[22];
+      sprintf(_num, ",%d", index);
+      strncat(il, _num, sizeof il - strlen(_num) - 1);
+    }
+    result = il;
+  }
+
+  /* Release the pointer to the IPersistFile interface. */
+  persist_file->lpVtbl->Release(persist_file);
+
+  /* Release the pointer to the IShellLink interface. */
+  shell_link->lpVtbl->Release(shell_link);
+
+  return result;
+}
+
 static void
 configure_taskbar()
 {
+#define no_patch_jumplist
 #ifdef patch_jumplist
 #include "jumplist.h"
   // test data
-  char ** jump_list_title = {
-    "title1", "", "", "mä€", "", "", "", "", "", "", 
+  wchar * jump_list_title[] = {
+    L"title1", L"", L"", L"mä€", L"", L"", L"", L"", L"", L"", 
   };
-  char ** jump_list_cmd = {
-    "-o Rows=15", "-o Rows=20", "", "-t mö€", "", "", "", "", "", "", 
+  wchar * jump_list_cmd[] = {
+    L"-o Rows=15", L"-o Rows=20", L"", L"-t mö€", L"", L"", L"", L"", L"", L"", 
   };
   // the patch offered in issue #290 does not seem to work
   setup_jumplist(jump_list_title, jump_list_cmd);
@@ -1438,8 +1496,8 @@ main(int argc, char *argv[])
     asform("/home/%s", getlogin());
 
   // Set size and position defaults.
-  STARTUPINFO sui;
-  GetStartupInfo(&sui);
+  STARTUPINFOW sui;
+  GetStartupInfoW(&sui);
   cfg.window = sui.dwFlags & STARTF_USESHOWWINDOW ? sui.wShowWindow : SW_SHOW;
   cfg.x = cfg.y = CW_USEDEFAULT;
   invoked_from_shortcut = sui.dwFlags & STARTF_TITLEISLINKNAME;
@@ -1547,6 +1605,26 @@ main(int argc, char *argv[])
     monitor = atoi(getenv("MINTTY_MONITOR"));
     unsetenv("MINTTY_MONITOR");
   }
+  if (getenv("MINTTY_ICON")) {
+    cfg.icon = getenv("MINTTY_ICON");
+    icon_is_from_shortcut = true;
+    unsetenv("MINTTY_ICON");
+  }
+
+#define dont_debug_icon
+#ifdef debug_icon
+  FILE * mtlog = fopen("/tmp/mtlog", "a");
+  fprintf(mtlog, "cfgicon %s\n", cfg.icon);
+  fprintf(mtlog, "shorcut %d %s\n", invoked_from_shortcut, (char *)cygwin_create_path(CCP_WIN_W_TO_POSIX, sui.lpTitle));
+  if (invoked_from_shortcut) {
+    char * icon = get_shortcut_icon_location(sui.lpTitle);
+    fprintf(mtlog, "icon %s\n", icon);
+  }
+#endif
+  if (invoked_from_shortcut && (!cfg.icon || !*cfg.icon)) {
+    cfg.icon = get_shortcut_icon_location(sui.lpTitle);
+    icon_is_from_shortcut = true;
+  }
 
   finish_config();
 
@@ -1554,13 +1632,16 @@ main(int argc, char *argv[])
   // in order to not suppress signals
   // (indicated by isatty if linked with -mwindows as ttyname() is null)
   bool daemonize = cfg.daemonize && !isatty(0);
+  // disable daemonizing if started from desktop
+  if (invoked_from_shortcut)
+    daemonize = false;
   // disable daemonizing if started from ConEmu
   if (getenv("ConEmuPID"))
     daemonize = false;
   if (daemonize) {  // detach from parent process and terminal
     pid_t pid = fork();
     if (pid < 0)
-      error("could not detach from caller");
+      fprintf(stderr, "Fatty could not detach from caller, starting anyway.\n");
     if (pid > 0)
       exit(0);  // exit parent process
 

@@ -1209,11 +1209,14 @@ term_scroll(struct term* term, int rel, int where)
 }
 
 void
-term_set_focus(struct term* term, bool has_focus)
+term_set_focus(struct term* term, bool has_focus, bool may_report)
 {
   if (has_focus != term->has_focus) {
     term->has_focus = has_focus;
     term_schedule_cblink(term);
+  }
+  if (has_focus != term->focus_reported && may_report) {
+    term->focus_reported = has_focus;
     if (term->report_focus)
       child_write(term->child, has_focus ? "\e[I" : "\e[O", 3);
   }

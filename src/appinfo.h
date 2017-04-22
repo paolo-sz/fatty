@@ -20,7 +20,18 @@
 #define STRINGIFY_(s) #s
 #define STRINGIFY(s) STRINGIFY_(s)
 
-#define VERSION STRINGIFY(MAJOR_VERSION.MINOR_VERSION)
+#if BUILD_NUMBER
+  #define VERSION STRINGIFY(MAJOR_VERSION.MINOR_VERSION-CONCAT(beta,BUILD_NUMBER))
+#else
+  #define VERSION STRINGIFY(MAJOR_VERSION.MINOR_VERSION.PATCH_NUMBER)
+#endif
+
+#if defined SVN_DIR && defined SVN_REV	// deprecated
+  #undef BUILD_NUMBER
+  #define BUILD_NUMBER SVN_REV
+  #undef VERSION
+  #define VERSION STRINGIFY(svn-SVN_DIR-CONCAT(r,SVN_REV))
+#endif
 
 
 // needed for res.rc
