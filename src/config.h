@@ -99,7 +99,7 @@ typedef struct {
   int bell_len;
   bool bell_flash;
   bool bell_taskbar;
-  string printer;
+  wstring printer;
   bool confirm_exit;
   // Command line
   string classname;
