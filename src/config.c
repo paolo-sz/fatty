@@ -49,7 +49,7 @@ const config default_cfg = {
   .cursor_type = CUR_LINE,
   .cursor_blinks = true,
   // Text
-  .font = {.name = "Lucida Console", .isbold = false, .size = 9},
+  .font = {.name = L"Lucida Console", .size = 9, .weight = 400, .isbold = false},
   .font_smoothing = FS_DEFAULT,
   .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
   .bold_as_colour = true,
@@ -189,9 +189,11 @@ options[] = {
   {"TabActiveColour", OPT_COLOUR, offcfg(tab_active_bg_colour)},
 
   // Text
-  {"Font", OPT_STRING, offcfg(font.name)},
-  {"FontIsBold", OPT_BOOL, offcfg(font.isbold)},
+  {"Font", OPT_WSTRING, offcfg(font.name)},
+  {"FontSize", OPT_INT | OPT_LEGACY, offcfg(font.size)},
   {"FontHeight", OPT_INT, offcfg(font.size)},
+  {"FontWeight", OPT_INT, offcfg(font.weight)},
+  {"FontIsBold", OPT_BOOL, offcfg(font.isbold)},
   {"FontSmoothing", OPT_FONTSMOOTH, offcfg(font_smoothing)},
   {"BoldAsFont", OPT_BOOL, offcfg(bold_as_font)},
   {"BoldAsColour", OPT_BOOL, offcfg(bold_as_colour)},
@@ -604,7 +606,7 @@ parse_arg_option(string option)
 #define trace_theme(params)
 #endif
 
-static void
+void
 load_theme(wstring theme)
 {
   wchar * theme_file = (wchar *)theme;
@@ -645,7 +647,9 @@ load_config(string filename, bool to_save)
   if (access(filename, R_OK) == 0 && access(filename, W_OK) < 0)
     to_save = false;
 
+#ifdef mis_config
   wchar * old_theme_file = wcsdup(cfg.theme_file);
+#endif
 
   if (to_save) {
     file_opts_num = arg_opts_num = 0;
@@ -685,11 +689,13 @@ load_config(string filename, bool to_save)
     trace_theme(("[sav] copy_config file<-cfg\n"));
   }
 
+#ifdef mis_config
   bool theme_changed = wcscmp(old_theme_file, cfg.theme_file);
   free(old_theme_file);
 
   if (to_save && theme_changed)
     load_theme(cfg.theme_file);
+#endif
 #endif
 }
 
@@ -822,7 +828,7 @@ save_config(void)
 
 static control *cols_box, *rows_box, *locale_box, *charset_box;
 
-static void
+void
 apply_config(bool save)
 {
   // Record what's changed
@@ -917,7 +923,7 @@ current_size_handler(control *unused(ctrl), int event)
 }
 
 static void
-printerbox_handler(control *ctrl, int event)
+printer_handler(control *ctrl, int event)
 {
   const wstring NONE = L"◇ None (printing disabled) ◇";  // ♢◇
   const wstring CFG_NONE = L"";
@@ -1487,11 +1493,11 @@ setup_config_box(controlbox * b)
   s = ctrl_new_set(b, "Terminal", "Printer");
 #ifdef use_multi_listbox_for_printers
   ctrl_listbox(
-    s, null, 4, 100, printerbox_handler, 0
+    s, null, 4, 100, printer_handler, 0
   );
 #else
   ctrl_combobox(
-    s, null, 100, printerbox_handler, 0
+    s, null, 100, printer_handler, 0
   );
 #endif
 

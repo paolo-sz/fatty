@@ -32,8 +32,9 @@ static inline uchar blue(colour c) { return c >> 16; }
 // Font properties.
 
 typedef struct {
-  string name;
+  wstring name;
   int size;
+  int weight;
   bool isbold;
 } font_spec;
 
@@ -136,10 +137,12 @@ extern config cfg, new_cfg, file_cfg;
 
 extern void init_config(void);
 extern void load_config(string filename, bool to_save);
+extern void load_theme(wstring theme);
 extern void set_arg_option(string name, string val);
 extern void parse_arg_option(string);
 extern void remember_arg(string);
 extern void finish_config(void);
 extern void copy_config(config *dst, const config *src);
+extern void apply_config(bool save);
 
 #endif

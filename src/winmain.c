@@ -973,8 +973,9 @@ win_reconfig(void)
   win_for_each_term(term_reconfig);
 
   bool font_changed =
-    strcmp(new_cfg.font.name, cfg.font.name) ||
+    wcscmp(new_cfg.font.name, cfg.font.name) ||
     new_cfg.font.size != cfg.font.size ||
+    new_cfg.font.weight != cfg.font.weight ||
     new_cfg.font.isbold != cfg.font.isbold ||
     new_cfg.bold_as_font != cfg.bold_as_font ||
     new_cfg.bold_as_colour != cfg.bold_as_colour ||
@@ -1258,6 +1259,7 @@ static struct {
         term_set_focus(term, false, true);
       }
       update_transparency();
+      win_key_reset();
 
     when WM_SETFOCUS:
       trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
@@ -1907,6 +1909,9 @@ main(int argc, char *argv[])
               longopt[1] == '-' ? longopt : shortopt);
     }
   }
+  copy_config(&file_cfg, &cfg);
+  if (*cfg.theme_file)
+    load_theme(cfg.theme_file);
 
   finish_config();
 

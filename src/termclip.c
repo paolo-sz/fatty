@@ -162,7 +162,7 @@ term_open(struct term* term)
   while (iswspace(*p))
     p++;
   if (*p)
-    win_open(buf.textbuf); // textbuf is freed by win_open
+    win_open(buf.textbuf);  // textbuf is freed by win_open if possible
   else
     free(buf.textbuf);
 }
