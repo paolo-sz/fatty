@@ -46,6 +46,7 @@ typedef struct {
   colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
   colour search_fg_colour, search_bg_colour, search_current_colour;
   char transparency;
+  bool blurred;
   bool opaque_when_focused;
   char cursor_type;
   bool cursor_blinks;
@@ -92,9 +93,10 @@ typedef struct {
   string search_bar;
   // Terminal
   string term;
-  string answerback;
+  wstring answerback;
   bool bell_sound;
   int bell_type;
+  wstring bell_file;
   int bell_freq;
   int bell_len;
   bool bell_flash;
@@ -102,22 +104,22 @@ typedef struct {
   wstring printer;
   bool confirm_exit;
   // Command line
-  string classname;
+  wstring classname;
   char hold;
   bool exit_write;
-  string exit_title;
+  wstring exit_title;
   string icon;
   string log;
-  string title;
+  wstring title;
   bool title_settable;
   bool utmp;
   char window;
   int x, y;
   bool daemonize;
   // "Hidden"
-  string app_id;
-  string app_name;
-  string app_launch_cmd;
+  wstring app_id;
+  wstring app_name;
+  wstring app_launch_cmd;
   int col_spacing, row_spacing;
   string word_chars;
   string word_chars_excl;
