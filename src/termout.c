@@ -127,7 +127,7 @@ write_bell(struct term* term)
 {
   if (cfg.bell_flash)
     term_schedule_vbell(term, false, 0);
-  win_bell(term);
+  win_bell(term, &cfg);
 }
 
 static void

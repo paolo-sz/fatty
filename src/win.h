@@ -20,7 +20,7 @@ void win_schedule_update(void);
 void win_text(int x, int y, wchar_t *text, int len, cattr attr, int lattr);
 void win_update_mouse(void);
 void win_capture_mouse(void);
-void win_bell(struct term* term);
+void win_bell(struct term* term, config *);
 
 void win_set_title(struct term* term, char *);
 void win_save_title(void);
