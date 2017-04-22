@@ -333,7 +333,7 @@ send_syscommand(WPARAM cmd)
   SendMessage(wnd, WM_SYSCOMMAND, cmd, ' ');
 }
 
-#define debug_virtual_key_codes
+#define dont_debug_virtual_key_codes
 
 #ifdef debug_virtual_key_codes
 static struct {
@@ -480,26 +480,6 @@ win_key_down(WPARAM wp, LPARAM lp)
       }
     }
 
-    // Font zooming
-    if (cfg.zoom_shortcuts && (mods & ~MDK_SHIFT) == MDK_CTRL) {
-      int zoom;
-      switch (key) {
-        // numeric keypad keys:
-        when VK_SUBTRACT:  zoom = -1;
-        when VK_ADD:       zoom = 1;
-        when VK_NUMPAD0:   zoom = 0;
-          // Shift+VK_NUMPAD0 would be VK_INSERT but don't mangle that!
-        // normal keys:
-        when VK_OEM_MINUS: zoom = -1; if (mods & MDK_SHIFT) goto not_zoom;
-        when VK_OEM_PLUS:  zoom = 1; if (mods & MDK_SHIFT) goto not_zoom;
-        when '0':          zoom = 0; if (mods & MDK_SHIFT) goto not_zoom;
-        otherwise: goto not_zoom;
-      }
-      win_zoom_font(zoom, mods & MDK_SHIFT);
-      return 1;
-      not_zoom:;
-    }
-
     // Alt+Fn shortcuts
     if (cfg.alt_fn_shortcuts && alt && VK_F1 <= key && key <= VK_F24) {
       if (!ctrl) {
@@ -560,6 +540,58 @@ win_key_down(WPARAM wp, LPARAM lp)
         not_scroll:;
       }
     }
+
+    // Font zooming
+    if (cfg.zoom_shortcuts && (mods & ~MDK_SHIFT) == MDK_CTRL) {
+      int zoom;
+      switch (key) {
+        // numeric keypad keys:
+        // -- handle these ahead, i.e. here
+        when VK_SUBTRACT:  zoom = -1;
+        when VK_ADD:       zoom = 1;
+        when VK_NUMPAD0:   zoom = 0;
+          // Shift+VK_NUMPAD0 would be VK_INSERT but don't mangle that!
+        // normal keys:
+        // -- handle these in the course of layout() and other checking,
+        // -- see below
+        //when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
+        //when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
+        //when '0':          zoom = 0;
+        otherwise: goto not_zoom;
+      }
+      win_zoom_font(zoom, mods & MDK_SHIFT);
+      return 1;
+      not_zoom:;
+    }
+  }
+
+  bool zoom_hotkey(void) {
+    if (!active_term->shortcut_override && cfg.zoom_shortcuts
+        && (mods & ~MDK_SHIFT) == MDK_CTRL) {
+      int zoom;
+      switch (key) {
+        // numeric keypad keys:
+        // -- handle these ahead, see above
+        //when VK_SUBTRACT:  zoom = -1;
+        //when VK_ADD:       zoom = 1;
+        //when VK_NUMPAD0:   zoom = 0;
+          // Shift+VK_NUMPAD0 would be VK_INSERT but don't mangle that!
+        // normal keys:
+        // -- handle these in the course of layout() and other checking,
+        // -- so handle the case that something is assigned to them
+        // -- e.g. Ctrl+Shift+- -> Ctrl+_
+        // -- or even a custom Ctrl+- mapping
+        // depending on keyboard layout, these may already be shifted!
+        // thus better ignore the shift state, at least for -/+
+        when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
+        when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
+        when '0':          zoom = 0;
+        otherwise: return 0;
+      }
+      win_zoom_font(zoom, mods & MDK_SHIFT);
+      return 1;
+    }
+    return 0;
   }
 
   // Keycode buffers
@@ -666,10 +698,17 @@ win_key_down(WPARAM wp, LPARAM lp)
 
     // Substitute accent compositions not supported by Windows
     if (wlen == 2)
-      for (size_t i = 0; i < lengthof(comb_subst); i++)
-        if (comb_subst[i].spacing == wbuf[0] && comb_subst[i].base == wbuf[1]) {
-          wbuf[0] = comb_subst[i].combined;
-          wlen = 1;
+      for (unsigned int i = 0; i < lengthof(comb_subst); i++)
+        if (comb_subst[i].spacing == wbuf[0] && comb_subst[i].base == wbuf[1]
+            && comb_subst[i].combined < 0xFFFF  // -> wchar/UTF-16: BMP only
+           ) {
+          wchar wtmp = comb_subst[i].combined;
+          short mblen = cs_wcntombn(buf + len, &wtmp, lengthof(buf) - len, 1);
+          // short to recognise 0xFFFD as negative (WideCharToMultiByte...?)
+          if (mblen > 0) {
+            wbuf[0] = comb_subst[i].combined;
+            wlen = 1;
+          }
           break;
         }
 
@@ -928,6 +967,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (char_key());
       else if (active_term->modify_other_keys <= 1 && ctrl_key());
       else if (active_term->modify_other_keys) modify_other_key();
+      else if (zoom_hotkey());
       else if (key <= '9') app_pad_code(key);
       else if (VK_OEM_PLUS <= key && key <= VK_OEM_PERIOD)
         app_pad_code(key - VK_OEM_PLUS + '+');
