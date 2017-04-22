@@ -32,7 +32,6 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 #include <winuser.h>
 #endif
 
-bool icon_is_from_shortcut = false;
 bool clone_size_token = true;
 
 static void
@@ -336,7 +335,7 @@ child_conv_path(struct child* child, wstring wpath)
   else
     exp_path = path;
 
-#if CYGWIN_VERSION_DLL_MAJOR >= 1007
+#if CYGWIN_VERSION_API_MINOR >= 181
 # if CYGWIN_VERSION_API_MINOR >= 222
   // CW_INT_SETLOCALE was introduced in API 0.222
   cygwin_internal(CW_INT_SETLOCALE);

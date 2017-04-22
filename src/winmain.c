@@ -37,6 +37,8 @@
 #endif
 
 
+bool icon_is_from_shortcut = false;
+
 HINSTANCE inst;
 HWND wnd, tab_wnd;
 HIMC imc;
@@ -53,11 +55,6 @@ static bool invoked_with_appid = false;
 #if CYGWIN_VERSION_API_MINOR < 74 || defined(TEST_WCS)
 // needed for MinGW MSYS
 
-# if CYGWIN_VERSION_DLL_MAJOR >= 1005
-# define need_wcschr
-# endif
-# define dont_need_wcsdup
-
 # ifdef TEST_WCS
 #define wcsdup _wcsdup
 #define wcschr _wcschr
@@ -66,7 +63,9 @@ static bool invoked_with_appid = false;
 
 #define wcscpy(tgt, src) memcpy(tgt, src, (wcslen(src) + 1) * sizeof(wchar))
 
-# ifdef need_wcsdup
+# ifdef need_all_wcs_functions
+
+# if CYGWIN_VERSION_API_MINOR < 207
 static wchar *
 wcsdup(const wchar * s)
 {
@@ -76,7 +75,6 @@ wcsdup(const wchar * s)
 }
 # endif
 
-# ifdef need_wcschr
 static wchar *
 wcschr(const wchar * s, wchar c)
 {
@@ -87,6 +85,7 @@ wcschr(const wchar * s, wchar c)
   }
   return 0;
 }
+
 # endif
 
 static int
@@ -716,7 +715,24 @@ void
 win_bell(struct term* term, config * conf)
 {
   if (conf->bell_sound || conf->bell_type) {
-    if (*conf->bell_file && PlaySoundW(conf->bell_file, NULL, SND_ASYNC | SND_FILENAME)) {
+    wchar * bell_file = (wchar *)conf->bell_file;
+	char * home = getenv("HOME");
+    bool free_bell_file = false;
+    if (*bell_file && !wcschr(bell_file, L'/') && !wcschr(bell_file, L'\\')) {
+      string subfolder = ".mintty/sounds";
+      char rcdir[strlen(home) + strlen(subfolder) + 2];
+      sprintf(rcdir, "%s/%s", home, subfolder);
+      wchar * rcpat = cygwin_create_path(CCP_POSIX_TO_WIN_W, rcdir);
+      int len = wcslen(rcpat);
+      rcpat = renewn(rcpat, len + wcslen(bell_file) + 6);
+      rcpat[len++] = L'/';
+      wcscpy(&rcpat[len], bell_file);
+      len = wcslen(rcpat);
+      wcscpy(&rcpat[len], L".wav");
+      bell_file = rcpat;
+      free_bell_file = true;
+    }
+    if (*bell_file && PlaySoundW(bell_file, NULL, SND_ASYNC | SND_FILENAME)) {
       // played
     }
     else if (conf->bell_freq)
@@ -731,7 +747,11 @@ win_bell(struct term* term, config * conf)
       MessageBeep((conf->bell_type - 1) * 16);
     } else if (conf->bell_type < 0)
       MessageBeep(0xFFFFFFFF);
+
+    if (free_bell_file)
+      free(bell_file);
   }
+
   if (conf->bell_taskbar && !win_active_terminal()->has_focus)
     flash_taskbar(true);
   if (!term->has_focus)
@@ -1477,10 +1497,17 @@ warn(char *format, ...)
 static void
 warnw(wstring msg, wstring file, wstring err)
 {
+#if CYGWIN_VERSION_API_MINOR >= 201
   wstring format = (err && *err) ? L"%s: %ls '%ls':\n%ls" : L"%s: %ls '%ls'";
   wchar mess[wcslen(format) + strlen(main_argv[0]) + wcslen(msg) + wcslen(file) + (err ? wcslen(err) : 0)];
   swprintf(mess, lengthof(mess), format, main_argv[0], msg, file, err);
   show_msg_w(stderr, mess);
+#else
+  //MinGW
+  (void)msg; (void)file; (void)err; (void)show_msg_w;
+  string mess = "could not load icon file";
+  show_msg(stderr, mess);
+#endif
 }
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005

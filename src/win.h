@@ -11,6 +11,8 @@
 #define trace_resize(params)
 #endif
 
+extern bool icon_is_from_shortcut;
+
 void win_reconfig(void);
 
 void win_update(void);
