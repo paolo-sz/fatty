@@ -16,9 +16,6 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/cygwin.h>
-# if HAS_LOCALES
-#include <locale.h>
-# endif
 
 #if CYGWIN_VERSION_API_MINOR >= 93
 #include <pty.h>
@@ -39,10 +36,13 @@ bool icon_is_from_shortcut = false;
 bool clone_size_token = true;
 
 static void
-error(struct term* term, char *action)
+childerror(struct term* term, char * action, bool from_fork)
 {
-  char *msg;
-  int len = asprintf(&msg, "\033[30;41m\033[KFailed to %s: %s.", action, strerror(errno));
+  char * msg;
+  char * err = strerror(errno);
+  if (from_fork && errno == ENOENT)
+    err = "There are no available terminals";
+  int len = asprintf(&msg, "\033[30;41m\033[KError: %s: %s.\033[0m\r\n", action, err);
   if (len > 0) {
     term_write(term, msg, len);
     free(msg);
@@ -65,10 +65,14 @@ child_create(struct child* child, struct term* term,
   if (pid < 0) {
     child->pid = pid = 0;
     bool rebase_prompt = (errno == EAGAIN);
-    error(term, "could not fork child process");
+    //ENOENT  There are no available terminals.
+    //EAGAIN  Cannot allocate sufficient memory to allocate a task structure.
+    //EAGAIN  Not possible to create a new process; RLIMIT_NPROC limit.
+    //ENOMEM  Memory is tight.
+    childerror(term, "could not fork child process", true);
     if (rebase_prompt) {
       static const char msg[] =
-        "\r\nDLL rebasing may be required. See 'rebaseall --help'.";
+        "\033[30;43m\033[KDLL rebasing may be required. See 'rebaseall / rebase --help'.\033[0m\r\n";
       term_write(term, msg, sizeof msg - 1);
     }
     term_hide_cursor(term);
@@ -373,7 +377,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      error(child->term, "could not fork child daemon");
+      childerror(child->term, "could not fork child daemon", true);
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
@@ -438,7 +442,8 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
     if (clone_size_token) {
       setenvi("MINTTY_ROWS", child->term->rows);
       setenvi("MINTTY_COLS", child->term->cols);
-    } else
+    }
+    else
       clone_size_token = true;
     // provide environment to select monitor
     if (moni > 0)
