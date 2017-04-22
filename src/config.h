@@ -54,6 +54,7 @@ typedef struct {
   bool cursor_blinks;
   // Text
   font_spec font;
+  bool show_hidden_fonts;
   char font_smoothing;
   char bold_as_font;    // 0 = false, 1 = true, -1 = undefined
   bool bold_as_colour;
@@ -142,7 +143,7 @@ extern void set_arg_option(string name, string val);
 extern void parse_arg_option(string);
 extern void remember_arg(string);
 extern void finish_config(void);
-extern void copy_config(config *dst, const config *src);
+extern void copy_config(char * tag, config * dst, const config * src);
 extern void apply_config(bool save);
 
 #endif

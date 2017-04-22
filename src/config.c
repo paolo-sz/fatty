@@ -50,6 +50,7 @@ const config default_cfg = {
   .cursor_blinks = true,
   // Text
   .font = {.name = L"Lucida Console", .size = 9, .weight = 400, .isbold = false},
+  .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
   .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
   .bold_as_colour = true,
@@ -194,6 +195,7 @@ options[] = {
   {"FontHeight", OPT_INT, offcfg(font.size)},
   {"FontWeight", OPT_INT, offcfg(font.weight)},
   {"FontIsBold", OPT_BOOL, offcfg(font.isbold)},
+  {"ShowHiddenFonts", OPT_BOOL, offcfg(show_hidden_fonts)},
   {"FontSmoothing", OPT_FONTSMOOTH, offcfg(font_smoothing)},
   {"BoldAsFont", OPT_BOOL, offcfg(bold_as_font)},
   {"BoldAsColour", OPT_BOOL, offcfg(bold_as_colour)},
@@ -384,6 +386,14 @@ static opt_val
   }
 };
 
+
+#ifdef debug_theme
+#define trace_theme(params)	printf params
+#else
+#define trace_theme(params)
+#endif
+
+
 static int
 find_option(string name)
 {
@@ -405,9 +415,17 @@ seen_file_option(uint i)
   return memchr(file_opts, i, file_opts_num);
 }
 
-static void
-remember_file_option(uint i)
+static bool
+seen_arg_option(uint i)
 {
+  return memchr(arg_opts, i, arg_opts_num);
+}
+
+static void
+remember_file_option(char * tag, uint i)
+{
+  (void)tag;
+  trace_theme(("[%s] remember_file_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (i > 255) {
     fprintf(stderr, "Internal error: too many options.\n");
     exit(1);
@@ -417,15 +435,11 @@ remember_file_option(uint i)
     file_opts[file_opts_num++] = i;
 }
 
-static bool
-seen_arg_option(uint i)
-{
-  return memchr(arg_opts, i, arg_opts_num);
-}
-
 static void
-remember_arg_option(uint i)
+remember_arg_option(char * tag, uint i)
 {
+  (void)tag;
+  trace_theme(("[%s] remember_arg_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (i > 255) {
     fprintf(stderr, "Internal error: too many options.\n");
     exit(1);
@@ -438,11 +452,11 @@ remember_arg_option(uint i)
 void
 remember_arg(string option)
 {
-  remember_arg_option(find_option(option));
+  remember_arg_option("rem_arg", find_option(option));
 }
 
 static void
-check_legacy_options(void (*remember_option)(uint))
+check_legacy_options(void (*remember_option)(char * tag, uint))
 {
   if (cfg.use_system_colours) {
     // Translate 'UseSystemColours' to colour settings.
@@ -452,9 +466,9 @@ check_legacy_options(void (*remember_option)(uint))
 
     // Make sure they're written to the config file.
     // This assumes that the colour options are the first three in options[].
-    remember_option(0);
-    remember_option(1);
-    remember_option(2);
+    remember_option("legacy", 0);
+    remember_option("legacy", 1);
+    remember_option("legacy", 2);
   }
 }
 
@@ -583,7 +597,7 @@ static void
 check_arg_option(int i)
 {
   if (i >= 0) {
-    remember_arg_option(i);
+    remember_arg_option("chk_arg", i);
     check_legacy_options(remember_arg_option);
   }
 }
@@ -599,12 +613,6 @@ parse_arg_option(string option)
 {
   check_arg_option(parse_option(option, false));
 }
-
-#ifdef debug_theme
-#define trace_theme(params)	printf params
-#else
-#define trace_theme(params)
-#endif
 
 void
 load_theme(wstring theme)
@@ -627,7 +635,6 @@ load_theme(wstring theme)
   char * filename = cygwin_create_path(CCP_WIN_W_TO_POSIX, theme_file);
   if (free_theme_file)
     free(theme_file);
-  trace_theme(("load_theme -> <%s>\n", filename));
   load_config(filename, false);
   free(filename);
 }
@@ -635,21 +642,14 @@ load_theme(wstring theme)
 void
 load_config(string filename, bool to_save)
 {
-#ifdef old_config
-#else
+  trace_theme(("load_config <%s> %d\n", filename, to_save));
   if (!to_save) {
     // restore base configuration, without theme mix-ins
-    copy_config(&cfg, &file_cfg);
-    trace_theme(("[loa] copy_config cfg<-file\n"));
+    copy_config("load", &cfg, &file_cfg);
   }
-#endif
 
   if (access(filename, R_OK) == 0 && access(filename, W_OK) < 0)
     to_save = false;
-
-#ifdef mis_config
-  wchar * old_theme_file = wcsdup(cfg.theme_file);
-#endif
 
   if (to_save) {
     file_opts_num = arg_opts_num = 0;
@@ -673,7 +673,7 @@ load_config(string filename, bool to_save)
       if (line[0] != '#' && line[0] != '\0') {
         int i = parse_option(line, true);
         if (to_save && i >= 0)
-          remember_file_option(i);
+          remember_file_option("load", i);
       }
     }
     fclose(file);
@@ -681,27 +681,22 @@ load_config(string filename, bool to_save)
 
   check_legacy_options(remember_file_option);
 
-#ifdef old_config
-  copy_config(&file_cfg, &cfg);
-#else
   if (to_save) {
-    copy_config(&file_cfg, &cfg);
-    trace_theme(("[sav] copy_config file<-cfg\n"));
+    copy_config("after load", &file_cfg, &cfg);
   }
-
-#ifdef mis_config
-  bool theme_changed = wcscmp(old_theme_file, cfg.theme_file);
-  free(old_theme_file);
-
-  if (to_save && theme_changed)
-    load_theme(cfg.theme_file);
-#endif
-#endif
 }
 
 void
-copy_config(config *dst_p, const config *src_p)
+copy_config(char * tag, config * dst_p, const config * src_p)
 {
+#ifdef debug_theme
+  char * cfg(config * p) {
+    return p == new_cfg ? "new" : p == file_cfg ? "file" : p == cfg ? "cfg" : "?";
+  }
+  printf("[%s] copy_config %s <- %s\n", tag, cfg(dst_p), cfg(src_p));
+#else
+  (void)tag;
+#endif
   for (uint i = 0; i < lengthof(options); i++) {
     opt_type type = options[i].type;
     if (!(type & OPT_LEGACY)) {
@@ -725,8 +720,7 @@ copy_config(config *dst_p, const config *src_p)
 void
 init_config(void)
 {
-  copy_config(&cfg, &default_cfg);
-  trace_theme(("[ini] copy_config cfg<-default\n"));
+  copy_config("init", &cfg, &default_cfg);
 }
 
 void
@@ -744,7 +738,7 @@ finish_config(void)
   // bold_as_font used to be implied by !bold_as_colour.
   if (cfg.bold_as_font == -1) {
     cfg.bold_as_font = !cfg.bold_as_colour;
-    remember_file_option(find_option("BoldAsFont"));
+    remember_file_option("finish", find_option("BoldAsFont"));
   }
 
   if (0 < cfg.transparency && cfg.transparency <= 3)
@@ -781,11 +775,8 @@ save_config(void)
       opt_type type = options[i].type;
       if (!(type & OPT_LEGACY)) {
         fprintf(file, "%s=", options[i].name);
-#ifdef old_config
-        void *cfg_p = seen_arg_option(i) ? &file_cfg : &cfg;
-#else
+        //?void *cfg_p = seen_arg_option(i) ? &file_cfg : &cfg;
         void *cfg_p = &file_cfg;
-#endif
         void *val_p = cfg_p + options[i].offset;
         switch (type) {
           when OPT_STRING:
@@ -835,11 +826,8 @@ apply_config(bool save)
   for (uint i = 0; i < lengthof(options); i++) {
     opt_type type = options[i].type;
     uint offset = options[i].offset;
-#ifdef old_config
-    void *val_p = (void *)&cfg + offset;
-#else
+    //void *val_p = (void *)&cfg + offset;
     void *val_p = (void *)&file_cfg + offset;
-#endif
     void *new_val_p = (void *)&new_cfg + offset;
     bool changed;
     switch (type) {
@@ -852,33 +840,23 @@ apply_config(bool save)
       otherwise:
         changed = (*(char *)val_p != *(char *)new_val_p);
     }
-    if (changed && !seen_arg_option(i))
-      remember_file_option(i);
+    if (changed) {
+      remember_file_option("apply", i);
+    }
   }
 
-#ifdef old_config
+  copy_config("apply", &file_cfg, &new_cfg);
   win_reconfig();  // copy_config(&cfg, &new_cfg);
-  if (save)
-    save_config();
-#else
-  copy_config(&file_cfg, &new_cfg);
-  trace_theme(("[app] copy_config file<-new\n"));
   if (save)
     save_config();
   bool had_theme = !!*cfg.theme_file;
 
-  win_reconfig();  // copy_config(&cfg, &new_cfg);
-  trace_theme(("[rec] copy_config cfg<-new\n"));
-  trace_theme(("green %06X new %06X file %06X bg %06X new %06X file %06X\n", cfg.ansi_colours[GREEN_I], new_cfg.ansi_colours[GREEN_I], file_cfg.ansi_colours[GREEN_I], cfg.bg_colour, new_cfg.bg_colour, file_cfg.bg_colour));
-
   if (*cfg.theme_file) {
     load_theme(cfg.theme_file);
-    trace_theme(("green %06X new %06X file %06X bg %06X new %06X file %06X\n", cfg.ansi_colours[GREEN_I], new_cfg.ansi_colours[GREEN_I], file_cfg.ansi_colours[GREEN_I], cfg.bg_colour, new_cfg.bg_colour, file_cfg.bg_colour));
     win_reset_colours();
   }
   else if (had_theme)
     win_reset_colours();
-#endif
 }
 
 static void
