@@ -23,7 +23,7 @@ extern int font_width, font_height;
 
 extern int g_render_tab_height; // current tab height in pixels
 
-enum { PADDING = 1 };
+extern int PADDING;
 
 extern bool win_is_fullscreen;
 
@@ -78,6 +78,7 @@ void win_tab_mouse_click(int x);
 int win_tab_height();
 void win_paint_tabs(LPARAM lp, int width);
 void win_for_each_term(void (*cb)(struct term* term));
+void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool param);
 
 bool win_should_die();
 

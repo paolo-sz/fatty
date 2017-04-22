@@ -20,6 +20,8 @@
 #include <locale.h>
 #include <getopt.h>
 #include <pwd.h>
+
+#include <mmsystem.h>  // PlaySound for MSys
 #include <shellapi.h>
 
 #include <sys/cygwin.h>
@@ -44,7 +46,26 @@ static char **main_argv;
 static int main_argc;
 static ATOM class_atom;
 static bool invoked_from_shortcut = false;
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
 static bool invoked_with_appid = false;
+#endif
+
+#if CYGWIN_VERSION_API_MINOR < 74
+// needed for MSys
+#define wcscpy(targ, src) memcpy(targ, src, (wcslen(src) + 1) * sizeof(wchar))
+static int
+wcsncmp(const wchar * s1, const wchar * s2, int len)
+{
+  for (int i = 0; i < len; i++)
+    if (s1[i] < s2[i])
+      return -1;
+    else if (s1[i] > s2[i])
+      return 1;
+    else if (s1[i] == 0)
+      return 0;
+  return 0;
+}
+#endif
 
 static int extra_width, extra_height, norm_extra_width, norm_extra_height;
 
@@ -479,6 +500,8 @@ win_is_glass_available(void)
 static void
 update_blur(void)
 {
+// This feature is disabled in config.c as it does not seem to work,
+// see https://github.com/mintty/mintty/issues/501
   if (pDwmEnableBlurBehindWindow) {
     bool blur =
       cfg.transparency && cfg.blurred && !win_is_fullscreen &&
@@ -832,16 +855,31 @@ win_update_scrollbar(void)
                SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 }
 
-
-static void _reconfig(struct term* term) {
-  if (term->report_font_changed)
+static void _reconfig(struct term* term, bool font_changed) {
+  if (term->report_font_changed && font_changed)
     if (term->report_ambig_width)
       child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
     else
       child_write(term->child, "\e[0W", 4);
-  else if (term->report_ambig_width)
+  else if (term->report_ambig_width && old_ambig_wide != cs_ambig_wide)
     child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
 }
+
+static void font_cs_reconfig(bool font_changed) {
+  if (font_changed) {
+    win_init_fonts(cfg.font.size);
+    trace_resize((" (win_reconfig -> win_adapt_term_size)\n"));
+    win_adapt_term_size(true, false);
+  }
+  win_update_scrollbar();
+  update_transparency();
+  win_update_mouse();
+
+  old_ambig_wide = cs_ambig_wide;
+  cs_reconfig();
+  win_for_each_term_bool(_reconfig, font_changed);
+}
+  
 void
 win_reconfig(void)
 {
@@ -868,17 +906,7 @@ win_reconfig(void)
 
   /* Copy the new config and refresh everything */
   copy_config(&cfg, &new_cfg);
-  if (font_changed) {
-    win_init_fonts(cfg.font.size);
-    trace_resize((" (win_reconfig -> win_adapt_term_size)\n"));
-    win_adapt_term_size(true, false);
-  }
-  win_update_scrollbar();
-  update_transparency();
-  win_update_mouse();
-
-  cs_reconfig();
-  win_for_each_term(_reconfig);
+  font_cs_reconfig(font_changed);
 }
 
 static bool
@@ -1073,6 +1101,15 @@ static struct {
         }
         return 1;
       }
+    when WM_THEMECHANGED:
+      // this would kind of handle switching off the Performance Option
+      // "Use visual styles on windows and borders"
+      // but would reduce the actual terminal size...
+      // also it does not handle switching on the option
+      //font_cs_reconfig(true);
+      //?win_set_chars(term.rows, term.cols);
+    when WM_FONTCHANGE:
+      font_cs_reconfig(true);
     when WM_PAINT:
       win_paint();
       return 0;
@@ -1240,7 +1277,7 @@ static const char help[] =
   "  -V, --version         Print version information and exit\n"
 ;
 
-static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVd";
+static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVdD";
 
 static const struct option
 opts[] = {
@@ -1262,6 +1299,7 @@ opts[] = {
   {"help",       no_argument,       0, 'H'},
   {"version",    no_argument,       0, 'V'},
   {"nodaemon",   no_argument,       0, 'd'},
+  {"daemon",     no_argument,       0, 'D'},
   {"nopin",      no_argument,       0, ''},  // short option not enabled
   {"store-taskbar-properties", no_argument, 0, ''},  // no short option
   {0, 0, 0, 0}
@@ -1300,6 +1338,8 @@ warn(char *format, ...)
   show_msg(stderr, msg);
 }
 
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
+
 #include <shlobj.h>
 
 static char *
@@ -1329,10 +1369,10 @@ get_shortcut_icon_location(wchar * iconfile)
   char * result = 0;
 
   if (SUCCEEDED(hres)) {
-    WCHAR wil[MAX_PATH];
-    char il[MAX_PATH * cs_cur_max];
+    WCHAR wil[MAX_PATH + 1];
+    char il[MAX_PATH * cs_cur_max + 1];
     int index;
-    shell_link->lpVtbl->GetIconLocation(shell_link, wil, sizeof wil, &index);
+    shell_link->lpVtbl->GetIconLocation(shell_link, wil, lengthof(wil), &index);
     cs_wcstombs(il, wil, sizeof il);
     if (index) {
       char _num[22];
@@ -1372,6 +1412,8 @@ get_shortcut_icon_location(wchar * iconfile)
 
   return result;
 }
+
+#endif
 
 static void
 configure_taskbar()
@@ -1558,9 +1600,11 @@ main(int argc, char *argv[])
   GetStartupInfoW(&sui);
   cfg.window = sui.dwFlags & STARTF_USESHOWWINDOW ? sui.wShowWindow : SW_SHOW;
   cfg.x = cfg.y = CW_USEDEFAULT;
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
   invoked_from_shortcut = sui.dwFlags & STARTF_TITLEISLINKNAME;
   invoked_with_appid = sui.dwFlags & STARTF_TITLEISAPPID;
   // shortcut or AppId would be found in sui.lpTitle
+#endif
 
   load_config("/etc/minttyrc", true);
   string rc_file = asform("%s/.minttyrc", home);
@@ -1637,6 +1681,8 @@ main(int argc, char *argv[])
       when '': set_arg_option("Class", optarg);
       when 'd':
         cfg.daemonize = false;
+      when 'D':
+        cfg.daemonize_always = true;
       when 'H':
         show_msg(stdout, help);
         return 0;
@@ -1669,8 +1715,8 @@ main(int argc, char *argv[])
     unsetenv("MINTTY_ICON");
   }
 
-#define dont_debug_icon
-#ifdef debug_icon
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
+#ifdef debuglog
   fprintf(mtlog, "cfgicon %s\n", cfg.icon);
   fprintf(mtlog, "shorcut %d %s\n", invoked_from_shortcut, (char *)cygwin_create_path(CCP_WIN_W_TO_POSIX, sui.lpTitle));
   if (invoked_from_shortcut) {
@@ -1682,6 +1728,7 @@ main(int argc, char *argv[])
     cfg.icon = get_shortcut_icon_location(sui.lpTitle);
     icon_is_from_shortcut = true;
   }
+#endif
 
   finish_config();
 
@@ -1695,6 +1742,8 @@ main(int argc, char *argv[])
   // disable daemonizing if started from ConEmu
   if (getenv("ConEmuPID"))
     daemonize = false;
+  if (cfg.daemonize_always)
+    daemonize = true;
   if (daemonize) {  // detach from parent process and terminal
     pid_t pid = fork();
     if (pid < 0)
@@ -1774,10 +1823,10 @@ main(int argc, char *argv[])
           FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
           0, error, 0, msg, sizeof msg, 0
         );
-        warn("could not load icon from '%s': %s", cfg.icon, msg);
+        warn("Could not load icon from '%s': %s", cfg.icon, msg);
       }
       else
-        warn("could not load icon from '%s'", cfg.icon);
+        warn("Could not load icon from '%s'", cfg.icon);
     }
     delete(icon_file);
   }

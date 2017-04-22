@@ -53,6 +53,8 @@ combined.t:	# UnicodeData.txt
 $(BUILD_DIR)config.o: rgb.t
 $(BUILD_DIR)wininput.o: vk_names.t combined.t
 $(BUILD_DIR)winmain.o: wm_names.t
+winprint.c:
+	ln -s ../attic/winprint.c .
 
 prepare_build = mkdir -pv $(dir $@)
 

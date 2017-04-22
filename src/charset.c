@@ -26,6 +26,7 @@ static string env_locale;      // Locale determined by the environment.
 static bool valid_default_locale, use_locale;
 bool cs_ambig_wide;
 #endif
+bool old_ambig_wide;
 
 static uint codepage, default_codepage;
 

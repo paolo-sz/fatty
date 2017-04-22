@@ -18,8 +18,9 @@ printer_start_job(wstring printer_name)
 {
   if (OpenPrinterW((wchar *)printer_name, &printer, 0)) {
     if (StartDocPrinter(printer, 1, (LPBYTE)&doc_info)) {
-      if (StartPagePrinter(printer))
+      if (StartPagePrinter(printer)) {
         return;
+      }
       EndDocPrinter(printer);
     }
     ClosePrinter(printer);

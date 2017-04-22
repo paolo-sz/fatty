@@ -409,6 +409,11 @@ void win_for_each_term(void (*cb)(struct term* term)) {
         cb(tab.terminal.get());
 }
 
+void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool param) {
+    for (Tab& tab : tabs)
+        cb(tab.terminal.get(), param);
+}
+
 void win_tab_mouse_click(int x) {
     set_active_tab(x);
 }
