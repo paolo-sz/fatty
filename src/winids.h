@@ -21,14 +21,15 @@
 #define IDM_FLIPSCREEN      0x00A0
 #define IDM_OPTIONS         0x00B0
 #define IDM_NEW             0x00C0
-#define IDM_COPYTITLE       0x00D0
-#define IDM_SEARCH          0x00E0
-#define IDM_NEWTAB      0x00f0
-#define IDM_KILLTAB      0x0100
+#define IDM_NEW_MONI        0x00D0
+#define IDM_COPYTITLE       0x00E0
+#define IDM_SEARCH          0x00F0
+#define IDM_NEWTAB          0x0100
+#define IDM_KILLTAB         0x0110
 
-#define IDM_PREVTAB     0x0110
-#define IDM_NEXTTAB     0x0120
-#define IDM_MOVELEFT    0x0130
-#define IDM_MOVERIGHT   0x0140
+#define IDM_PREVTAB     0x0120
+#define IDM_NEXTTAB     0x0130
+#define IDM_MOVELEFT    0x0140
+#define IDM_MOVERIGHT   0x0150
 
 #endif

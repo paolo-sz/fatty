@@ -37,6 +37,8 @@ HIMC imc;
 static char **main_argv;
 static int main_argc;
 static ATOM class_atom;
+static bool invoked_from_shortcut = false;
+static bool invoked_with_appid = false;
 
 static int extra_width, extra_height, norm_extra_width, norm_extra_height;
 
@@ -668,7 +670,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   int term_width = client_width - 2 * PADDING;
   int term_height = client_height - 2 * PADDING - g_render_tab_height;
 
-  if (scale_font_with_size) {
+  if (scale_font_with_size && term->cols != 0 && term->rows != 0) {
     // calc preliminary size (without font scaling), as below
     // should use term_height rather than rows; calc and store in term_resize
     int cols0 = max(1, term_width / font_width);
@@ -961,7 +963,8 @@ static struct {
         when IDM_SEARCH: win_open_search();
         when IDM_FLIPSCREEN: term_flip_screen(term);
         when IDM_OPTIONS: win_open_config();
-        when IDM_NEW: child_fork(term->child, main_argc, main_argv, (int)lp - ' ');
+        when IDM_NEW: child_fork(term->child, main_argc, main_argv, 0);
+        when IDM_NEW_MONI: child_fork(term->child, main_argc, main_argv, (int)lp - ' ');
         when IDM_COPYTITLE: win_copy_title();
         when IDM_NEWTAB: win_tab_create();
         when IDM_KILLTAB: child_terminate(term->child);
@@ -1271,8 +1274,14 @@ configure_taskbar()
 
 #define dont_debug_properties
 
+#ifdef two_witty_ideas_with_bad_side_effects
+#warning automatic derivation of an AppId is likely not a good idea
   // If an icon is configured but no app_id, we can derive one from the 
   // icon in order to enable proper taskbar grouping by common icon.
+  // However, this has an undesirable side-effect if a shortcut is 
+  // pinned (presumably getting some implicit AppID from Windows) and 
+  // instances are started from there (with a different AppID...).
+  // Disabled.
   if (relaunch_icon && *relaunch_icon && (!app_id || !*app_id)) {
     const char * iconbasename = strrchr(cfg.icon, '/');
     if (iconbasename)
@@ -1295,6 +1304,7 @@ configure_taskbar()
       (!app_id || !*app_id)) {
     app_id = "Mintty.AppID";
   }
+#endif
 
   // Set the app ID explicitly, as well as the relaunch command and display name
   if (prevent_pinning || (app_id && *app_id)) {
@@ -1432,6 +1442,9 @@ main(int argc, char *argv[])
   GetStartupInfo(&sui);
   cfg.window = sui.dwFlags & STARTF_USESHOWWINDOW ? sui.wShowWindow : SW_SHOW;
   cfg.x = cfg.y = CW_USEDEFAULT;
+  invoked_from_shortcut = sui.dwFlags & STARTF_TITLEISLINKNAME;
+  invoked_with_appid = sui.dwFlags & STARTF_TITLEISAPPID;
+  // shortcut or AppId would be found in sui.lpTitle
 
   load_config("/etc/minttyrc", true);
   string rc_file = asform("%s/.minttyrc", home);
