@@ -17,7 +17,7 @@
 
 static HMENU menu, sysmenu;
 static bool alt_F2_pending = false;
-static uint alt_F2_modifier = 0;
+static bool alt_F2_shifted = false;
 static bool alt_F2_home = false;
 static int alt_F2_monix = 0, alt_F2_moniy = 0;
 
@@ -394,16 +394,15 @@ win_key_down(WPARAM wp, LPARAM lp)
   else
     lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
 
-  bool
-    numlock = kbd[VK_NUMLOCK] & 1,
-    shift = is_key_down(VK_SHIFT),
-    lalt = is_key_down(VK_LMENU),
-    ralt = is_key_down(VK_RMENU),
-    alt = lalt | ralt,
-    rctrl = is_key_down(VK_RCONTROL),
-    ctrl = lctrl | rctrl,
-    ctrl_lalt_altgr = cfg.ctrl_alt_is_altgr & ctrl & lalt & !ralt,
-    altgr = ralt | ctrl_lalt_altgr;
+  bool numlock = kbd[VK_NUMLOCK] & 1;
+  bool shift = is_key_down(VK_SHIFT);
+  bool lalt = is_key_down(VK_LMENU);
+  bool ralt = is_key_down(VK_RMENU);
+  bool alt = lalt | ralt;
+  bool rctrl = is_key_down(VK_RCONTROL);
+  bool ctrl = lctrl | rctrl;
+  bool ctrl_lalt_altgr = cfg.ctrl_alt_is_altgr & ctrl & lalt & !ralt;
+  bool altgr = ralt | ctrl_lalt_altgr;
 
   mod_keys mods = shift * MDK_SHIFT | alt * MDK_ALT | ctrl * MDK_CTRL;
 
@@ -420,7 +419,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     alt_state = ALT_CANCELLED;
 
   // Context and window menus
-  if (key == VK_APPS && (!cfg.key_menu || !*cfg.key_menu)) {
+  if (key == VK_APPS && !*cfg.key_menu) {
     if (shift)
       send_syscommand(SC_KEYMENU);
     else {
@@ -438,7 +437,6 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   if (alt_F2_pending) {
     if (!extended) {  // only accept numeric keypad
-      alt_F2_modifier = key;
       switch (key) {
         when VK_HOME : alt_F2_monix--; alt_F2_moniy--;
         when VK_UP   : alt_F2_moniy--;
@@ -485,10 +483,14 @@ win_key_down(WPARAM wp, LPARAM lp)
       if (!ctrl) {
         switch (key) {
           when VK_F2:
-            // send_syscommand(IDM_NEW);
-            alt_F2_modifier = 0;
-            alt_F2_home = false; alt_F2_monix = 0; alt_F2_moniy = 0;
+            // defer send_syscommand(IDM_NEW) until key released
+            // monitor cursor keys to collect parameters meanwhile
             alt_F2_pending = true;
+            alt_F2_home = false; alt_F2_monix = 0; alt_F2_moniy = 0;
+            if (mods & MDK_SHIFT)
+              alt_F2_shifted = true;
+            else
+              alt_F2_shifted = false;
           when VK_F3:  send_syscommand(IDM_SEARCH);
           when VK_F4:  send_syscommand(SC_CLOSE);
           when VK_F8:  send_syscommand(IDM_RESET);
@@ -856,7 +858,19 @@ win_key_down(WPARAM wp, LPARAM lp)
     return false;
   }
 
-  switch(key) {
+  bool vk_special(string key_mapped) {
+    if (!* key_mapped) {
+      if (!layout())
+        return false;
+    }
+    else if ((key_mapped[0] & ~037) == 0 && key_mapped[1] == 0)
+      ctrl_ch(key_mapped[0]);
+    else
+      strcode(key_mapped);
+    return true;
+  }
+
+  switch (key) {
     when VK_RETURN:
       if (extended && !numlock && active_term->app_keypad)
         mod_ss3('M');
@@ -899,29 +913,19 @@ win_key_down(WPARAM wp, LPARAM lp)
       ? ss3('[')
       : ctrl_ch(active_term->escape_sends_fs ? CTRL('\\') : CTRL('['));
     when VK_PAUSE:
-      if (cfg.key_pause)
-        strcode(cfg.key_pause);
-      else
-        ctrl_ch(ctrl & !extended ? CTRL('\\') : CTRL(']'));
+      if (!vk_special(ctrl & !extended ? cfg.key_break : cfg.key_pause))
+        return false;
     when VK_CANCEL:
-      if (cfg.key_break)
-        strcode(cfg.key_break);
-      else
-        ctrl_ch(CTRL('\\'));
+      if (!vk_special(cfg.key_break))
+        return false;
     when VK_SNAPSHOT:
-      if (cfg.key_prtscreen)
-        strcode(cfg.key_prtscreen);
-      else if (!layout())
+      if (!vk_special(cfg.key_prtscreen))
         return false;
     when VK_APPS:
-      if (cfg.key_menu)
-        strcode(cfg.key_menu);
-      else if (!layout())
+      if (!vk_special(cfg.key_menu))
         return false;
     when VK_SCROLL:
-      if (cfg.key_scrlock)
-        strcode(cfg.key_scrlock);
-      else if (!layout())
+      if (!vk_special(cfg.key_scrlock))
         return false;
     when VK_F1 ... VK_F24:
       if (active_term->vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
@@ -1017,6 +1021,12 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
 
   if (alt_F2_pending) {
     if ((uint)wp == VK_F2) {
+      inline bool is_key_down(uchar vk) { return GetKeyState(vk) & 0x80; }
+      if (is_key_down(VK_SHIFT))
+        alt_F2_shifted = true;
+      if (alt_F2_shifted)
+        clone_size_token = false;
+
       alt_F2_pending = false;
 
       // Calculate heuristic approximation of selected monitor position

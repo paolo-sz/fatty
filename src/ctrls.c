@@ -1,6 +1,7 @@
 // ctrls.c (part of FaTTY)
 // Copyright 2008-11 Andy Koppe
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
+// (corresponds to putty:dialog.c)
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include "ctrls.h"
@@ -147,7 +148,7 @@ ctrl_new_set(controlbox *b, char *path, char *title)
   // Skip existing sets for the same path.
   while (index < b->nctrlsets && !strcmp(b->ctrlsets[index]->pathname, path))
     index++;
-  
+
   controlset *s = new(controlset);
   s->pathname = strdup(path);
   s->boxtitle = title ? strdup(title) : null;

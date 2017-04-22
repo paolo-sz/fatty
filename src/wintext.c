@@ -793,7 +793,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
 
   if (has_cursor) {
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, cursor_colour));
-    switch(term_cursor_type(win_active_terminal())) {
+    switch (term_cursor_type(win_active_terminal())) {
       when CUR_BLOCK:
         if (attr.attr & TATTR_PASCURS) {
           HBRUSH oldbrush = SelectObject(dc, GetStockObject(NULL_BRUSH));

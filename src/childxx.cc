@@ -20,6 +20,9 @@ int child_log_fd = -1;
 extern "C" {
 #include "child.h"
 
+extern int cs_wcstombs(char *s, const wchar *ws, size_t len);
+
+
 void child_onexit(int sig) {
     for (auto& tab : win_tabs()) {
         if (tab.chld->pid)
@@ -45,10 +48,14 @@ void child_init() {
 
     // Open log file if any
     if (*cfg.log) {
-        if (!strcmp(cfg.log, "-"))
+        if (!wcscmp(cfg.log, L"-"))
             child_log_fd = 1;
         else {
-            child_log_fd = open(cfg.log, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            int len = wcslen(cfg.log) + 1;
+            char *log = (char *)malloc(len);
+            cs_wcstombs(log, cfg.log, len);
+            child_log_fd = open(log, O_WRONLY | O_CREAT | O_TRUNC, 0600);
+            free(log);
             if (child_log_fd < 0)
                 fputs("Opening log file failed\n", stderr);
         }

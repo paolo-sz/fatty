@@ -48,8 +48,6 @@ combined.t:	# UnicodeData.txt
 
 #############################################################################
 
--include $(depfiles)
-
 $(BUILD_DIR)config.o: rgb.t
 $(BUILD_DIR)wininput.o: vk_names.t combined.t
 $(BUILD_DIR)winmain.o: wm_names.t
@@ -69,6 +67,8 @@ $(BUILD_DIR)%.o: %.rc
 	@$(prepare_build)
 	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED -MMD -MT $@ $(CPPFLAGS)' $< $*.o
 	@mv -v res.o res.d $(BUILD_DIR)
+
+-include $(depfiles)
 
 .PHONY: clean
 clean:

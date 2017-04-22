@@ -4,6 +4,7 @@
 #include <sys/termios.h>
 
 extern bool icon_is_from_shortcut;
+extern bool clone_size_token;
 
 struct term;
 

@@ -4,6 +4,11 @@
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define dont_debuglog
+#ifdef debuglog
+  FILE * mtlog = 0;
+#endif
+
 #define dont_debug_resize
 
 #include "term.h"
@@ -32,12 +37,6 @@
 #endif
 
 
-#define dont_debuglog
-#ifdef debuglog
-  FILE * mtlog = 0;
-#endif
-
-
 HINSTANCE inst;
 HWND wnd, tab_wnd;
 HIMC imc;
@@ -50,9 +49,46 @@ static bool invoked_from_shortcut = false;
 static bool invoked_with_appid = false;
 #endif
 
-#if CYGWIN_VERSION_API_MINOR < 74
-// needed for MSys
-#define wcscpy(targ, src) memcpy(targ, src, (wcslen(src) + 1) * sizeof(wchar))
+
+#if CYGWIN_VERSION_API_MINOR < 74 || defined(TEST_WCS)
+// needed for MinGW MSYS
+
+# if CYGWIN_VERSION_DLL_MAJOR >= 1005
+# define need_wcschr
+# endif
+# define dont_need_wcsdup
+
+# ifdef TEST_WCS
+#define wcsdup _wcsdup
+#define wcschr _wcschr
+#define wcsncmp _wcsncmp
+# endif
+
+#define wcscpy(tgt, src) memcpy(tgt, src, (wcslen(src) + 1) * sizeof(wchar))
+
+# ifdef need_wcsdup
+static wchar *
+wcsdup(const wchar * s)
+{
+  wchar * dup = newn(wchar, wcslen(s) + 1);
+  wcscpy(dup, s);
+  return dup;
+}
+# endif
+
+# ifdef need_wcschr
+static wchar *
+wcschr(const wchar * s, wchar c)
+{
+  while (* s) {
+    if (* s == c)
+      return (wchar *)s;
+    s ++;
+  }
+  return 0;
+}
+# endif
+
 static int
 wcsncmp(const wchar * s1, const wchar * s2, int len)
 {
@@ -65,7 +101,9 @@ wcsncmp(const wchar * s1, const wchar * s2, int len)
       return 0;
   return 0;
 }
+
 #endif
+
 
 static int extra_width, extra_height, norm_extra_width, norm_extra_height;
 
@@ -74,6 +112,7 @@ bool win_is_fullscreen;
 static bool go_fullscr_on_max;
 static bool resizing;
 static int zoom_token = 0;  // for heuristic handling of Shift zoom (#467, #476)
+static bool default_size_token = false;
 
 // Options
 static string border_style = 0;
@@ -677,8 +716,7 @@ void
 win_bell(struct term* term)
 {
   if (cfg.bell_sound || cfg.bell_type) {
-    if (cfg.bell_file && *cfg.bell_file
-     && PlaySoundW(cfg.bell_file, NULL, SND_ASYNC | SND_FILENAME)) {
+    if (*cfg.bell_file && PlaySoundW(cfg.bell_file, NULL, SND_ASYNC | SND_FILENAME)) {
       // played
     }
     else if (cfg.bell_freq)
@@ -705,6 +743,33 @@ win_invalidate_all(void)
 {
   InvalidateRect(wnd, null, true);
   win_for_each_term(term_paint);
+}
+
+static void
+win_adjust_borders()
+{
+  int term_width = font_width * cfg.cols;
+  int term_height = font_height * cfg.rows;
+  RECT cr = {0, 0, term_width + 2 * PADDING, term_height + 2 * PADDING};
+  RECT wr = cr;
+  LONG window_style = WS_OVERLAPPEDWINDOW;
+  if (border_style) {
+    if (strcmp (border_style, "void") == 0)
+      window_style &= ~(WS_CAPTION | WS_BORDER | WS_THICKFRAME);
+    else
+      window_style &= ~(WS_CAPTION | WS_BORDER);
+  }
+  AdjustWindowRect(&wr, window_style, false);
+  int width = wr.right - wr.left;
+  int height = wr.bottom - wr.top;
+
+  if (cfg.scrollbar)
+    width += GetSystemMetrics(SM_CXVSCROLL);
+
+  extra_width = width - (cr.right - cr.left);
+  extra_height = height - (cr.bottom - cr.top);
+  norm_extra_width = extra_width;
+  norm_extra_height = extra_height;
 }
 
 void
@@ -956,13 +1021,13 @@ confirm_multi_tab(void)
          );
 }
 
-#define dont_debug_windows_messages
-#define dont_debug_windows_mouse_messages
+#define dont_debug_messages
+#define dont_debug_mouse_messages
 
 static LRESULT CALLBACK
 win_proc(HWND wnd, UINT message, WPARAM wp, LPARAM lp)
 {
-#ifdef debug_windows_messages
+#ifdef debug_messages
 static struct {
   uint wm_;
   char * wm_name;
@@ -977,10 +1042,10 @@ static struct {
     }
   if ((message != WM_KEYDOWN || !(lp & 0x40000000))
       && message != WM_TIMER && message != WM_NCHITTEST
-#ifndef debug_windows_mouse_messages
+# ifndef debug_mouse_messages
       && message != WM_SETCURSOR
       && message != WM_MOUSEMOVE && message != WM_NCMOUSEMOVE
-#endif
+# endif
      )
     printf("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
@@ -992,6 +1057,7 @@ static struct {
       win_process_timer_message(wp);
       return 0;
     }
+
     when WM_CLOSE:
       if (win_tab_count() > 1) {
         switch (confirm_multi_tab()) {
@@ -1007,7 +1073,23 @@ static struct {
       if (!cfg.confirm_exit || confirm_exit())
         child_kill();
       return 0;
-    when WM_COMMAND or WM_SYSCOMMAND:
+
+    when WM_COMMAND or WM_SYSCOMMAND: {
+# ifdef debug_messages
+      static struct {
+        uint idm_;
+        char * idm_name;
+      } idm_names[] = {
+# include "winids.t"
+      };
+      char * idm_name = "?";
+      for (uint i = 0; i < lengthof(idm_names); i++)
+        if ((wp & ~0xF) == idm_names[i].idm_) {
+          idm_name = idm_names[i].idm_name;
+          break;
+        }
+      printf("                   %s\n", idm_name);
+# endif
       switch (wp & ~0xF) {  /* low 4 bits reserved to Windows */
         when IDM_OPEN: term_open(term);
         when IDM_COPY: term_copy(term);
@@ -1017,13 +1099,19 @@ static struct {
         when IDM_DEFSIZE:
           default_size();
         when IDM_DEFSIZE_ZOOM:
-          default_size();
-#ifdef doesnotwork_after_shift_drag
           if (GetKeyState(VK_SHIFT) & 0x80) {
-            win_set_font_size(cfg.font.size, false);
+            // Shift+Alt+F10 should restore both window size and font size
+
+            // restore default font size first:
+            win_zoom_font(0, false);
+
+            // restore window size:
+            default_size_token = true;
+            default_size();  // or defer to WM_PAINT
+          }
+          else {
             default_size();
           }
-#endif
         when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM:
           if ((wp & ~0xF) == IDM_FULLSCREEN_ZOOM)
             zoom_token = 4;  // override cfg.zoom_font_with_window == 0
@@ -1046,6 +1134,8 @@ static struct {
         when IDM_MOVELEFT: win_tab_move(-1);
         when IDM_MOVERIGHT: win_tab_move(+1);
       }
+    }
+
     when WM_VSCROLL:
       switch (LOWORD(wp)) {
         when SB_BOTTOM:   term_scroll(term, -1, 0);
@@ -1062,6 +1152,7 @@ static struct {
           term_scroll(term, 1, info.nTrackPos);
         }
       }
+
     when WM_MOUSEMOVE: win_mouse_move(false, lp);
     when WM_NCMOUSEMOVE: win_mouse_move(true, lp);
     when WM_MOUSEWHEEL: win_mouse_wheel(wp, lp);
@@ -1071,26 +1162,34 @@ static struct {
     when WM_LBUTTONUP: win_mouse_release(MBT_LEFT, lp);
     when WM_RBUTTONUP: win_mouse_release(MBT_RIGHT, lp);
     when WM_MBUTTONUP: win_mouse_release(MBT_MIDDLE, lp);
+
     when WM_KEYDOWN or WM_SYSKEYDOWN:
       if (win_key_down(wp, lp))
         return 0;
+
     when WM_KEYUP or WM_SYSKEYUP:
       if (win_key_up(wp, lp))
         return 0;
+
     when WM_CHAR or WM_SYSCHAR:
       child_sendw(term->child, &(wchar){wp}, 1);
       return 0;
+
     when WM_INPUTLANGCHANGEREQUEST:  // catch Shift-Control-0
       if ((GetKeyState(VK_SHIFT) & 0x80) && (GetKeyState(VK_CONTROL) & 0x80))
         if (win_key_down('0', 0x000B0001))
           return 0;
+
     when WM_INPUTLANGCHANGE:
       win_set_ime_open(ImmIsIME(GetKeyboardLayout(0)) && ImmGetOpenStatus(imc));
+
     when WM_IME_NOTIFY:
       if (wp == IMN_SETOPENSTATUS)
         win_set_ime_open(ImmGetOpenStatus(imc));
+
     when WM_IME_STARTCOMPOSITION:
       ImmSetCompositionFont(imc, &lfont);
+
     when WM_IME_COMPOSITION:
       if (lp & GCS_RESULTSTR) {
         LONG len = ImmGetCompositionStringW(imc, GCS_RESULTSTR, null, 0);
@@ -1101,26 +1200,45 @@ static struct {
         }
         return 1;
       }
-    when WM_THEMECHANGED:
-      // this would kind of handle switching off the Performance Option
-      // "Use visual styles on windows and borders"
-      // but would reduce the actual terminal size...
-      // also it does not handle switching on the option
-      //font_cs_reconfig(true);
-      //?win_set_chars(term.rows, term.cols);
+
+    when WM_THEMECHANGED or WM_WININICHANGE or WM_SYSCOLORCHANGE:
+      // Size of window border (border, title bar, scrollbar) changed by:
+      //   Personalization of window geometry (e.g. Title Bar Size)
+      //     -> Windows sends WM_SYSCOLORCHANGE
+      //   Performance Option "Use visual styles on windows and borders"
+      //     -> Windows sends WM_THEMECHANGED and WM_SYSCOLORCHANGE
+      // and in both case a couple of WM_WININICHANGE
+
+      win_adjust_borders();
+      RedrawWindow(wnd, null, null, 
+                   RDW_FRAME | RDW_INVALIDATE |
+                   RDW_UPDATENOW | RDW_ALLCHILDREN);
+      win_update_search();
+
     when WM_FONTCHANGE:
       font_cs_reconfig(true);
+
     when WM_PAINT:
       win_paint();
+
+#ifdef handle_default_size_asynchronously
+      if (default_size_token) {
+        default_size();
+        default_size_token = false;
+      }
+#endif
+
       return 0;
+
     when WM_ACTIVATE:
-      if((wp & 0xF) != WA_INACTIVE) {
+      if ((wp & 0xF) != WA_INACTIVE) {
         flash_taskbar(false);  /* stop */
         term_set_focus(term, true, true);
       } else {
         term_set_focus(term, false, true);
       }
       update_transparency();
+
     when WM_SETFOCUS:
       trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       term_set_focus(term, true, false);
@@ -1129,17 +1247,21 @@ static struct {
       win_update();
       ShowCaret(wnd);
       zoom_token = -4;
+
     when WM_KILLFOCUS:
       win_show_mouse();
       term_set_focus(term, false, false);
       DestroyCaret();
       win_update();
+
     when WM_MOVING:
       trace_resize(("# WM_MOVING VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       zoom_token = -4;
+
     when WM_ENTERSIZEMOVE:
       trace_resize(("# WM_ENTERSIZEMOVE VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
       resizing = true;
+
     when WM_EXITSIZEMOVE or WM_CAPTURECHANGED:  // after mouse-drag resizing
       trace_resize(("# WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
       bool shift = GetKeyState(VK_SHIFT) & 0x80;
@@ -1149,6 +1271,7 @@ static struct {
         trace_resize((" (win_proc (WM_EXITSIZEMOVE) -> win_adapt_term_size)\n"));
         win_adapt_term_size(shift, false);
       }
+
     when WM_SIZING: {  // mouse-drag window resizing
       trace_resize(("# WM_SIZING (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
       zoom_token = 2;
@@ -1184,6 +1307,7 @@ static struct {
 
       return ew || eh;
     }
+
     when WM_SIZE: {
       trace_resize(("# WM_SIZE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
       if (wp == SIZE_RESTORED && win_is_fullscreen)
@@ -1209,14 +1333,17 @@ static struct {
             zoom_token = 1;
 #endif
         bool scale_font = (cfg.zoom_font_with_window || zoom_token > 2)
-                          && (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80);
+                       && (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80)
+                       && !default_size_token;
         win_adapt_term_size(false, scale_font);
         if (zoom_token > 0)
           zoom_token = zoom_token >> 1;
+        default_size_token = false;
       }
 
       return 0;
     }
+
     when WM_INITMENU:
       win_update_menus();
       return 0;
@@ -1342,7 +1469,7 @@ warn(char *format, ...)
 
 #include <shlobj.h>
 
-static char *
+static wchar *
 get_shortcut_icon_location(wchar * iconfile)
 {
   IShellLinkW * shell_link;
@@ -1366,25 +1493,31 @@ get_shortcut_icon_location(wchar * iconfile)
   /* Load the shortcut.  */
   hres = persist_file->lpVtbl->Load(persist_file, iconfile, STGM_READ);
 
-  char * result = 0;
+  wchar * result = 0;
 
   if (SUCCEEDED(hres)) {
     WCHAR wil[MAX_PATH + 1];
-    char il[MAX_PATH * cs_cur_max + 1];
     int index;
     shell_link->lpVtbl->GetIconLocation(shell_link, wil, lengthof(wil), &index);
-    cs_wcstombs(il, wil, sizeof il);
+
+    wchar * wicon = wil;
+
+    /* Append ,icon-index if non-zero.  */
+    wchar * widx = L"";
     if (index) {
-      char _num[22];
-      sprintf(_num, ",%d", index);
-      strncat(il, _num, sizeof il - strlen(_num) - 1);
+      char idx[22];
+      sprintf(idx, ",%d", index);
+      widx = cs__mbstowcs(idx);
     }
+
     /* Resolve leading Windows environment variable component.  */
-    char * fin;
-    if (il[0] == '%' && il[1] && il[1] != '%' && (fin = strchr(&il[2], '%'))) {
-      char var[fin - il];
+    wchar * wenv = L"";
+    wchar * fin;
+    if (wil[0] == '%' && wil[1] && wil[1] != '%' && (fin = wcschr(&wil[2], '%'))) {
+      char var[fin - wil];
       char * cop = var;
-      for (char * v = &il[1]; *v != '%'; v++) {
+      wchar * v;
+      for (v = &wil[1]; *v != '%'; v++) {
         if (*v >= 'a' && *v <= 'z')
           *cop = *v - 'a' + 'A';
         else
@@ -1392,16 +1525,23 @@ get_shortcut_icon_location(wchar * iconfile)
         cop++;
       }
       *cop = '\0';
+      v ++;
+      wicon = v;
 
       char * val = getenv(var);
       if (val) {
-        char resolvil[strlen(val) + strlen(il) + 1];
-        sprintf(resolvil, "%s%s", val, fin+1);
-        result = strdup(resolvil);
+        wenv = cs__mbstowcs(val);
       }
     }
-    if (!result)
-      result = strdup(il);
+
+    result = newn(wchar, wcslen(wenv) + wcslen(wicon) + wcslen(widx) + 1);
+    wcscpy(result, wenv);
+    wcscpy(&result[wcslen(result)], wicon);
+    wcscpy(&result[wcslen(result)], widx);
+    if (* widx)
+      free(widx);
+    if (* wenv)
+      free(wenv);
   }
 
   /* Release the pointer to the IPersistFile interface. */
@@ -1435,7 +1575,7 @@ configure_taskbar()
 #if CYGWIN_VERSION_DLL_MAJOR >= 1007
   // initial patch (issue #471) contributed by Johannes Schindelin
   wchar * app_id = (wchar *) cfg.app_id;
-  const char * relaunch_icon = cfg.icon;
+  wchar * relaunch_icon = (wchar *) cfg.icon;
   wchar * relaunch_display_name = (wchar *) cfg.app_name;
   wchar * relaunch_command = (wchar *) cfg.app_launch_cmd;
 
@@ -1482,7 +1622,6 @@ configure_taskbar()
       printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
 #endif
     if (pGetPropertyStore) {
-      size_t size;
       IPropertyStore *pps;
       HRESULT hr;
       PROPVARIANT var;
@@ -1514,18 +1653,14 @@ configure_taskbar()
           pps->lpVtbl->SetValue(pps,
               &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
         }
-        if (relaunch_icon && *relaunch_icon &&
-            (size = cs_mbstowcs(0, relaunch_icon, 0) + 1)) {
-          var.pwszVal = malloc(size * sizeof(wchar));
-          if (var.pwszVal) {
+        if (relaunch_icon && *relaunch_icon) {
 #ifdef debug_properties
-            printf("AppUserModel_RelaunchIconResource=%s\n", relaunch_icon);
+          printf("AppUserModel_RelaunchIconResource=%ls\n", relaunch_icon);
 #endif
-            cs_mbstowcs(var.pwszVal, relaunch_icon, size);
-            var.vt = VT_LPWSTR;
-            pps->lpVtbl->SetValue(pps,
-                &PKEY_AppUserModel_RelaunchIconResource, &var);
-          }
+          var.pwszVal = relaunch_icon;
+          var.vt = VT_LPWSTR;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_RelaunchIconResource, &var);
         }
         if (prevent_pinning) {
           var.boolVal = VARIANT_TRUE;
@@ -1579,6 +1714,14 @@ main(int argc, char *argv[])
   main_argc = argc;
 #ifdef debuglog
   mtlog = fopen("/tmp/mtlog", "a");
+  {
+    char timbuf [22];
+    struct timeval now;
+    gettimeofday (& now, 0);
+    strftime (timbuf, sizeof (timbuf), "%Y-%m-%d %H:%M:%S", localtime (& now.tv_sec));
+    fprintf(mtlog, "[%s.%03d] %s\n", timbuf, (int)now.tv_usec / 1000, argv[0]);
+    fflush(mtlog);
+  }
 #endif
   init_config();
   cs_init();
@@ -1604,6 +1747,9 @@ main(int argc, char *argv[])
   invoked_from_shortcut = sui.dwFlags & STARTF_TITLEISLINKNAME;
   invoked_with_appid = sui.dwFlags & STARTF_TITLEISAPPID;
   // shortcut or AppId would be found in sui.lpTitle
+# ifdef debuglog
+  fprintf(mtlog, "shortcut %d %s\n", invoked_from_shortcut, (char *)cygwin_create_path(CCP_WIN_W_TO_POSIX, sui.lpTitle));
+# endif
 #endif
 
   load_config("/etc/minttyrc", true);
@@ -1617,6 +1763,26 @@ main(int argc, char *argv[])
   
   for (int i = 0; i < 32; i++)
     tablist_title[i] = NULL;
+
+  if (getenv("MINTTY_ICON")) {
+    //cfg.icon = strdup(getenv("MINTTY_ICON"));
+    cfg.icon = cs__utftowcs(getenv("MINTTY_ICON"));
+    icon_is_from_shortcut = true;
+    unsetenv("MINTTY_ICON");
+  }
+
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
+  if (invoked_from_shortcut) {
+    wchar * icon = get_shortcut_icon_location(sui.lpTitle);
+# ifdef debuglog
+    fprintf(mtlog, "icon <%ls>\n", icon); fflush(mtlog);
+# endif
+    if (icon) {
+      cfg.icon = icon;
+      icon_is_from_shortcut = true;
+    }
+  }
+#endif
 
   for (;;) {
     int opt = getopt_long(argc, argv, short_opts, opts, 0);
@@ -1668,7 +1834,7 @@ main(int argc, char *argv[])
         set_arg_option("Title", optarg);
         cfg.title_settable = false;
       when 'B':
-        border_style = strdup (optarg);
+        border_style = strdup(optarg);
       when 'u': cfg.utmp = true;
       when '':
         prevent_pinning = true;
@@ -1697,40 +1863,26 @@ main(int argc, char *argv[])
     }
   }
 
+  finish_config();
+
+  int term_rows = cfg.rows;
+  int term_cols = cfg.cols;
   if (getenv("MINTTY_ROWS")) {
-    set_arg_option("Rows", getenv("MINTTY_ROWS"));
+    term_rows = atoi(getenv("MINTTY_ROWS"));
+    if (term_rows < 1)
+      term_rows = cfg.rows;
     unsetenv("MINTTY_ROWS");
   }
   if (getenv("MINTTY_COLS")) {
-    set_arg_option("Columns", getenv("MINTTY_COLS"));
+    term_cols = atoi(getenv("MINTTY_COLS"));
+    if (term_cols < 1)
+      term_cols = cfg.cols;
     unsetenv("MINTTY_COLS");
   }
   if (getenv("MINTTY_MONITOR")) {
     monitor = atoi(getenv("MINTTY_MONITOR"));
     unsetenv("MINTTY_MONITOR");
   }
-  if (getenv("MINTTY_ICON")) {
-    cfg.icon = getenv("MINTTY_ICON");
-    icon_is_from_shortcut = true;
-    unsetenv("MINTTY_ICON");
-  }
-
-#if CYGWIN_VERSION_DLL_MAJOR >= 1005
-#ifdef debuglog
-  fprintf(mtlog, "cfgicon %s\n", cfg.icon);
-  fprintf(mtlog, "shorcut %d %s\n", invoked_from_shortcut, (char *)cygwin_create_path(CCP_WIN_W_TO_POSIX, sui.lpTitle));
-  if (invoked_from_shortcut) {
-    char * icon = get_shortcut_icon_location(sui.lpTitle);
-    fprintf(mtlog, "icon %s\n", icon);
-  }
-#endif
-  if (invoked_from_shortcut && (!cfg.icon || !*cfg.icon)) {
-    cfg.icon = get_shortcut_icon_location(sui.lpTitle);
-    icon_is_from_shortcut = true;
-  }
-#endif
-
-  finish_config();
 
   // if started from console, try to detach from caller's terminal (~daemonizing)
   // in order to not suppress signals
@@ -1791,7 +1943,8 @@ main(int argc, char *argv[])
   // Load icon if specified.
   HICON large_icon = 0, small_icon = 0;
   if (*cfg.icon) {
-    string icon_file = strdup(cfg.icon);
+    //string icon_file = strdup(cfg.icon);
+    string icon_file = cs__wcstoutf(cfg.icon);
     uint icon_index = 0;
     char *comma = strrchr(icon_file, ',');
     if (comma) {
@@ -1804,7 +1957,26 @@ main(int argc, char *argv[])
     }
     SetLastError(0);
 #if CYGWIN_VERSION_API_MINOR >= 181
+# if HAS_LOCALES
+    char * valid_locale = setlocale(LC_CTYPE, 0);
+    if (valid_locale) {
+      valid_locale = strdup(valid_locale);
+      setlocale(LC_CTYPE, "C.UTF-8");
+#  if CYGWIN_VERSION_API_MINOR >= 222
+      cygwin_internal(CW_INT_SETLOCALE);  // fix internal locale
+#  endif
+    }
+# endif
     wchar *win_icon_file = cygwin_create_path(CCP_POSIX_TO_WIN_W, icon_file);
+# if HAS_LOCALES
+    if (valid_locale) {
+      setlocale(LC_CTYPE, valid_locale);
+#  if CYGWIN_VERSION_API_MINOR >= 222
+      cygwin_internal(CW_INT_SETLOCALE);  // fix internal locale
+#  endif
+      free(valid_locale);
+    }
+# endif
     if (win_icon_file) {
       ExtractIconExW(win_icon_file, icon_index, &large_icon, &small_icon, 1);
       free(win_icon_file);
@@ -1823,10 +1995,10 @@ main(int argc, char *argv[])
           FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
           0, error, 0, msg, sizeof msg, 0
         );
-        warn("Could not load icon from '%s': %s", cfg.icon, msg);
+        warn("could not load icon from '%s': %s", cs__wcstombs(cfg.icon), msg);
       }
       else
-        warn("Could not load icon from '%s'", cfg.icon);
+        warn("could not load icon from '%s'", cs__wcstombs(cfg.icon));
     }
     delete(icon_file);
   }
@@ -1894,8 +2066,8 @@ main(int argc, char *argv[])
   cs_reconfig();
 
   // Determine window sizes.
-  int term_width = font_width * cfg.cols;
-  int term_height = font_height * cfg.rows;
+  int term_width = font_width * term_cols;
+  int term_height = font_height * term_rows;
 
   RECT cr = {0, 0, term_width + 2 * PADDING, term_height +
       2 * PADDING + win_tab_height()};
@@ -2089,8 +2261,8 @@ main(int argc, char *argv[])
     &(SCROLLINFO){
       .cbSize = sizeof(SCROLLINFO),
       .fMask = SIF_ALL | SIF_DISABLENOSCROLL,
-      .nMin = 0, .nMax = cfg.rows - 1,
-      .nPage = cfg.rows, .nPos = 0,
+      .nMin = 0, .nMax = term_rows - 1,
+      .nPage = term_rows, .nPos = 0,
     },
     false
   );

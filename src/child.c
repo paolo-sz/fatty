@@ -16,6 +16,9 @@
 #include <sys/ioctl.h>
 #include <sys/wait.h>
 #include <sys/cygwin.h>
+# if HAS_LOCALES
+#include <locale.h>
+# endif
 
 #if CYGWIN_VERSION_API_MINOR >= 93
 #include <pty.h>
@@ -33,6 +36,7 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 #endif
 
 bool icon_is_from_shortcut = false;
+bool clone_size_token = true;
 
 static void
 error(struct term* term, char *action)
@@ -61,7 +65,7 @@ child_create(struct child* child, struct term* term,
   if (pid < 0) {
     child->pid = pid = 0;
     bool rebase_prompt = (errno == EAGAIN);
-    error(term, "fork child process");
+    error(term, "could not fork child process");
     if (rebase_prompt) {
       static const char msg[] =
         "\r\nDLL rebasing may be required. See 'rebaseall --help'.";
@@ -329,10 +333,10 @@ child_conv_path(struct child* child, wstring wpath)
     exp_path = path;
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1007
-#if CYGWIN_VERSION_API_MINOR >= 222
+# if CYGWIN_VERSION_API_MINOR >= 222
   // CW_INT_SETLOCALE was introduced in API 0.222
   cygwin_internal(CW_INT_SETLOCALE);
-#endif
+# endif
   wchar *win_wpath = cygwin_create_path(CCP_POSIX_TO_WIN_W, exp_path);
 
   // Drop long path prefix if possible,
@@ -369,7 +373,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      error(child->term, "fork child daemon");
+      error(child->term, "could not fork child daemon");
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
@@ -431,14 +435,17 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
     }
 
     // provide environment to clone size
-    setenvi("MINTTY_ROWS", child->term->rows);
-    setenvi("MINTTY_COLS", child->term->cols);
+    if (clone_size_token) {
+      setenvi("MINTTY_ROWS", child->term->rows);
+      setenvi("MINTTY_COLS", child->term->cols);
+    } else
+      clone_size_token = true;
     // provide environment to select monitor
     if (moni > 0)
       setenvi("MINTTY_MONITOR", moni);
     // propagate shortcut-inherited icon
     if (icon_is_from_shortcut)
-      setenv("MINTTY_ICON", cfg.icon, true);
+      setenv("MINTTY_ICON", cs__wcstoutf(cfg.icon), true);
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
     execv("/proc/self/exe", argv);

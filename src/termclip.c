@@ -41,7 +41,7 @@ static void
 get_selection(struct term* term, clip_workbuf *buf)
 {
   pos start = term->sel_start, end = term->sel_end;
-  
+
   int old_top_x;
   int attr;
 
@@ -138,10 +138,10 @@ term_copy(struct term* term)
 {
   if (!term->selected)
     return;
-  
+
   clip_workbuf buf;
   get_selection(term, &buf);
-  
+
  /* Finally, transfer all that to the clipboard. */
   win_copy(buf.textbuf, buf.attrbuf, buf.bufpos);
   free(buf.textbuf);
@@ -156,7 +156,7 @@ term_open(struct term* term)
   clip_workbuf buf;
   get_selection(term, &buf);
   free(buf.attrbuf);
-  
+
   // Don't bother opening if it's all whitespace.
   wchar *p = buf.textbuf;
   while (iswspace(*p))
@@ -184,7 +184,7 @@ term_paste(struct term* term, wchar *data, uint len)
     else if (i == 0 || data[i - 1] != '\r')
       term->paste_buffer[term->paste_len++] = '\r';
   }
-  
+
   if (term->bracketed_paste)
     child_write(term->child, "\e[200~", 6);
   term_send_paste(term);

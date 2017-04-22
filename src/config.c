@@ -62,8 +62,8 @@ const config default_cfg = {
   .alt_fn_shortcuts = true,
   .ctrl_shift_shortcuts = false,
   .key_prtscreen = "",	// VK_SNAPSHOT
-  .key_pause = "",	// VK_PAUSE
-  .key_break = "",	// VK_CANCEL
+  .key_pause = "",	// VK_PAUSE
+  .key_break = "",	// VK_CANCEL
   .key_menu = "",	// VK_APPS
   .key_scrlock = "",	// VK_SCROLL
   // Mouse
@@ -101,8 +101,8 @@ const config default_cfg = {
   .hold = HOLD_START,
   .exit_write = false,
   .exit_title = L"",
-  .icon = "",
-  .log = "",
+  .icon = L"",
+  .log = L"",
   .utmp = false,
   .title = L"",
   .title_settable = true,
@@ -205,8 +205,8 @@ options[] = {
   {"Key_Break", OPT_STRING, offcfg(key_break)},
   {"Key_Menu", OPT_STRING, offcfg(key_menu)},
   {"Key_ScrollLock", OPT_STRING, offcfg(key_scrlock)},
-  {"Break", OPT_STRING, offcfg(key_break)},  // compatibility alternative
-  {"Pause", OPT_STRING, offcfg(key_pause)},  // compatibility alternative
+  {"Break", OPT_STRING | OPT_LEGACY, offcfg(key_break)},
+  {"Pause", OPT_STRING | OPT_LEGACY, offcfg(key_pause)},
 
   // Mouse
   {"CopyOnSelect", OPT_BOOL, offcfg(copy_on_select)},
@@ -248,8 +248,8 @@ options[] = {
   {"DaemonizeAlways", OPT_BOOL, offcfg(daemonize_always)},
   {"ExitWrite", OPT_BOOL, offcfg(exit_write)},
   {"ExitTitle", OPT_WSTRING, offcfg(exit_title)},
-  {"Icon", OPT_STRING, offcfg(icon)},
-  {"Log", OPT_STRING, offcfg(log)},
+  {"Icon", OPT_WSTRING, offcfg(icon)},
+  {"Log", OPT_WSTRING, offcfg(log)},
   {"Title", OPT_WSTRING, offcfg(title)},
   {"TitleSettable", OPT_BOOL, offcfg(title_settable)},
   {"Utmp", OPT_BOOL, offcfg(utmp)},
@@ -1269,6 +1269,7 @@ setup_config_box(controlbox * b)
   )->column = 2;
 
   s = ctrl_new_set(b, "Terminal", "Printer");
+#define dont_use_combobox_for_wstring
 #ifdef use_combobox_for_wstring
 #warning Windows goofs up non-ANSI characters read from a combobox listbox
   ctrl_combobox(
