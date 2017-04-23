@@ -22,6 +22,18 @@ termchar basic_erase_char = {.cc_next = 0, .chr = ' ',
                     .attr = {.attr = ATTR_DEFAULT, .truefg = 0, .truebg = 0}
                     };
 
+static bool
+vt220(string term)
+{
+  char * vt = strstr(term, "vt");
+  if (vt) {
+    unsigned int ver;
+    if (sscanf(vt + 2, "%u", &ver) == 1 && ver >= 220)
+      return true;
+  }
+  return false;
+}
+
 /*
  * Call when the terminal's blinking-text settings change, or when
  * a text blink has just occurred.
@@ -130,7 +142,7 @@ term_reset(struct term* term)
   term->insert = false;
   term->shortcut_override = term->escape_sends_fs = term->app_escape_key = false;
   term->app_control = 0;
-  term->vt220_keys = strstr(cfg.term, "vt220");
+  term->vt220_keys = vt220(cfg.term);
   term->app_keypad = term->app_cursor_keys = term->app_wheel = false;
   term->mouse_mode = MM_NONE;
   term->mouse_enc = ME_X10;
@@ -141,6 +153,17 @@ term_reset(struct term* term)
   term->report_ambig_width = 0;
   term->bracketed_paste = false;
   term->show_scrollbar = true;
+
+  term->virtuallines = 0;
+  term->altvirtuallines = 0;
+  term->imgs.parser_state = NULL;
+  term->imgs.first = NULL;
+  term->imgs.last = NULL;
+  term->imgs.altfirst = NULL;
+  term->imgs.altlast = NULL;
+  term->sixel_display = 0;
+  term->sixel_scrolls_right = 0;
+  term->sixel_scrolls_left = 0;
 
   term->marg_top = 0;
   term->marg_bot = term->rows - 1;
@@ -260,7 +283,7 @@ term_reconfig(struct term* term)
   if (new_cfg.delete_sends_del != cfg.delete_sends_del)
     term->delete_sends_del = new_cfg.delete_sends_del;
   if (strcmp(new_cfg.term, cfg.term))
-    term->vt220_keys = strstr(new_cfg.term, "vt220");
+    term->vt220_keys = vt220(new_cfg.term);
 }
 
 bool in_result(struct term* term, pos abspos, result run) {
@@ -624,6 +647,7 @@ term_resize(struct term* term, int newrows, int newcols)
     for (int i = 0; i < store; i++) {
       termline *line = lines[i];
       scrollback_push(term, compressline(line));
+      term->virtuallines++;
       freeline(line);
     }
 
@@ -637,6 +661,9 @@ term_resize(struct term* term, int newrows, int newcols)
     // Adjust cursor position
     curs->y = max(0, curs->y - store);
     saved_curs->y = max(0, saved_curs->y - store);
+
+    // Adjust image position
+    term->virtuallines += min(0, store);
   }
 
   term->lines = lines = renewn(lines, newrows);
@@ -666,6 +693,9 @@ term_resize(struct term* term, int newrows, int newcols)
     // Adjust cursor position
     curs->y += restore;
     saved_curs->y += restore;
+
+    // Adjust image position
+    term->virtuallines -= restore;
   }
 
   // Resize lines
@@ -726,6 +756,9 @@ term_resize(struct term* term, int newrows, int newcols)
 void
 term_switch_screen(struct term* term, bool to_alt, bool reset)
 {
+  imglist *first, *last;
+  long long int offset;
+
   if (to_alt == term->on_alt_screen)
     return;
 
@@ -734,6 +767,17 @@ term_switch_screen(struct term* term, bool to_alt, bool reset)
   termlines *oldlines = term->lines;
   term->lines = term->other_lines;
   term->other_lines = oldlines;
+
+  /* swap image list */
+  first = term->imgs.first;
+  last = term->imgs.last;
+  offset = term->virtuallines;
+  term->imgs.first = term->imgs.altfirst;
+  term->imgs.last = term->imgs.altlast;
+  term->virtuallines = term->altvirtuallines;
+  term->imgs.altfirst = first;
+  term->imgs.altlast = last;
+  term->altvirtuallines = offset;
 
   if (to_alt && reset)
     term_erase(term, false, false, true, true);
@@ -831,6 +875,8 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   }
   else {
     int seltop = topline;
+
+    term->virtuallines += lines;
 
     // Only push lines into the scrollback when scrolling off the top of the
     // normal screen and scrollback is actually enabled.
@@ -1121,10 +1167,18 @@ term_paint(struct term* term)
       if (d->cc_next || (j > 0 && d[-1].cc_next))
         trace_run("cc"), break_run = true;
 
+#ifdef workaround_combining_double_issue_553
+     /*
+      * ... but not after a COMBINING DOUBLE (class 233 or 234)
+      */
+      if (textlen && text[textlen - 1] >= 0x035C && text[textlen - 1] <= 0x0362)
+        trace_run("dbl"), break_run = false;
+#endif
+
       if (!dirty_line) {
         if (dispchars[j].chr == tchar &&
             (dispchars[j].attr.attr & ~DATTR_STARTRUN) == tattr.attr)
-          break_run = true;
+          trace_run("str"), break_run = true;
         else if (!dirty_run && textlen == 1)
           trace_run("len"), break_run = true;
       }
@@ -1142,10 +1196,10 @@ term_paint(struct term* term)
       if (textlen && tbc != bc) {
         if (!is_sep_class(tbc) && !is_sep_class(bc))
           // break at RTL and other changes to avoid glyph confusion (#285)
-          trace_run("bc"), break_run = true;
+          trace_run("bcs"), break_run = true;
         else if (is_punct_class(tbc) || is_punct_class(bc))
           // break at digit to avoid adaptation to script style
-          trace_run("bc"), break_run = true;
+          trace_run("bcp"), break_run = true;
       }
       bc = tbc;
 

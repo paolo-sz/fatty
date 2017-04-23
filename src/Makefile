@@ -1,6 +1,7 @@
 SRC := charset.c child.c config.c ctrls.c minibidi.c std.c term.c termclip.c \
 	termline.c termmouse.c termout.c winclip.c winctrls.c windialog.c wininput.c \
 	winmain.c winprint.c wintext.c wintip.c mcwidth.c winsearch.c printers.c \
+	winimg.c sixel.c sixel_hls.c \
 	childxx.cc winxx.cc \
 	res.rc
 BIN ?= fatty.exe

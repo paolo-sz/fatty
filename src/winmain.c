@@ -1120,6 +1120,24 @@ static struct {
   struct term* term = 0;
   if (term_initialized) term = win_active_terminal();
   switch (message) {
+    when WM_NCCREATE:
+      if (pEnableNonClientDpiScaling) {
+        CREATESTRUCT * csp = (CREATESTRUCT *)lp;
+        BOOL res = pEnableNonClientDpiScaling(csp->hwndParent);
+        (void)res;
+#ifdef debug_dpi
+        uint err = GetLastError();
+        int wmlen = 1024;  // size of heap-allocated array
+        wchar winmsg[wmlen];  // constant and < 1273 or 1705 => issue #530
+        FormatMessageW(
+              FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+              0, err, 0, winmsg, wmlen, 0
+        );
+        printf("NC:EnableNonClientDpiScaling: %d %ls\n", !!res, winmsg);
+#endif
+        return 1;
+      }
+
     when WM_TIMER: {
       win_process_timer_message(wp);
       return 0;
