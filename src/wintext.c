@@ -39,10 +39,13 @@ enum {LDRAW_CHAR_NUM = 31, LDRAW_CHAR_TRIES = 4};
 wchar win_linedraw_chars[LDRAW_CHAR_NUM];
 
 // Possible linedraw character mappings, in order of decreasing suitability.
+// The first choice is the same as used by xterm in most cases,
+// except the diamond for which the narrower form is more authentic
+// (see http://vt100.net/docs/vt220-rm/table2-4.html).
 // The last resort for each is an ASCII character, which we assume will be
 // available in any font.
 static const wchar linedraw_chars[LDRAW_CHAR_NUM][LDRAW_CHAR_TRIES] = {
-  {0x25C6, 0x2666, '*'},           // 0x60 '`' Diamond
+  {0x2666, 0x25C6, '*'},           // 0x60 '`' Diamond ♦ ◆
   {0x2592, '#'},                   // 0x61 'a' Checkerboard (error)
   {0x2409, 0x2192, 0x01AD, 't'},   // 0x62 'b' Horizontal tab
   {0x240C, 0x21A1, 0x0192, 'f'},   // 0x63 'c' Form feed
@@ -57,11 +60,11 @@ static const wchar linedraw_chars[LDRAW_CHAR_NUM][LDRAW_CHAR_TRIES] = {
   {0x250C, '+'},                   // 0x6C 'l' Upper-left corner
   {0x2514, '+'},                   // 0x6D 'm' Lower-left corner
   {0x253C, '+'},                   // 0x6E 'n' Crossing lines
-  {0x23BA, 0x00AF, '-'},           // 0x6F 'o' High horizontal line
-  {0x23BB, 0x00AF, '-'},           // 0x70 'p' Medium-high horizontal line
-  {0x2500, 0x2015, 0x2014, '-'},   // 0x71 'q' Middle horizontal line
-  {0x23BC, '_'},                   // 0x72 'r' Medium-low horizontal line
-  {0x23BF, '_'},                   // 0x73 's' Low horizontal line
+  {0x23BA, 0x203E, ' '},           // 0x6F 'o' High horizontal line
+  {0x23BB, 0x207B, ' '},           // 0x70 'p' Medium-high horizontal line
+  {0x2500, 0x2014, '-'},           // 0x71 'q' Middle horizontal line
+  {0x23BC, 0x208B, ' '},           // 0x72 'r' Medium-low horizontal line
+  {0x23BD, '_'},                   // 0x73 's' Low horizontal line
   {0x251C, '+'},                   // 0x74 't' Left "T"
   {0x2524, '+'},                   // 0x75 'u' Right "T"
   {0x2534, '+'},                   // 0x76 'v' Bottom "T"
@@ -341,6 +344,8 @@ adjust_font_weights()
   trace_font((" -> %d/%d\n", fw_norm, fw_bold));
 }
 
+#define dont_debug_font_scaling
+
 /*
  * Initialise all the fonts we will need initially. There may be as many as
  * three or as few as one. The other (potentially) twentyone fonts are done
@@ -401,6 +406,9 @@ win_init_fonts(int size)
   HDC dc = GetDC(wnd);
   font_height =
     size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : size;
+#ifdef debug_font_scaling
+  printf("size %d -> height %d\n", size, font_height);
+#endif
   font_width = 0;
 
   fonts[FONT_NORMAL] = create_font(fw_norm, false);
@@ -460,6 +468,11 @@ win_init_fonts(int size)
            (glyphs[i][j] == 0xFFFF || glyphs[i][j] == 0x1F))
       j++;
     win_linedraw_chars[i] = linedraw_chars[i][j];
+#define draw_vt100_line_drawing_chars
+#ifdef draw_vt100_line_drawing_chars
+    if ('j' - '`' <= i && i <= 'x' - '`')
+      win_linedraw_chars[i] = linedraw_chars[i][0];
+#endif
   }
 
   fonts[FONT_UNDERLINE] = create_font(fw_norm, true);
@@ -907,14 +920,25 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
   if (has_cursor) {
     cursor_colour = colours[ime_open ? IME_CURSOR_COLOUR_I : CURSOR_COLOUR_I];
 
-    bool too_close = colour_dist(cursor_colour, bg) < 32768;
+    //uint mindist = 32768;
+    uint mindist = 22222;
+    //uint mindist = 8000;
+    bool too_close = colour_dist(cursor_colour, bg) < mindist;
 
-    if (too_close)
-      cursor_colour = fg;
+    if (too_close) {
+      //cursor_colour = fg;
+      colour ccfg = brighten(cursor_colour, fg);
+      colour ccbg = brighten(cursor_colour, bg);
+      if (colour_dist(ccfg, bg) < mindist
+          && colour_dist(ccfg, bg) < colour_dist(ccbg, bg))
+        cursor_colour = ccbg;
+      else
+        cursor_colour = ccfg;
+    }
 
     if ((attr.attr & TATTR_ACTCURS) && term_cursor_type(win_active_terminal()) == CUR_BLOCK) {
       fg = colours[CURSOR_TEXT_COLOUR_I];
-      if (too_close && colour_dist(cursor_colour, fg) < 32768)
+      if (too_close && colour_dist(cursor_colour, fg) < mindist)
         fg = bg;
       bg = cursor_colour;
     }
@@ -974,6 +998,12 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
   int yt = y + (row_spacing / 2) - (lattr == LATTR_BOT ? font_height : 0);
   int xt = x + (cfg.col_spacing / 2);
 
+  int graph = (attr.attr >> ATTR_GRAPH_SHIFT) & 0xFF;
+  if (graph) {
+    for (int i = 0; i < len; i++)
+      text[i] = ' ';
+  }
+
  /* Finally, draw the text */
   SetBkMode(dc, OPAQUE);
   trace_line(" TextOut:", text, len);
@@ -989,11 +1019,82 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
     }
   }
 
+  int line_width = (3
+                    + (attr.attr & ATTR_BOLD ? 2 : 0)
+                    + (lattr >= LATTR_WIDE ? 2 : 0)
+                    + (lattr >= LATTR_TOP ? 2 : 0)
+                   ) * font_height / 40;
+
+#define dont_debug_vt100_line_drawing_chars
+#ifdef debug_vt100_line_drawing_chars
+  fg = 0x00FF0000;
+#endif
+  if (graph >> 4) {  // VT100 horizontal lines ⎺⎻(─)⎼⎽
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+    int yoff = font_height * (graph >> 4) / 5 - font_height / 10 - line_width / 2;
+    if (lattr >= LATTR_TOP)
+      yoff *= 2;
+    if (lattr == LATTR_BOT)
+      yoff -= font_height;
+    for (int l = 0; l < line_width; l++) {
+      MoveToEx(dc, x, y + yoff + l, null);
+      LineTo(dc, x + len * char_width, y + yoff + l);
+    }
+    oldpen = SelectObject(dc, oldpen);
+    DeleteObject(oldpen);
+  }
+  else if (graph) {  // VT100 box drawing characters ┘┐┌└┼ ─ ├┤┴┬│
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+    int y0 = (lattr == LATTR_BOT) ? y - font_height : y;
+    int yoff = font_height * 3 / 5 - font_height / 10 - line_width / 2;
+    if (lattr >= LATTR_TOP)
+      yoff *= 2;
+    int xoff = (char_width - line_width) / 2;
+    for (int i = 0; i < len; i++) {
+      if (graph & 0b1010) {
+        int xl, xr;
+        if (graph & 0b1000)
+          xl = x + i * char_width;
+        else
+          xl = x + i * char_width + xoff;
+        if (graph & 0b0010)
+          xr = x + (i + 1) * char_width;
+        else
+          xr = x + i * char_width + xoff + line_width;
+        for (int l = 0; l < line_width; l++) {
+          MoveToEx(dc, xl, y0 + yoff + l, null);
+          LineTo(dc, xr, y0 + yoff + l);
+        }
+      }
+      if (graph & 0b0101) {
+        int xi = x + i * char_width + xoff;
+        int yt, yb;
+        if (graph & 0b0001)
+          yt = y0;
+        else
+          yt = y0 + yoff;
+        if (graph & 0b0100)
+          yb = y0 + (lattr >= LATTR_TOP ? 2 : 1) * font_height;
+        else
+          yb = y0 + yoff + line_width;
+        for (int l = 0; l < line_width; l++) {
+          MoveToEx(dc, xi + l, yt, null);
+          LineTo(dc, xi + l, yb);
+        }
+      }
+    }
+    oldpen = SelectObject(dc, oldpen);
+    DeleteObject(oldpen);
+  }
+
  /* Manual underline */
   colour ul = fg;
   int uloff = descent + (font_height - descent + 1) / 2;
   if (lattr == LATTR_BOT)
     uloff = descent + (font_height - descent + 1) / 2;
+  uloff += line_width / 2;
+  if (uloff >= font_height)
+    uloff = font_height - 1;
 
 #ifdef debug_underline
   ul = 0x802020E0;
@@ -1003,34 +1104,26 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
     ul = 0x80E02020;
 #endif
 
+ /* Underline */
   if (lattr != LATTR_TOP &&
       (force_manual_underline ||
        (und_mode == UND_LINE && (attr.attr & ATTR_UNDER)) ||
        (attr.attr & ATTR_DOUBLYUND))) {
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
-    MoveToEx(dc, x, y + uloff, null);
-    LineTo(dc, x + len * char_width, y + uloff);
-    if ((attr.attr & ATTR_BOLD) && !(attr.attr & ATTR_DOUBLYUND)
-        && uloff > descent) {
-      MoveToEx(dc, x, y + uloff - 1, null);
-      LineTo(dc, x + len * char_width, y + uloff - 1);
+    int gapfrom = 0, gapdone = 0;
+    if (attr.attr & ATTR_DOUBLYUND) {
+      if (line_width < 3)
+        line_width = 3;
+      int gap = line_width / 3;
+      gapfrom = (line_width - gap) / 2;
+      gapdone = line_width - gapfrom;
     }
-    if ((lattr == LATTR_BOT) && uloff < font_height) {
-      MoveToEx(dc, x, y + uloff + 1, null);
-      LineTo(dc, x + len * char_width, y + uloff + 1);
+    for (int l = 0; l < line_width; l++) {
+      if (l >= gapdone || l < gapfrom) {
+        MoveToEx(dc, x, y + uloff - l, null);
+        LineTo(dc, x + len * char_width, y + uloff - l);
+      }
     }
-    oldpen = SelectObject(dc, oldpen);
-    DeleteObject(oldpen);
-  }
-
- /* Doubly underline */
-  if (lattr != LATTR_TOP && attr.attr & ATTR_DOUBLYUND) {
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
-    int dbluloff = uloff - 2;
-    if (lattr == LATTR_BOT)
-      dbluloff--;
-    MoveToEx(dc, x, y + dbluloff, null);
-    LineTo(dc, x + len * char_width, y + dbluloff);
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
@@ -1038,11 +1131,9 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
  /* Overline */
   if (lattr != LATTR_BOT && attr.attr & ATTR_OVERL) {
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
-    MoveToEx(dc, x, y - 1, null);
-    LineTo(dc, x + len * char_width, y - 1);
-    if (lattr == LATTR_TOP) {
-      MoveToEx(dc, x, y, null);
-      LineTo(dc, x + len * char_width, y);
+    for (int l = 0; l < line_width; l++) {
+      MoveToEx(dc, x, y + l, null);
+      LineTo(dc, x + len * char_width, y + l);
     }
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
