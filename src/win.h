@@ -63,7 +63,8 @@ void win_paste(void);
 void win_set_timer(void (*cb)(void*), void* data, unsigned int ticks);
 
 void win_show_about(void);
-void win_show_error(wchar_t *);
+void win_show_error(wchar *);
+void win_show_warning(wchar *);
 
 bool win_is_glass_available(void);
 

@@ -35,13 +35,13 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 bool clone_size_token = true;
 
 static void
-childerror(struct term* term, char * action, bool from_fork)
+childerror(struct term* term, char * action, bool from_fork, int code)
 {
   char * msg;
   char * err = strerror(errno);
   if (from_fork && errno == ENOENT)
     err = "There are no available terminals";
-  int len = asprintf(&msg, "\033[30;%dm\033[KError: %s: %s.\033[0m\r\n", from_fork ? 41 : 43, action, err);
+  int len = asprintf(&msg, "\033[30;%dm\033[KError: %s: %s (%d).\033[0m\r\n", from_fork ? 41 : 43, action, err, code);
   if (len > 0) {
     term_write(term, msg, len);
     free(msg);
@@ -63,18 +63,20 @@ child_create(struct child* child, struct term* term,
   // Create the child process and pseudo terminal.
   pid = forkpty(&child->pty_fd, 0, 0, winp);
   if (pid < 0) {
-    child->pid = pid = 0;
     bool rebase_prompt = (errno == EAGAIN);
     //ENOENT  There are no available terminals.
     //EAGAIN  Cannot allocate sufficient memory to allocate a task structure.
     //EAGAIN  Not possible to create a new process; RLIMIT_NPROC limit.
     //ENOMEM  Memory is tight.
-    childerror(term, "could not fork child process", true);
+    childerror(term, "could not fork child process", true, pid);
     if (rebase_prompt) {
       static const char msg[] =
         "\033[30;43m\033[KDLL rebasing may be required. See 'rebaseall / rebase --help'.\033[0m\r\n";
       term_write(term, msg, sizeof msg - 1);
     }
+
+    child->pid = pid = 0;
+
     term_hide_cursor(term);
   }
   else if (!pid) { // Child process.
@@ -375,7 +377,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      childerror(child->term, "could not fork child daemon", true);
+      childerror(child->term, "could not fork child daemon", true, 0);
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
