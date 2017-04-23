@@ -520,9 +520,11 @@ win_key_down(WPARAM wp, LPARAM lp)
     }
 
     // Ctrl+Shift+letter shortcuts
-    if (cfg.ctrl_shift_shortcuts &&
-        mods == (MDK_CTRL | MDK_SHIFT) && 'A' <= key && key <= 'Z') {
+    if (cfg.ctrl_shift_shortcuts && 'A' <= key && key <= 'Z' &&
+        mods == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT))
+       ) {
       switch (key) {
+        when 'A': term_select_all(active_term);
         when 'C': term_copy(active_term);
         when 'V': win_paste();
         when 'N': send_syscommand(IDM_NEW);
@@ -636,6 +638,17 @@ win_key_down(WPARAM wp, LPARAM lp)
     len = sprintf(buf, "\e[%u;%cu", c, mods + '1');
   }
   void app_pad_code(char c) {
+    void mod_appl_xterm(char c) {len = sprintf(buf, "\eO%c%c", mods + '1', c);}
+    if (mods && active_term->app_keypad) switch (key) {
+      when VK_DIVIDE or VK_MULTIPLY or VK_SUBTRACT or VK_ADD or VK_RETURN:
+        mod_appl_xterm(c - '0' + 'p');
+        return;
+    }
+    if (active_term->vt220_keys && mods && active_term->app_keypad) switch (key) {
+      when VK_CLEAR or VK_PRIOR ... VK_DOWN or VK_INSERT or VK_DELETE:
+        mod_appl_xterm(c - '0' + 'p');
+        return;
+    }
     mod_ss3(c - '0' + 'p');
   }
   void strcode(string s) {
@@ -824,7 +837,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   void ctrl_ch(uchar c) {
     esc_if(alt);
-    if (shift) {
+    if (shift && !cfg.ctrl_exchange_shift) {
       // Send C1 control char if the charset supports it.
       // Otherwise prefix the C0 char with ESC.
       if (c < 0x20) {
@@ -916,7 +929,8 @@ win_key_down(WPARAM wp, LPARAM lp)
       }
       else
       if (extended && !numlock && active_term->app_keypad)
-        mod_ss3('M');
+        //mod_ss3('M');
+        app_pad_code('M' - '@');
       else if (!extended && active_term->modify_other_keys && (shift || ctrl))
         other_code('\r');
       else if (!ctrl)
@@ -1030,17 +1044,21 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (shift && ctrl && key == 'T') win_tab_create();
       else if (shift && ctrl && key == 'W') child_terminate(active_term->child);
       else if (char_key()) trace_key("char");
-      else if (active_term->modify_other_keys > 1) modify_other_key();
+      else if (active_term->modify_other_keys > 1)
+        modify_other_key();
       else if (ctrl_key()) trace_key("ctrl");
-      else ctrl_ch(CTRL(key));
+      else
+        ctrl_ch(CTRL(key));
     }
     when '0' ... '9' or VK_OEM_1 ... VK_OEM_102:
       if (key <= '9' && alt_code_key(key - '0'));
       else if (char_key());
       else if (active_term->modify_other_keys <= 1 && ctrl_key());
-      else if (active_term->modify_other_keys) modify_other_key();
+      else if (active_term->modify_other_keys)
+        modify_other_key();
       else if (zoom_hotkey());
-      else if (key <= '9') app_pad_code(key);
+      else if (key <= '9')
+        app_pad_code(key);
       else if (VK_OEM_PLUS <= key && key <= VK_OEM_PERIOD)
         app_pad_code(key - VK_OEM_PLUS + '+');
     when VK_PACKET:
