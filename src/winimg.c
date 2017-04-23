@@ -363,7 +363,7 @@ winimg_paint(struct term* term)
             if (dchar->attr.attr & (TATTR_RESULT| TATTR_CURRESULT))
               update_flag = true;
             if (term->selected && !update_flag) {
-	      pos scrpos = {y + term->disptop, x};
+              pos scrpos = {y + term->disptop, x};
               update_flag = term->sel_rect
                   ? posPle(term->sel_start, scrpos) && posPlt(scrpos, term->sel_end)
                   : posle(term->sel_start, scrpos) && poslt(scrpos, term->sel_end);
@@ -372,8 +372,8 @@ winimg_paint(struct term* term)
               ExcludeClipRect(dc,
                               x * wide_factor * cell_width + PADDING,
                               y * cell_height + PADDING,
-                              (x + 1) * wide_factor * cell_width + 1,
-                              (y + 1) * cell_height + 1);
+                              (x + 1) * wide_factor * cell_width + PADDING,
+                              (y + 1) * cell_height + PADDING);
           }
         }
         StretchBlt(dc, left * cell_width + PADDING, top * cell_height + PADDING,

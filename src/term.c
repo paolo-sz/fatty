@@ -1217,7 +1217,12 @@ term_paint(struct term* term)
         !termchars_equal_override(&dispchars[j], d, tchar, tattr);
       dirty_run |= do_copy;
 
-      text[textlen++] = tchar;
+      if (tchar == SIXELCH)
+        // indicate visually that the image will not be copied
+        text[textlen++] = 0xFFFD;
+      else
+        text[textlen++] = tchar;
+
       if (!has_rtl)
         has_rtl = is_rtl_class(tbc);
 

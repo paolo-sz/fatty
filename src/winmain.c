@@ -1104,6 +1104,7 @@ confirm_multi_tab(void)
 }
 
 #define dont_debug_messages
+#define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
 
 static LRESULT CALLBACK
@@ -1129,6 +1130,9 @@ static struct {
       && message != WM_MOUSEMOVE && message != WM_NCMOUSEMOVE
 # endif
      )
+#ifdef debug_only_sizepos_messages
+    if (strstr(wm_name, "POSCH") || strstr(wm_name, "SIZ"))
+#endif
     printf("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
@@ -1137,8 +1141,10 @@ static struct {
   switch (message) {
     when WM_NCCREATE:
       if (pEnableNonClientDpiScaling) {
-        CREATESTRUCT * csp = (CREATESTRUCT *)lp;
-        BOOL res = pEnableNonClientDpiScaling(csp->hwndParent);
+        //CREATESTRUCT * csp = (CREATESTRUCT *)lp;
+        resizing = true;
+        BOOL res = pEnableNonClientDpiScaling(wnd);
+        resizing = false;
         (void)res;
 #ifdef debug_dpi
         uint err = GetLastError();
@@ -2293,20 +2299,6 @@ main(int argc, char *argv[])
                         window_style | (cfg.scrollbar ? WS_VSCROLL : 0),
                         x, y, width, height,
                         null, null, inst, null);
-  if (pEnableNonClientDpiScaling) {
-    BOOL res = pEnableNonClientDpiScaling(wnd);
-    (void)res;
-#ifdef debug_dpi
-    uint err = GetLastError();
-    int wmlen = 1024;  // size of heap-allocated array
-    wchar winmsg[wmlen];  // constant and < 1273 or 1705 => issue #530
-    FormatMessageW(
-          FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
-          0, err, 0, winmsg, wmlen, 0
-    );
-    printf("EnableNonClientDpiScaling: %d %ls\n", !!res, winmsg);
-#endif
-  }
 
   tab_wnd = CreateWindowW(WC_TABCONTROLW, 0, 
                           WS_CHILD | WS_CLIPSIBLINGS | TCS_FOCUSNEVER | TCS_OWNERDRAWFIXED, 
