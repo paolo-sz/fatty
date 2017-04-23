@@ -255,7 +255,7 @@ adjust_font_weights()
     (void)fontType;
     (void)lParam;
 
-    trace_font(("%ls %ld it %d cs %d %s\n", lfp->lfFaceName, lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+    trace_font(("%ls %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
 
     font_found = true;
     if (lfp->lfCharSet == ANSI_CHARSET)
@@ -358,15 +358,19 @@ win_init_fonts(int size)
     fw_norm = cfg.font.weight;
     fw_bold = min(fw_norm + 300, 1000);
     // adjust selected font weights to available font weights
+    trace_font(("-> weight %d/%d\n", fw_norm, fw_bold));
     adjust_font_weights();
+    trace_font(("->     -> %d/%d\n", fw_norm, fw_bold));
   }
   else if (cfg.font.isbold) {
     fw_norm = FW_BOLD;
     fw_bold = FW_HEAVY;
+    trace_font(("-> isbold %d/%d\n", fw_norm, fw_bold));
   }
   else {
     fw_norm = FW_DONTCARE;
     fw_bold = FW_BOLD;
+    trace_font(("-> normal %d/%d\n", fw_norm, fw_bold));
   }
 
   HDC dc = GetDC(wnd);
@@ -377,7 +381,7 @@ win_init_fonts(int size)
   fonts[FONT_NORMAL] = create_font(fw_norm, false);
 
   GetObject(fonts[FONT_NORMAL], sizeof (LOGFONT), &lfont);
-  trace_font(("font %s %ld it %d cs %d\n", lfont.lfFaceName, lfont.lfWeight, lfont.lfItalic, lfont.lfCharSet));
+  trace_font(("font %s %ld it %d cs %d\n", lfont.lfFaceName, (long int)lfont.lfWeight, lfont.lfItalic, lfont.lfCharSet));
 
   SelectObject(dc, fonts[FONT_NORMAL]);
   GetTextMetrics(dc, &tm);
@@ -502,10 +506,12 @@ win_init_fonts(int size)
   }
 
   if (bold_mode == BOLD_FONT && fontsize[FONT_BOLD] != fontsize[FONT_NORMAL]) {
+    trace_font(("bold_mode %d\n", bold_mode));
     bold_mode = BOLD_SHADOW;
     DeleteObject(fonts[FONT_BOLD]);
     fonts[FONT_BOLD] = 0;
   }
+  trace_font(("bold_mode %d\n", bold_mode));
   fontflag[0] = fontflag[1] = fontflag[2] = 1;
 }
 
@@ -746,6 +752,10 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
   if (attr.attr & ATTR_NARROW)
     nfont |= FONT_NARROW;
 
+#ifdef debug_bold
+  wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
+  printf("bold_mode %d attr_bold %d <%ls>\n", bold_mode, !!(attr.attr & ATTR_BOLD), t);
+#endif
   if (bold_mode == BOLD_FONT && (attr.attr & ATTR_BOLD))
     nfont |= FONT_BOLD;
   if (und_mode == UND_FONT && (attr.attr & ATTR_UNDER))
@@ -779,7 +789,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
   }
   if (attr.attr & ATTR_BOLD && cfg.bold_as_colour) {
     if (fgi < 8) {
-      apply_shadow = false;
+      if (!cfg.bold_as_font)
+        apply_shadow = false;
+#ifdef debug_bold
+      printf("fgi < 8 (%d %d): apply_shadow %d\n", (int)colours[fgi], (int)colours[fgi | 8], apply_shadow);
+#endif
 #ifdef enforce_bold
       if (colours[fgi] == colours[fgi | 8])
         apply_shadow = true;
