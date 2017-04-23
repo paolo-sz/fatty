@@ -110,6 +110,7 @@ typedef struct {
   bool bell_taskbar;
   wstring printer;
   bool confirm_exit;
+  bool allow_set_selection;
   // Command line
   wstring classname;
   char hold;
