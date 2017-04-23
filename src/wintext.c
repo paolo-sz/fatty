@@ -202,6 +202,17 @@ row_padding(int i, int e)
 #define trace_font(params)	
 #endif
 
+static UINT
+get_default_charset()
+{
+  CHARSETINFO csi;
+  long int lcid = GetSystemDefaultLCID();
+  if (TranslateCharsetInfo((DWORD *)lcid, &csi, TCI_SRCLOCALE))
+    return csi.ciCharset;
+  else
+    return DEFAULT_CHARSET;
+}
+
 static void
 adjust_font_weights()
 {
@@ -227,6 +238,11 @@ adjust_font_weights()
   int fw_norm_1 = 1000;
   int fw_bold_1 = 1001;
   bool font_found = false;
+#ifdef check_ansi
+  bool ansi_found = false;
+#endif
+  int default_charset = get_default_charset();
+  bool cs_found = default_charset == DEFAULT_CHARSET;
 
   int CALLBACK enum_fonts(const LOGFONTW * lfp, const TEXTMETRICW * tmp, DWORD fontType, LPARAM lParam)
   {
@@ -237,6 +253,13 @@ adjust_font_weights()
     trace_font(("%ls %ld it %d cs %d %s\n", lfp->lfFaceName, lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
 
     font_found = true;
+#ifdef check_ansi
+    if (lfp->lfCharSet == ANSI_CHARSET)
+      ansi_found = true;
+#endif
+    if (lfp->lfCharSet == default_charset || lfp->lfCharSet == DEFAULT_CHARSET)
+      cs_found = true;
+
     if (lfp->lfWeight > fw_norm_0 && lfp->lfWeight <= fw_norm)
       fw_norm_0 = lfp->lfWeight;
     if (lfp->lfWeight > fw_bold_0 && lfp->lfWeight <= fw_bold)
@@ -262,6 +285,13 @@ adjust_font_weights()
     trace_font(("//\n"));
     return;
   }
+#ifdef check_ansi
+  if (!ansi_found)
+    MessageBoxW(0, L"Font does not support ANSI character range", cfg.font.name, MB_ICONWARNING);
+#endif
+  if (!cs_found)
+    MessageBoxW(0, L"Font does not support system locale", cfg.font.name, MB_ICONWARNING);
+
   // find available widths closest to selected widths
   if (abs(fw_norm - fw_norm_0) <= abs(fw_norm - fw_norm_1) && fw_norm_0 > 0)
     fw_norm = fw_norm_0;
@@ -355,9 +385,11 @@ win_init_fonts(int size)
   row_spacing += cfg.row_spacing;
   if (row_spacing < -tm.tmDescent)
     row_spacing = -tm.tmDescent;
-  if (tm.tmCharSet) {
-    MessageBoxW(0, L"Font does not support ANSI character range", cfg.font.name, MB_ICONWARNING);
+#ifdef check_charset_1
+  if (tm.tmCharSet != get_default_charset()) {
+    MessageBoxW(0, L"Font does not support system locale", cfg.font.name, MB_ICONWARNING);
   }
+#endif
 
   font_height = tm.tmHeight + row_spacing;
   font_width = tm.tmAveCharWidth + cfg.col_spacing;
