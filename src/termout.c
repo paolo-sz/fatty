@@ -1235,11 +1235,15 @@ term_write(struct term* term, const char *buf, uint len)
 
         if (is_low_surrogate(wc)) {
           if (hwc) {
-            #if HAS_LOCALES
+#if HAS_LOCALES
+# ifdef __midipix__
+            int width = mcwidth(combine_surrogates(hwc, wc));
+# else
             int width = wcswidth((wchar[]){hwc, wc}, 2);
-            #else
+# endif
+#else
             int width = xcwidth(combine_surrogates(hwc, wc));
-            #endif
+#endif
             write_char(term, hwc, width);
             write_char(term, wc, 0);
           }
@@ -1271,11 +1275,11 @@ term_write(struct term* term, const char *buf, uint len)
         if (cfg.wide_indic && wc >= 0x0900 && indicwide(wc))
           width = 2;
         else
-        #if HAS_LOCALES
+#if HAS_LOCALES
           width = wcwidth(wc);
-        #else
+#else
           width = xcwidth(wc);
-        #endif
+#endif
 
         unsigned long long asav = term->curs.attr.attr;
         switch (term->curs.csets[term->curs.g1]) {
@@ -1287,9 +1291,15 @@ term_write(struct term* term, const char *buf, uint len)
               if ('j' <= wc && wc <= 'x') {
                 static uchar linedraw_code[31] = {
                   0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+#if __GNUC__ >= 5
                   0b1001, 0b1100, 0b0110, 0b0011, 0b1111,  // ┘┐┌└┼
                   0x10, 0x20, 0b1010, 0x40, 0x50,          // ⎺⎻─⎼⎽
                   0b0111, 0b1101, 0b1011, 0b1110, 0b0101,  // ├┤┴┬│
+#else // < 4.3
+                  0x09, 0x0C, 0x06, 0x03, 0x0F,  // ┘┐┌└┼
+                  0x10, 0x20, 0x0A, 0x40, 0x50,  // ⎺⎻─⎼⎽
+                  0x07, 0x0D, 0x0B, 0x0E, 0x05,  // ├┤┴┬│
+#endif
                   0, 0, 0, 0, 0, 0
                 };
                 uchar dispcode = linedraw_code[wc - 0x60];

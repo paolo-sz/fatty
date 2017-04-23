@@ -337,7 +337,7 @@ void win_paint_tabs(LPARAM lp, int width) {
 
     HDC dc = GetDC(wnd);
     SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
-    const auto brush = CreateSolidBrush(cfg.tab_bg_colour);
+    const auto brush = CreateSolidBrush(cfg.bg_colour);
     FillRect(dc, &loc_tabrect, brush);
     DeleteObject(brush);
     ReleaseDC(wnd, dc);

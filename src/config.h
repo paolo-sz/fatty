@@ -47,6 +47,7 @@ typedef struct {
   colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
   colour search_fg_colour, search_bg_colour, search_current_colour;
   wstring theme_file;
+  string colour_scheme;
   char transparency;
   bool blurred;
   bool opaque_when_focused;
@@ -144,6 +145,7 @@ extern config cfg, new_cfg, file_cfg;
 extern void init_config(void);
 extern void load_config(string filename, bool to_save);
 extern void load_theme(wstring theme);
+extern void load_scheme(string colour_scheme);
 extern void set_arg_option(string name, string val);
 extern void parse_arg_option(string);
 extern void remember_arg(string);
