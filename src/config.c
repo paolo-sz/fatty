@@ -34,7 +34,7 @@ const config default_cfg = {
   .search_fg_colour = 0x000000,
   .search_bg_colour = 0x00DDDD,
   .search_current_colour = 0x0099DD,
-  .theme_file = L"",
+  .theme_file = W(""),
   .colour_scheme = "",
   .transparency = 0,
   .blurred = false,
@@ -42,7 +42,7 @@ const config default_cfg = {
   .cursor_type = CUR_LINE,
   .cursor_blinks = true,
   // Text
-  .font = {.name = L"Lucida Console", .size = 9, .weight = 400, .isbold = false},
+  .font = {.name = W("Lucida Console"), .size = 9, .weight = 400, .isbold = false},
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
   .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
@@ -89,37 +89,38 @@ const config default_cfg = {
   .search_bar = "",
   // Terminal
   .term = "xterm",
-  .answerback = L"",
+  .answerback = W(""),
   .bell_sound = false,
   .bell_type = 1,
-  .bell_file = L"",
+  .bell_file = W(""),
   .bell_freq = 0,
   .bell_len = 400,
   .bell_flash = false,
   .bell_taskbar = true,
-  .printer = L"",
+  .printer = W(""),
   .confirm_exit = true,
   // Command line
-  .classname = L"",
+  .classname = W(""),
   .hold = HOLD_START,
   .exit_write = false,
-  .exit_title = L"",
-  .icon = L"",
-  .log = L"",
+  .exit_title = W(""),
+  .icon = W(""),
+  .log = W(""),
   .create_utmp = false,
-  .title = L"",
+  .title =  W(""),
   .title_settable = true,
   .daemonize = true,
   .daemonize_always = false,
   // "Hidden"
-  .app_id = L"",
-  .app_name = L"",
-  .app_launch_cmd = L"",
+  .app_id = W(""),
+  .app_name = W(""),
+  .app_launch_cmd = W(""),
   .col_spacing = 0,
   .row_spacing = 0,
   .padding = 1,
   .handle_dpichanged = true,
   .wide_indic = false,
+  .wide_extra = false,
   .word_chars = "",
   .word_chars_excl = "",
   .use_system_colours = false,
@@ -282,6 +283,7 @@ options[] = {
   {"Padding", OPT_INT, offcfg(padding)},
   {"HandleDPI", OPT_BOOL, offcfg(handle_dpichanged)},
   {"WideIndic", OPT_BOOL, offcfg(wide_indic)},
+  {"WideExtra", OPT_BOOL, offcfg(wide_extra)},
   {"WordChars", OPT_STRING, offcfg(word_chars)},
   {"WordCharsExcl", OPT_STRING, offcfg(word_chars_excl)},
   {"IMECursorColour", OPT_COLOUR, offcfg(ime_cursor_colour)},
@@ -694,7 +696,7 @@ load_theme(wstring theme)
       free(thf);
     }
     else {
-      char * thf = get_resource_file(L"themes", theme, false);
+      char * thf = get_resource_file(W("themes"), theme, false);
       if (thf) {
         load_config(thf, false);
         free(thf);
@@ -989,10 +991,10 @@ current_size_handler(control *unused(ctrl), int event)
 static void
 printer_handler(control *ctrl, int event)
 {
-  const wstring NONE = L"◇ None (printing disabled) ◇";  // ♢◇
-  const wstring CFG_NONE = L"";
-  const wstring DEFAULT = L"◆ Default printer ◆";  // ♦◆
-  const wstring CFG_DEFAULT = L"*";
+  const wstring NONE = _W("◇ None (printing disabled) ◇");  // ♢◇
+  const wstring CFG_NONE = W("");
+  const wstring DEFAULT = _W("◆ Default printer ◆");  // ♦◆
+  const wstring CFG_DEFAULT = W("*");
   wstring printer = new_cfg.printer;
   if (event == EVENT_REFRESH) {
     dlg_listbox_clear(ctrl);
@@ -1204,13 +1206,13 @@ add_file_resources(control *ctrl, wstring pattern)
 static void
 bellfile_handler(control *ctrl, int event)
 {
-  const wstring NONE = L"◇ None (system sound) ◇";  // ♢◇
-  const wstring CFG_NONE = L"";
+  const wstring NONE = _W("◇ None (system sound) ◇");  // ♢◇
+  const wstring CFG_NONE = W("");
   wstring bell_file = new_cfg.bell_file;
   if (event == EVENT_REFRESH) {
     dlg_listbox_clear(ctrl);
     dlg_listbox_add_w(ctrl, NONE);
-    add_file_resources(ctrl, L"sounds/*.wav");
+    add_file_resources(ctrl, W("sounds/*.wav"));
     // strip std dir prefix...
     dlg_editbox_set_w(ctrl, *bell_file ? bell_file : NONE);
   }
@@ -1305,18 +1307,18 @@ download_scheme(char * url)
 static void
 theme_handler(control *ctrl, int event)
 {
-  const wstring NONE = L"◇ None ◇";  // ♢◇
-  const wstring CFG_NONE = L"";
+  const wstring NONE = _W("◇ None ◇");  // ♢◇
+  const wstring CFG_NONE = W("");
   wstring theme_name = new_cfg.theme_file;
   if (event == EVENT_REFRESH) {
     dlg_listbox_clear(ctrl);
     dlg_listbox_add_w(ctrl, NONE);
-    add_file_resources(ctrl, L"themes/*");
+    add_file_resources(ctrl, W("themes/*"));
 #ifdef attempt_to_keep_scheme_hidden
     if (*new_cfg.colour_scheme)
       // don't do this, rather keep previously entered name to store scheme
       // scheme string will not be entered here anyway
-      dlg_editbox_set_w(ctrl, L"");
+      dlg_editbox_set_w(ctrl, W(""));
     else
 #endif
     dlg_editbox_set_w(ctrl, *theme_name ? theme_name : NONE);
@@ -1339,9 +1341,9 @@ theme_handler(control *ctrl, int event)
                  );
   }
   else if (event == EVENT_DROP) {
-    if (wcsncmp(L"data:text/plain,", dragndrop, 16) == 0) {
-      dlg_editbox_set_w(ctrl, L"");
-      wstrset(&new_cfg.theme_file, L"");
+    if (wcsncmp(W("data:text/plain,"), dragndrop, 16) == 0) {
+      dlg_editbox_set_w(ctrl, W(""));
+      wstrset(&new_cfg.theme_file, W(""));
       // un-URL-escape scheme description
       char * scheme = cs__wcstoutf(&dragndrop[16]);
       char * url = scheme;
@@ -1363,10 +1365,10 @@ theme_handler(control *ctrl, int event)
       free(scheme);
       enable_widget(store_button, false);
     }
-    else if (wcsncmp(L"http:", dragndrop, 5) == 0
-          || wcsncmp(L"https:", dragndrop, 6) == 0
-          || wcsncmp(L"ftp:", dragndrop, 4) == 0
-          || wcsncmp(L"ftps:", dragndrop, 5) == 0
+    else if (wcsncmp(W("http:"), dragndrop, 5) == 0
+          || wcsncmp(W("https:"), dragndrop, 6) == 0
+          || wcsncmp(W("ftp:"), dragndrop, 4) == 0
+          || wcsncmp(W("ftps:"), dragndrop, 5) == 0
             ) {
       char * url = cs__wcstoutf(dragndrop);
       char * sch = download_scheme(url);
@@ -1389,7 +1391,7 @@ theme_handler(control *ctrl, int event)
       }
       else {
         win_bell(win_active_terminal(), &new_cfg);  // Could not load web theme
-        win_show_warning(L"Could not load web theme");
+        win_show_warning(_W("Could not load web theme"));
       }
       free(url);
     }
@@ -1419,7 +1421,7 @@ scheme_saver(control *ctrl, int event)
 #endif
     if (*new_cfg.colour_scheme && *theme_name)
       if (!wcschr(theme_name, L'/') && !wcschr(theme_name, L'\\')) {
-        char * sn = get_resource_file(L"themes", theme_name, true);
+        char * sn = get_resource_file(W("themes"), theme_name, true);
         if (sn) {
           // save colour_scheme to theme_file
           FILE * thf = fopen(sn, "w");
@@ -1438,12 +1440,12 @@ scheme_saver(control *ctrl, int event)
           }
           else {
             win_bell(win_active_terminal(), &new_cfg);  // Cannot write theme file
-            win_show_warning(L"Cannot write theme file");
+            win_show_warning(_W("Cannot write theme file"));
           }
         }
         else {
           win_bell(win_active_terminal(), &new_cfg);  // Cannot store theme file
-          win_show_warning(L"Cannot store theme file");
+          win_show_warning(_W("Cannot store theme file"));
         }
       }
   }
@@ -1510,7 +1512,7 @@ setup_config_box(controlbox * b)
   );
   ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
   ctrl_columns(s, 2, 80, 20);
-  ctrl_pushbutton(s, "Color Scheme Designer", url_opener, L"http://ciembor.github.io/4bit/")
+  ctrl_pushbutton(s, "Color Scheme Designer", url_opener, W("http://ciembor.github.io/4bit/"))
     ->column = 0;
   (store_button = ctrl_pushbutton(s, "Store", scheme_saver, 0))
     ->column = 1;

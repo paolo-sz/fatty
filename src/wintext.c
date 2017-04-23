@@ -13,6 +13,7 @@
 
 #include <winnls.h>
 
+
 enum {
   FONT_NORMAL    = 0x00,
   FONT_BOLD      = 0x01,
@@ -20,10 +21,10 @@ enum {
   FONT_BOLDUND   = FONT_BOLD | FONT_UNDERLINE,
   FONT_ITALIC    = 0x04,
   FONT_STRIKEOUT = 0x08,
-  FONT_WIDE      = 0x10,
-  FONT_HIGH      = 0x20,
+  FONT_HIGH      = 0x10,
+  FONT_WIDE      = 0x20,
   FONT_NARROW    = 0x40,
-  FONT_MAXNO     = 0x80
+  FONT_MAXNO     = FONT_WIDE + FONT_NARROW
 };
 
 LOGFONT lfont;
@@ -83,10 +84,11 @@ static enum {UND_LINE, UND_FONT} und_mode;
 static int descent;
 
 // Current font size (with any zooming)
-int font_size;
+int font_size;  // logical font size, as configured (< 0: pixel size)
 
 // Font screen dimensions
-int font_width, font_height;
+int cell_width, cell_height;  // includes spacing
+static int font_height;  // pure font height, without spacing
 int PADDING = 1;
 static bool font_dualwidth;
 
@@ -172,11 +174,21 @@ get_font_quality(void) {
     }[(int)cfg.font_smoothing];
 }
 
+#define dont_debug_create_font
+
+#define dont_debug_fonts
+
+#ifdef debug_fonts
+#define trace_font(params)	printf params
+#else
+#define trace_font(params)	
+#endif
+
 static HFONT
 create_font(int weight, bool underline)
 {
 #ifdef debug_create_font
-  printf("font [??]: %d 0 w%4d i0 u%d s0\n", font_height, weight, underline);
+  printf("font [??]: %d (size %d) 0 w%4d i0 u%d s0\n", font_height, font_size, weight, underline);
 #endif
   return
     CreateFontW(
@@ -203,14 +215,6 @@ row_padding(int i, int e)
       return 0;  // return adj may look nicer but break box characters
   }
 }
-
-#define dont_debug_fonts
-
-#ifdef debug_fonts
-#define trace_font(params)	printf params
-#else
-#define trace_font(params)	
-#endif
 
 static void
 show_msg(wstring msg, wstring title)
@@ -244,12 +248,12 @@ adjust_font_weights()
 {
   LOGFONTW lf;
 #if CYGWIN_VERSION_API_MINOR >= 201
-  swprintf(lf.lfFaceName, lengthof(lf.lfFaceName), L"%ls", cfg.font.name);
+  swprintf(lf.lfFaceName, lengthof(lf.lfFaceName), W("%ls"), cfg.font.name);
 #else
   if (wcslen(cfg.font.name) < lengthof(lf.lfFaceName))
     wcscpy(lf.lfFaceName, cfg.font.name);
   else
-    wcscpy(lf.lfFaceName, L"Lucida Console");
+    wcscpy(lf.lfFaceName, W"Lucida Console"));
 #endif
   lf.lfPitchAndFamily = 0;
   //lf.lfCharSet = ANSI_CHARSET;   // report only ANSI character range
@@ -274,7 +278,8 @@ adjust_font_weights()
     (void)fontType;
     (void)lParam;
 
-    trace_font(("%ls %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+    //trace_font(("%ls %ldx%ld (%ldx%ld) %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)tmp->tmAveCharWidth, (long int)tmp->tmHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+    trace_font(("%ls %ldx%ld %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
 
     font_found = true;
     if (lfp->lfCharSet == ANSI_CHARSET)
@@ -301,14 +306,14 @@ adjust_font_weights()
 
   // check if no font found
   if (!font_found) {
-    show_msg(L"Font not found, using system substitute", cfg.font.name);
+    show_msg(_W("Font not found, using system substitute"), cfg.font.name);
     fw_norm = 400;
     fw_bold = 700;
     trace_font(("//\n"));
     return;
   }
   if (!ansi_found && !cs_found) {
-    show_msg(L"Font has limited support for character ranges", cfg.font.name);
+    show_msg(_W("Font has limited support for character ranges"), cfg.font.name);
   }
 
   // find available widths closest to selected widths
@@ -343,8 +348,6 @@ adjust_font_weights()
   }
   trace_font((" -> %d/%d\n", fw_norm, fw_bold));
 }
-
-#define dont_debug_font_scaling
 
 /*
  * Initialise all the fonts we will need initially. There may be as many as
@@ -405,15 +408,12 @@ win_init_fonts(int size)
 
   HDC dc = GetDC(wnd);
   font_height =
-    size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : size;
+    size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : -size;
   // we might think about considering GetDpiForMonitor to scale the 
   // font size here,
   // but in fact this is already achieved by the handling of WM_DPICHANGED, 
   // see there; (unless we would want to consider it initially)
-#ifdef debug_font_scaling
-  printf("size %d -> height %d\n", size, font_height);
-#endif
-  font_width = 0;
+  cell_width = 0;
 
   fonts[FONT_NORMAL] = create_font(fw_norm, false);
 
@@ -423,7 +423,7 @@ win_init_fonts(int size)
   SelectObject(dc, fonts[FONT_NORMAL]);
   GetTextMetrics(dc, &tm);
   row_spacing = row_padding(tm.tmInternalLeading, tm.tmExternalLeading);
-  trace_font(("h %ld asc %ld dsc %ld ild %ld eld %ld %ls\n", tm.tmHeight, tm.tmAscent, tm.tmDescent, tm.tmInternalLeading, tm.tmExternalLeading, cfg.font.name));
+  trace_font(("h %ld asc %ld dsc %ld ild %ld eld %ld %ls\n", (long int)tm.tmHeight, (long int)tm.tmAscent, (long int)tm.tmDescent, (long int)tm.tmInternalLeading, (long int)tm.tmExternalLeading, cfg.font.name));
   row_spacing += cfg.row_spacing;
   if (row_spacing < -tm.tmDescent)
     row_spacing = -tm.tmDescent;
@@ -434,19 +434,22 @@ win_init_fonts(int size)
 #ifdef check_charset_only_for_returned_font
   int default_charset = get_default_charset();
   if (tm.tmCharSet != default_charset && default_charset != DEFAULT_CHARSET) {
-    show_msg(L"Font does not support system locale", cfg.font.name);
+    show_msg(_W("Font does not support system locale"), cfg.font.name);
   }
 #endif
 
-  // to be checked: whether usages of font_height should include row_spacing
-  // (and likewise for font_width);
+  // to be checked: whether usages of cell_height should include row_spacing
+  // (and likewise for cell_width);
   // for font creation, as a workaround, row_spacing is removed again
-  font_height = tm.tmHeight + row_spacing;
-  font_width = tm.tmAveCharWidth + cfg.col_spacing;
+  cell_height = tm.tmHeight + row_spacing;
+  cell_width = tm.tmAveCharWidth + cfg.col_spacing;
   font_dualwidth = (tm.tmMaxCharWidth >= tm.tmAveCharWidth * 3 / 2);
   PADDING = tm.tmAveCharWidth;
   if (cfg.padding >= 0 && cfg.padding < PADDING)
     PADDING = cfg.padding;
+#ifdef debug_create_font
+  printf("size %d -> height %d -> height %d\n", size, font_height, cell_height);
+#endif
 
   // Determine whether ambiguous-width characters are wide in this font */
   float latin_char_width, greek_char_width, line_char_width;
@@ -505,7 +508,7 @@ win_init_fonts(int size)
     COLORREF c;
 
     und_dc = CreateCompatibleDC(dc);
-    und_bm = CreateCompatibleBitmap(dc, font_width, font_height);
+    und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
     und_oldbm = SelectObject(und_dc, und_bm);
     SelectObject(und_dc, fonts[FONT_UNDERLINE]);
     SetTextAlign(und_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
@@ -514,8 +517,8 @@ win_init_fonts(int size)
     SetBkMode(und_dc, OPAQUE);
     ExtTextOut(und_dc, 0, 0, ETO_OPAQUE, null, " ", 1, null);
     gotit = false;
-    for (i = 0; i < font_height; i++) {
-      c = GetPixel(und_dc, font_width / 2, i);
+    for (i = 0; i < cell_height; i++) {
+      c = GetPixel(und_dc, cell_width / 2, i);
       if (c != RGB(0, 0, 0))
         gotit = true;
     }
@@ -534,8 +537,8 @@ win_init_fonts(int size)
     fonts[FONT_BOLD] = create_font(fw_bold, false);
 
   descent = tm.tmAscent + 1;
-  if (descent >= font_height)
-    descent = font_height - 1;
+  if (descent >= cell_height)
+    descent = cell_height - 1;
 
   for (i = 0; i < 3; i++) {
     if (fonts[i]) {
@@ -607,12 +610,22 @@ win_paint(void)
   // to be consistent during with the visual state of things
   g_render_tab_height = win_tab_height();
 
+#ifdef strange_calculation
   term_invalidate(term,
-    (p.rcPaint.left - PADDING) / font_width,
-    (p.rcPaint.top - PADDING) / font_height,
-    (p.rcPaint.right - PADDING - 1) / font_width,
-    (p.rcPaint.bottom - PADDING - 1) / font_height
+    (p.rcPaint.left - PADDING) / cell_width,
+    (p.rcPaint.top - PADDING) / cell_height,
+    (p.rcPaint.right - PADDING - 1) / cell_width,
+    (p.rcPaint.bottom - PADDING - 1) / cell_height
   );
+#else
+  term_invalidate(term,
+    (p.rcPaint.left) / cell_width,
+    (p.rcPaint.top) / cell_height,
+    (p.rcPaint.right - 2 * PADDING) / cell_width,
+    (p.rcPaint.bottom - 2 * PADDING) / cell_height
+  );
+  // or simply term_invalidate(0, 0, term.cols, term.rows) ?
+#endif
 
   if (update_state != UPDATE_PENDING)
     term_paint(term);
@@ -621,8 +634,8 @@ win_paint(void)
 
   if (p.fErase || p.rcPaint.left < PADDING ||
       p.rcPaint.top < PADDING ||
-      p.rcPaint.right >= PADDING + font_width * term->cols ||
-      p.rcPaint.bottom >= PADDING + font_height * term->rows) {
+      p.rcPaint.right >= PADDING + cell_width * term->cols ||
+      p.rcPaint.bottom >= PADDING + cell_height * term->rows) {
     colour bg_colour = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
     HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(bg_colour));
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, bg_colour));
@@ -631,8 +644,8 @@ win_paint(void)
                       p.rcPaint.bottom);
 
     ExcludeClipRect(dc, PADDING, PADDING,
-                    PADDING + font_width * term->cols,
-                    PADDING + g_render_tab_height + font_height * term->rows);
+                    PADDING + cell_width * term->cols,
+                    PADDING + g_render_tab_height + cell_height * term->rows);
 
     Rectangle(dc, p.rcPaint.left, p.rcPaint.top,
                   p.rcPaint.right, p.rcPaint.bottom);
@@ -685,8 +698,8 @@ do_update(void)
   // blind people: apparently some helper software tracks the system caret,
   // so we should arrange to have one.)
   if (term->has_focus) {
-    int x = term->curs.x * font_width + PADDING;
-    int y = (term->curs.y - term->disptop) * font_height + PADDING;
+    int x = term->curs.x * cell_width + PADDING;
+    int y = (term->curs.y - term->disptop) * cell_height + PADDING;
     SetCaretPos(x, y);
     if (ime_open) {
       COMPOSITIONFORM cf = {.dwStyle = CFS_POINT, .ptCurrentPos = {x, y}};
@@ -738,7 +751,7 @@ another_font(int fontno)
   i = false;
   s = false;
   u = false;
-  x = font_width;
+  x = cell_width;
 
   if (fontno & FONT_WIDE)
     x *= 2;
@@ -754,12 +767,12 @@ another_font(int fontno)
     u = true;
 
 #ifdef debug_create_font
-  printf("font [%02X]: %d %d w%4d i%d u%d s%d\n", fontno, font_height * (1 + !!(fontno & FONT_HIGH)), x, w, i, u, s);
+  printf("font [%02X]: %d (size %d) %d w%4d i%d u%d s%d\n", fontno, font_height * (1 + !!(fontno & FONT_HIGH)), font_size, x, w, i, u, s);
 #endif
   fonts[fontno] =
     // workaround: remove effect of row_spacing from font creation;
-    // to be checked: usages of font_height elsewhere
-    CreateFontW((font_height - row_spacing) * (1 + !!(fontno & FONT_HIGH)), x, 0, 0, w, i, u, s,
+    // to be checked: usages of cell_height elsewhere
+    CreateFontW(font_height * (1 + !!(fontno & FONT_HIGH)), x, 0, 0, w, i, u, s,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 get_font_quality(), FIXED_PITCH | FF_DONTCARE, cfg.font.name);
 
@@ -860,7 +873,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
 {
   trace_line("win_text:", text, len);
   lattr &= LATTR_MODE;
-  int char_width = font_width * (1 + (lattr != LATTR_NORM));
+  int char_width = cell_width * (1 + (lattr != LATTR_NORM));
 
  /* Only want the left half of double width lines */
   // check this before scaling up x to pixels!
@@ -869,7 +882,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
 
  /* Convert to window coordinates */
   x = x * char_width + PADDING;
-  y = y * font_height + PADDING + g_render_tab_height;
+  y = y * cell_height + PADDING + g_render_tab_height;
 
   if (attr.attr & ATTR_WIDE)
     char_width *= 2;
@@ -880,6 +893,10 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
     when LATTR_WIDE: nfont = FONT_WIDE;
     otherwise:       nfont = FONT_WIDE + FONT_HIGH;
   }
+
+  if (attr.attr & ATTR_EXPAND)
+    nfont |= FONT_WIDE;
+  else
   if (attr.attr & ATTR_NARROW)
     nfont |= FONT_NARROW;
 
@@ -904,6 +921,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
     // Don't force manual bold, it could be bad news.
     nfont &= ~(FONT_BOLD | FONT_UNDERLINE);
   }
+  if ((nfont & (FONT_WIDE | FONT_NARROW)) == (FONT_WIDE | FONT_NARROW))
+    nfont &= ~(FONT_WIDE | FONT_NARROW);
   another_font(nfont);
   if (!fonts[nfont])
     nfont = FONT_NORMAL;
@@ -1040,8 +1059,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
   bool combining = attr.attr & TATTR_COMBINING;
   int width = char_width * (combining ? 1 : len);
   RECT box = {
-    .top = y, .bottom = y + font_height,
-    .left = x, .right = min(x + width, font_width * win_active_terminal()->cols + PADDING)
+    .top = y, .bottom = y + cell_height,
+    .left = x, .right = min(x + width, cell_width * win_active_terminal()->cols + PADDING)
   };
 
  /* Array with offsets between neighbouring characters */
@@ -1061,7 +1080,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
         let_windows_combine = true;
   }
 
-  int yt = y + (row_spacing / 2) - (lattr == LATTR_BOT ? font_height : 0);
+  int yt = y + (row_spacing / 2) - (lattr == LATTR_BOT ? cell_height : 0);
   int xt = x + (cfg.col_spacing / 2);
 
   int graph = (attr.attr >> ATTR_GRAPH_SHIFT) & 0xFF;
@@ -1100,17 +1119,17 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
       // Repeat the workaround for bold/wide below.
 
       // base character
-      ExtTextOutW(dc, xt, yt, eto_options | overwropt, &box, text, 1, dxs);
+      ExtTextOutW(dc, xt + xoff, yt, eto_options | overwropt, &box, text, 1, dxs);
       if (overwropt) {
         SetBkMode(dc, TRANSPARENT);
         overwropt = 0;
       }
       // combining characters
       for (int i = 1; i < len; i++)
-        ExtTextOutW(dc, xt, yt, eto_options, &box, &text[i], 1, dxs);
+        ExtTextOutW(dc, xt + xoff, yt, eto_options, &box, &text[i], 1, dxs);
     }
     else {
-      ExtTextOutW(dc, xt, yt, eto_options | overwropt, &box, text, len, dxs);
+      ExtTextOutW(dc, xt + xoff, yt, eto_options | overwropt, &box, text, len, dxs);
       if (overwropt) {
         SetBkMode(dc, TRANSPARENT);
         overwropt = 0;
@@ -1121,7 +1140,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
                     + (attr.attr & ATTR_BOLD ? 2 : 0)
                     + (lattr >= LATTR_WIDE ? 2 : 0)
                     + (lattr >= LATTR_TOP ? 2 : 0)
-                   ) * font_height / 40;
+                   ) * cell_height / 40;
 
 #define dont_debug_vt100_line_drawing_chars
 #ifdef debug_vt100_line_drawing_chars
@@ -1146,11 +1165,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
 
   if (graph >> 4) {  // VT100 horizontal lines ⎺⎻(─)⎼⎽
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-    int yoff = font_height * (graph >> 4) / 5 - font_height / 10 - line_width / 2;
+    int yoff = cell_height * (graph >> 4) / 5 - cell_height / 10 - line_width / 2;
     if (lattr >= LATTR_TOP)
       yoff *= 2;
     if (lattr == LATTR_BOT)
-      yoff -= font_height;
+      yoff -= cell_height;
     for (int l = 0; l < line_width; l++) {
       MoveToEx(dc, x, y + yoff + l, null);
       LineTo(dc, x + len * char_width, y + yoff + l);
@@ -1160,8 +1179,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
   }
   else if (graph) {  // VT100 box drawing characters ┘┐┌└┼ ─ ├┤┴┬│
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-    int y0 = (lattr == LATTR_BOT) ? y - font_height : y;
-    int yoff = font_height * 3 / 5 - font_height / 10 - line_width / 2;
+    int y0 = (lattr == LATTR_BOT) ? y - cell_height : y;
+    int yoff = cell_height * 3 / 5 - cell_height / 10 - line_width / 2;
     if (lattr >= LATTR_TOP)
       yoff *= 2;
     int xoff = (char_width - line_width) / 2;
@@ -1189,7 +1208,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
         else
           yt = y0 + yoff;
         if (graph & DRAW_DOWN)
-          yb = y0 + (lattr >= LATTR_TOP ? 2 : 1) * font_height;
+          yb = y0 + (lattr >= LATTR_TOP ? 2 : 1) * cell_height;
         else
           yb = y0 + yoff + line_width;
         for (int l = 0; l < line_width; l++) {
@@ -1204,12 +1223,12 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
 
  /* Manual underline */
   colour ul = fg;
-  int uloff = descent + (font_height - descent + 1) / 2;
+  int uloff = descent + (cell_height - descent + 1) / 2;
   if (lattr == LATTR_BOT)
-    uloff = descent + (font_height - descent + 1) / 2;
+    uloff = descent + (cell_height - descent + 1) / 2;
   uloff += line_width / 2;
-  if (uloff >= font_height)
-    uloff = font_height - 1;
+  if (uloff >= cell_height)
+    uloff = cell_height - 1;
 
 #ifdef debug_underline
   ul = 0x802020E0;
@@ -1260,7 +1279,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
       when CUR_BLOCK:
         if (attr.attr & TATTR_PASCURS) {
           HBRUSH oldbrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
-          Rectangle(dc, x, y, x + char_width, y + font_height);
+          Rectangle(dc, x, y, x + char_width, y + cell_height);
           SelectObject(dc, oldbrush);
         }
       when CUR_LINE: {
@@ -1272,17 +1291,17 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
           x += char_width - caret_width;
         if (attr.attr & TATTR_ACTCURS) {
           HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(cursor_colour));
-          Rectangle(dc, x, y, x + caret_width, y + font_height);
+          Rectangle(dc, x, y, x + caret_width, y + cell_height);
           DeleteObject(SelectObject(dc, oldbrush));
         }
         else if (attr.attr & TATTR_PASCURS) {
-          for (int dy = 0; dy < font_height; dy += 2)
+          for (int dy = 0; dy < cell_height; dy += 2)
             Polyline(
               dc, (POINT[]){{x, y + dy}, {x + caret_width, y + dy}}, 2);
         }
       }
       when CUR_UNDERSCORE:
-        y += min(descent, font_height - 2);
+        y += min(descent, cell_height - 2);
         if (attr.attr & TATTR_ACTCURS)
           Rectangle(dc, x, y, x + char_width, y + 2);
         else if (attr.attr & TATTR_PASCURS) {
@@ -1316,6 +1335,9 @@ win_check_glyphs(wchar *wcs, uint num)
 }
 
 /* This function gets the actual width of a character in the normal font.
+   Usage: determine whether to trim an ambiguous wide character 
+   (of a CJK ambiguous-wide font such as BatangChe) to normal width 
+   if desired.
  */
 int
 win_char_width(xchar c)
@@ -1329,15 +1351,23 @@ win_char_width(xchar c)
     return 1;
 
  /* Speedup, I know of no font where ascii is the wrong width */
-  if (c >= ' ' && c <= '~')
+  if (c >= ' ' && c < '~')  // exclude 0x7E (overline in Shift_JIS X 0213)
     return 1;
 
   SelectObject(dc, fonts[FONT_NORMAL]);
   if (!GetCharWidth32W(dc, c, c, &ibuf))
     return 0;
 
-  ibuf += font_width / 2 - 1;
-  ibuf /= font_width;
+  // report char as wide if its width is more than 1½ cells
+  ibuf += cell_width / 2 - 1;
+  ibuf /= cell_width;
+#ifdef debug_ambiguous_char_width
+  if (c >= '~') {
+    float char_width;
+    GetCharWidthFloatW(dc, c, c, &char_width);
+    printf("win_char_width %04X: %d %f\n", c, ibuf, char_width);
+  }
+#endif
 
   return ibuf;
 }

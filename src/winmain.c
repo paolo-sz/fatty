@@ -130,6 +130,7 @@ load_dwm_funcs(void)
 #define dont_debug_dpi
 
 static bool per_monitor_dpi_aware = false;
+static uint dpi;
 
 #define WM_DPICHANGED 0x02E0
 const int Process_System_DPI_Aware = 1;
@@ -137,9 +138,7 @@ const int Process_Per_Monitor_DPI_Aware  = 2;
 const int MDT_Effective_DPI = 0;
 static HRESULT (WINAPI * pGetProcessDpiAwareness)(HANDLE hprocess, int * value) = 0;
 static HRESULT (WINAPI * pSetProcessDpiAwareness)(int value) = 0;
-#ifdef debug_dpi
 static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
-#endif
 
 static void
 load_shcore_funcs(void)
@@ -153,10 +152,8 @@ load_shcore_funcs(void)
       (void *)GetProcAddress(shc, "GetProcessDpiAwareness");
     pSetProcessDpiAwareness =
       (void *)GetProcAddress(shc, "SetProcessDpiAwareness");
-#ifdef debug_dpi
     pGetDpiForMonitor =
       (void *)GetProcAddress(shc, "GetDpiForMonitor");
-#endif
 #ifdef debug_dpi
     printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor);
 #endif
@@ -457,8 +454,9 @@ win_get_pixels(int *height_p, int *width_p)
 {
   RECT r;
   GetWindowRect(wnd, &r);
-  *height_p = r.bottom - r.top;
-  *width_p = r.right - r.left;
+  // report inner pixel size, without padding, like xterm:
+  *height_p = r.bottom - r.top - extra_height - 2 * PADDING;
+  *width_p = r.right - r.left - extra_width - 2 * PADDING;
 }
 
 void
@@ -467,8 +465,8 @@ win_get_screen_chars(int *rows_p, int *cols_p)
   MONITORINFO mi;
   get_my_monitor_info(&mi);
   RECT fr = mi.rcMonitor;
-  *rows_p = (fr.bottom - fr.top) / font_height;
-  *cols_p = (fr.right - fr.left) / font_width;
+  *rows_p = (fr.bottom - fr.top - 2 * PADDING) / cell_height;
+  *cols_p = (fr.right - fr.left - 2 * PADDING) / cell_width;
 }
 
 void
@@ -476,8 +474,8 @@ win_set_pixels(int height, int width)
 {
   trace_resize(("--- win_set_pixels %d %d\n", height, width));
   SetWindowPos(wnd, null, 0, 0,
-               width + 2 * PADDING + extra_width,
-               height + 2 * PADDING + extra_height,
+               width + extra_width + 2 * PADDING,
+               height + extra_height + 2 * PADDING,
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
 }
 
@@ -594,7 +592,8 @@ win_set_geom(int y, int x, int height, int width)
   RECT ar = mi.rcWork;
 
   int scr_height = ar.bottom - ar.top, scr_width = ar.right - ar.left;
-  int term_x, term_y, term_height, term_width;
+  int term_height, term_width;
+  int term_x, term_y;
   win_get_pixels(&term_height, &term_width);
   win_get_pos(&term_x, &term_y);
 
@@ -611,7 +610,8 @@ win_set_geom(int y, int x, int height, int width)
   else if (height > 0)
     term_height = height;
 
-  SetWindowPos(wnd, null, term_x, term_y, term_width, term_height,
+  SetWindowPos(wnd, null, term_x, term_y,
+               term_width + 2 * PADDING, term_height + 2 * PADDING,
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOZORDER);
 }
 
@@ -638,7 +638,7 @@ void
 win_set_chars(int rows, int cols)
 {
   trace_resize(("--- win_set_chars %d×%d\n", rows, cols));
-  win_set_pixels(rows * font_height + win_tab_height(), cols * font_width);
+  win_set_pixels(rows * cell_height + win_tab_height(), cols * cell_width);
   win_fix_position();
 }
 
@@ -688,12 +688,12 @@ win_bell(struct term* term, config * conf)
           int len = wcslen(bell_name);
           bell_file = newn(wchar, len + 5);
           wcscpy(bell_file, bell_name);
-          wcscpy(&bell_file[len], L".wav");
-          bf = get_resource_file(L"sounds", bell_file, false);
+          wcscpy(&bell_file[len], W(".wav"));
+          bf = get_resource_file(W("sounds"), bell_file, false);
           free(bell_file);
         }
         else
-          bf = get_resource_file(L"sounds", bell_name, false);
+          bf = get_resource_file(W("sounds"), bell_name, false);
         if (bf) {
           bell_name = path_posix_to_win_w(bf);
           free(bf);
@@ -740,8 +740,8 @@ win_invalidate_all(void)
 static void
 win_adjust_borders()
 {
-  int term_width = font_width * cfg.cols;
-  int term_height = font_height * cfg.rows;
+  int term_width = cell_width * cfg.cols;
+  int term_height = cell_height * cfg.rows;
   RECT cr = {0, 0, term_width + 2 * PADDING, term_height + 2 * PADDING};
   RECT wr = cr;
   LONG window_style = WS_OVERLAPPEDWINDOW;
@@ -821,12 +821,12 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   if (scale_font_with_size && term->cols != 0 && term->rows != 0) {
     // calc preliminary size (without font scaling), as below
     // should use term_height rather than rows; calc and store in term_resize
-    int cols0 = max(1, term_width / font_width);
-    int rows0 = max(1, term_height / font_height);
+    int cols0 = max(1, term_width / cell_width);
+    int rows0 = max(1, term_height / cell_height);
 
-    // rows0/term.rows gives a rough scaling factor for font_height
-    // cols0/term.cols gives a rough scaling factor for font_width
-    // font_height, font_width give a rough scaling indication for font_size
+    // rows0/term.rows gives a rough scaling factor for cell_height
+    // cols0/term.cols gives a rough scaling factor for cell_width
+    // cell_height, cell_width give a rough scaling indication for font_size
     // height or width could be considered more according to preference
     bool bigger = rows0 * cols0 > term->rows * term->cols;
     int font_size1 =
@@ -857,11 +857,11 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     term_height -= SEARCHBAR_HEIGHT;
   }
 
-  int cols = max(1, term_width / font_width);
-  int rows = max(1, term_height / font_height);
+  int cols = max(1, term_width / cell_width);
+  int rows = max(1, term_height / cell_height);
   if (rows != term->rows || cols != term->cols) {
     term_resize(term, rows, cols);
-    struct winsize ws = {rows, cols, cols * font_width, rows * font_height};
+    struct winsize ws = {rows, cols, cols * cell_width, rows * cell_height};
     child_resize(term->child, &ws);
   }
   win_invalidate_all();
@@ -1305,11 +1305,11 @@ static struct {
       LPRECT r = (LPRECT) lp;
       int width = r->right - r->left - extra_width - 2 * PADDING;
       int height = r->bottom - r->top - extra_height - 2 * PADDING - g_render_tab_height;
-      int cols = max(1, (float)width / font_width + 0.5);
-      int rows = max(1, (float)height / font_height + 0.5);
+      int cols = max(1, (float)width / cell_width + 0.5);
+      int rows = max(1, (float)height / cell_height + 0.5);
 
-      int ew = width - cols * font_width;
-      int eh = height - rows * font_height;
+      int ew = width - cols * cell_width;
+      int eh = height - rows * cell_height;
 
       if (wp >= WMSZ_BOTTOM) {
         wp -= WMSZ_BOTTOM;
@@ -1376,11 +1376,26 @@ static struct {
       }
     when WM_DRAWITEM:
       win_paint_tabs(lp, 0);
-    when WM_DPICHANGED:
+    when WM_DPICHANGED: {
+      bool dpi_changed = true;
+      if (per_monitor_dpi_aware && cfg.handle_dpichanged && pGetDpiForMonitor) {
+        HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+        uint x, y;
+        pGetDpiForMonitor(mon, 0, &x, &y);  // MDT_EFFECTIVE_DPI
 #ifdef debug_dpi
-      printf("WM_DPICHANGED %d\n", per_monitor_dpi_aware);
+        printf("WM_DPICHANGED %d -> %d (aware %d handle %d)\n", dpi, y, per_monitor_dpi_aware, cfg.handle_dpichanged);
 #endif
-      if (per_monitor_dpi_aware && cfg.handle_dpichanged) {
+        if (y != dpi) {
+          dpi = y;
+        }
+        else
+          dpi_changed = false;
+      }
+#ifdef debug_dpi
+      else
+        printf("WM_DPICHANGED (aware %d handle %d)\n", per_monitor_dpi_aware, cfg.handle_dpichanged);
+#endif
+      if (dpi_changed && per_monitor_dpi_aware && cfg.handle_dpichanged) {
         // this RECT is adjusted with respect to the monitor dpi already,
         // so we don't need to consider GetDpiForMonitor
         LPRECT r = (LPRECT) lp;
@@ -1395,15 +1410,17 @@ static struct {
         int y = term->rows, x = term->cols;
         win_adapt_term_size(false, true);
         // try to stabilize terminal size roundtrip
-        win_set_chars(y, x);  // also clips to desktop size (win_fix_position)
-                              // but not stripping taskbar (?)
-                              // as win_fix_position would do initially
+        if (term->rows != y || term->cols != x) {
+          // win_fix_position also clips the window to desktop size
+          win_set_chars(y, x);
+        }
 #ifdef debug_dpi
         printf("SM_CXVSCROLL %d\n", GetSystemMetrics(SM_CXVSCROLL));
 #endif
         return 0;
       }
       break;
+    }
   }
  /*
   * Any messages we don't process completely above are passed through to
@@ -1477,7 +1494,7 @@ static void
 show_msg_w(FILE *stream, wstring msg)
 {
   if (fprintf(stream, "%ls", msg) < 0 || fputs("\n", stream) < 0 || fflush(stream) < 0)
-    MessageBoxW(0, msg, _W(APPNAME), MB_OK);
+    MessageBoxW(0, msg, W(APPNAME), MB_OK);
 }
 
 static no_return __attribute__((format(printf, 1, 2)))
@@ -1512,7 +1529,7 @@ static void
 warnw(wstring msg, wstring file, wstring err)
 {
 #if CYGWIN_VERSION_API_MINOR >= 201
-  wstring format = (err && *err) ? L"%s: %ls '%ls':\n%ls" : L"%s: %ls '%ls'";
+  wstring format = (err && *err) ? W("%s: %ls '%ls':\n%ls") : W("%s: %ls '%ls'");
   wchar mess[wcslen(format) + strlen(main_argv[0]) + wcslen(msg) + wcslen(file) + (err ? wcslen(err) : 0)];
   swprintf(mess, lengthof(mess), format, main_argv[0], msg, file, err);
   show_msg_w(stderr, mess);
@@ -1573,7 +1590,7 @@ get_shortcut_icon_location(wchar * iconfile)
     wchar * wicon = wil;
 
     /* Append ,icon-index if non-zero.  */
-    wchar * widx = L"";
+    wchar * widx = W("");
     if (index) {
       char idx[22];
       sprintf(idx, ",%d", index);
@@ -1581,7 +1598,7 @@ get_shortcut_icon_location(wchar * iconfile)
     }
 
     /* Resolve leading Windows environment variable component.  */
-    wchar * wenv = L"";
+    wchar * wenv = W("");
     wchar * fin;
     if (wil[0] == '%' && wil[1] && wil[1] != '%' && (fin = wcschr(&wil[2], '%'))) {
       char var[fin - wil];
@@ -1634,10 +1651,10 @@ configure_taskbar()
 #include "jumplist.h"
   // test data
   wchar * jump_list_title[] = {
-    L"title1", L"", L"", L"mä€", L"", L"", L"", L"", L"", L"", 
+    W("title1"), W(""), W(""), W("mä€"), W(""), W(""), W(""), W(""), W(""), W(""), 
   };
   wchar * jump_list_cmd[] = {
-    L"-o Rows=15", L"-o Rows=20", L"", L"-t mö€", L"", L"", L"", L"", L"", L"", 
+    W("-o Rows=15"), W("-o Rows=20"), W(""), W("-t mö€"), W(""), W(""), W(""), W(""), W(""), W(""), 
   };
   // the patch offered in issue #290 does not seem to work
   setup_jumplist(jump_list_title, jump_list_cmd);
@@ -2078,10 +2095,10 @@ main(int argc, char *argv[])
           FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
           0, err, 0, winmsg, wmlen, 0
         );
-        warnw(L"could not load icon file", cfg.icon, winmsg);
+        warnw(_W("could not load icon file"), cfg.icon, winmsg);
       }
       else
-        warnw(L"could not load icon file", cfg.icon, L"");
+        warnw(_W("could not load icon file"), cfg.icon, W(""));
     }
     delete(icon_file);
   }
@@ -2099,7 +2116,7 @@ main(int argc, char *argv[])
   inst = GetModuleHandle(NULL);
 
   // Window class name.
-  wstring wclass = _W(APPNAME);
+  wstring wclass = W(APPNAME);
   if (*cfg.classname)
     wclass = cfg.classname;
 
@@ -2119,7 +2136,7 @@ main(int argc, char *argv[])
     }
     else {
       fputs("Using default title due to invalid characters in program name.\n", stderr);
-      wtitle = _W(APPNAME);
+      wtitle = W(APPNAME);
     }
   }
 
@@ -2149,8 +2166,8 @@ main(int argc, char *argv[])
   cs_reconfig();
 
   // Determine window sizes.
-  int term_width = font_width * term_cols;
-  int term_height = font_height * term_rows;
+  int term_width = cell_width * term_cols;
+  int term_height = cell_height * term_rows;
 
   RECT cr = {0, 0, term_width + 2 * PADDING, term_height +
       2 * PADDING + win_tab_height()};
@@ -2284,6 +2301,12 @@ main(int argc, char *argv[])
       SetWindowPos(wnd, NULL, x, y, width, height,
         SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
     }
+    // retrieve initial monitor DPI
+    if (pGetDpiForMonitor) {
+      HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+      uint x;
+      pGetDpiForMonitor(mon, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
+    }
   }
 
   if (border_style) {
@@ -2351,7 +2374,7 @@ main(int argc, char *argv[])
   );
 
   // Set up an empty caret bitmap. We're painting the cursor manually.
-  caretbm = CreateBitmap(1, font_height, 1, 1, newn(short, font_height));
+  caretbm = CreateBitmap(1, cell_height, 1, 1, newn(short, cell_height));
   CreateCaret(wnd, caretbm, 0, 0);
 
   // Initialise various other stuff.

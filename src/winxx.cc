@@ -228,7 +228,7 @@ void win_tab_create() {
     std::stringstream cwd_path;
     cwd_path << "/proc/" << t.child->pid << "/cwd";
     char* cwd = realpath(cwd_path.str().c_str(), 0);
-    newtab(t.rows, t.cols, t.cols * font_width, t.rows * font_height, cwd, nullptr);
+    newtab(t.rows, t.cols, t.cols * cell_width, t.rows * cell_height, cwd, nullptr);
     free(cwd);
     set_active_tab(tabs.size() - 1);
     set_tab_bar_visibility(tabs.size() > 1);

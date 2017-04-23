@@ -347,12 +347,12 @@ child_conv_path(struct child* child, wstring wpath)
   // because some programs have trouble with them.
   if (win_wpath && wcslen(win_wpath) < MAX_PATH) {
     wchar *old_win_wpath = win_wpath;
-    if (wcsncmp(win_wpath, L"\\\\?\\UNC\\", 8) == 0) {
+    if (wcsncmp(win_wpath, W("\\\\?\\UNC\\"), 8) == 0) {
       win_wpath = wcsdup(win_wpath + 6);
       win_wpath[0] = '\\';  // Replace "\\?\UNC\" prefix with "\\"
       free(old_win_wpath);
     }
-    else if (wcsncmp(win_wpath, L"\\\\?\\", 4) == 0) {
+    else if (wcsncmp(win_wpath, W("\\\\?\\"), 4) == 0) {
       win_wpath = wcsdup(win_wpath + 4);  // Drop "\\?\" prefix
       free(old_win_wpath);
     }

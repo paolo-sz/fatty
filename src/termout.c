@@ -1274,6 +1274,8 @@ term_write(struct term* term, const char *buf, uint len)
         int width;
         if (cfg.wide_indic && wc >= 0x0900 && indicwide(wc))
           width = 2;
+        else if (cfg.wide_extra && wc >= 0x2000 && extrawide(wc))
+          width = 2;
         else
 #if HAS_LOCALES
           width = wcwidth(wc);
