@@ -14,8 +14,9 @@
  * Author: Ahmad Khalifa
  * (www.arabeyes.org - under MIT license)
  *
- * Modified: Thomas Wolff: extended bidi class detection to consider 
- * non-BMP characters
+ * Modified: Thomas Wolff:
+ * - extended bidi class detection to consider non-BMP characters
+ * - fixed mirroring of '('
  *
  ************************************************************************/
 
@@ -24,7 +25,6 @@
  * =====
  * - Explicit marks need to be handled (they are not 100% now)
  * - Ligatures
- * - fix Mirroring
  */
 
 
@@ -44,12 +44,6 @@ shapetypes[(xh)-SHAPE_FIRST].type : SU) /*)) */
 
 #define leastGreaterOdd(x) ( ((x)+1) | 1 )
 #define leastGreaterEven(x) ( ((x)+2) &~ 1 )
-
-/* character types */
-enum {
-  L, LRE, LRO, R, AL, RLE, RLO, PDF, EN, ES, ET, AN, CS, NSM, BN, B, S, WS, ON,
-  LRI, RLI, FSI, PDI
-};
 
 /* Shaping Types */
 enum {
@@ -245,6 +239,14 @@ bool
 is_sep_class(uchar bc)
 {
   const int mask = (1 << B) | (1 << S) | (1 << BN) | (1 << WS);
+
+  return mask & (1 << (bc));
+}
+
+bool
+is_punct_class(uchar bc)
+{
+  const int mask = (1 << BN) | (1 << CS) | (1 << EN) | (1 << ES) | (1 << ET) | (1 << ON);
 
   return mask & (1 << (bc));
 }
@@ -455,7 +457,7 @@ mirror(ucschar c)
     {0xFF5B, 0xFF5D}, {0xFF5D, 0xFF5B}, {0xFF5F, 0xFF60}, {0xFF60, 0xFF5F},
     {0xFF62, 0xFF63}, {0xFF63, 0xFF62}
   };
-  int i = 0;
+  int i = -1;
   int j = lengthof(pairs);
   while (j - i > 1) {
     int k = (i + j) / 2;

@@ -1134,9 +1134,14 @@ term_paint(struct term* term)
         tbc = bidi_class(tchar);
 #endif
 
-      if (textlen && tbc != bc && !is_sep_class(tbc) && !is_sep_class(bc))
-        // break at RTL and other changes to avoid glyph confusion (#285)
-        trace_run("bc"), break_run = true;
+      if (textlen && tbc != bc) {
+        if (!is_sep_class(tbc) && !is_sep_class(bc))
+          // break at RTL and other changes to avoid glyph confusion (#285)
+          trace_run("bc"), break_run = true;
+        else if (is_punct_class(tbc) || is_punct_class(bc))
+          // break at digit to avoid adaptation to script style
+          trace_run("bc"), break_run = true;
+      }
       bc = tbc;
 
       if (break_run) {

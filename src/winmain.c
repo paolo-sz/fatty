@@ -670,24 +670,41 @@ void
 win_bell(struct term* term, config * conf)
 {
   if (conf->bell_sound || conf->bell_type) {
-    wchar * bell_file = (wchar *)conf->bell_file;
-	char * home = getenv("HOME");
-    bool free_bell_file = false;
-    if (*bell_file && !wcschr(bell_file, L'/') && !wcschr(bell_file, L'\\')) {
-      string subfolder = ".mintty/sounds";
-      char rcdir[strlen(home) + strlen(subfolder) + 2];
-      sprintf(rcdir, "%s/%s", home, subfolder);
-      wchar * rcpat = path_posix_to_win_w(rcdir);
-      int len = wcslen(rcpat);
-      rcpat = renewn(rcpat, len + wcslen(bell_file) + 6);
-      rcpat[len++] = L'/';
-      wcscpy(&rcpat[len], bell_file);
-      len = wcslen(rcpat);
-      wcscpy(&rcpat[len], L".wav");
-      bell_file = rcpat;
-      free_bell_file = true;
+    wchar * bell_name = (wchar *)conf->bell_file;
+    bool free_bell_name = false;
+    if (*bell_name) {
+      if (wcschr(bell_name, L'/') || wcschr(bell_name, L'\\')) {
+        if (bell_name[1] != ':') {
+          char * bf = path_win_w_to_posix(bell_name);
+          bell_name = path_posix_to_win_w(bf);
+          free(bf);
+          free_bell_name = true;
+        }
+      }
+      else {
+        wchar * bell_file = bell_name;
+        char * bf;
+        if (!wcschr(bell_name, '.')) {
+          int len = wcslen(bell_name);
+          bell_file = newn(wchar, len + 5);
+          wcscpy(bell_file, bell_name);
+          wcscpy(&bell_file[len], L".wav");
+          bf = get_resource_file(L"sounds", bell_file, false);
+          free(bell_file);
+        }
+        else
+          bf = get_resource_file(L"sounds", bell_name, false);
+        if (bf) {
+          bell_name = path_posix_to_win_w(bf);
+          free(bf);
+          free_bell_name = true;
+        }
+        else
+          bell_name = null;
+      }
     }
-    if (*bell_file && PlaySoundW(bell_file, NULL, SND_ASYNC | SND_FILENAME)) {
+
+    if (bell_name && *bell_name && PlaySoundW(bell_name, NULL, SND_ASYNC | SND_FILENAME)) {
       // played
     }
     else if (conf->bell_freq)
@@ -703,8 +720,8 @@ win_bell(struct term* term, config * conf)
     } else if (conf->bell_type < 0)
       MessageBeep(0xFFFFFFFF);
 
-    if (free_bell_file)
-      free(bell_file);
+    if (free_bell_name)
+      free(bell_name);
   }
 
   if (conf->bell_taskbar && !win_active_terminal()->has_focus)
@@ -1655,7 +1672,7 @@ configure_taskbar()
         iconbasename = cfg.icon;
     }
     char * derived_app_id = malloc(strlen(iconbasename) + 7 + 1);
-    strcpy(derived_app_id, "Mintty.");
+    strcpy(derived_app_id, "Fatty.");
     strcat(derived_app_id, iconbasename);
     app_id = derived_app_id;
   }
@@ -1663,7 +1680,7 @@ configure_taskbar()
   // to make app_name effective as taskbar title, so invent one.
   if (relaunch_display_name && *relaunch_display_name && 
       (!app_id || !*app_id)) {
-    app_id = "Mintty.AppID";
+    app_id = "Fatty.AppID";
   }
 #endif
 
@@ -1808,20 +1825,20 @@ main(int argc, char *argv[])
 
   // Load config files
   // try global config file
-  load_config("/etc/minttyrc", true);
+  load_config("/etc/fattyrc", true);
   // try Windows config location (#201)
   char * appdata = getenv("APPDATA");
   if (appdata && *appdata) {
-    string rc_file = asform("%s/mintty/config", appdata);
+    string rc_file = asform("%s/fatty/config", appdata);
     load_config(rc_file, true);
     delete(rc_file);
   }
   // try XDG config base directory default location (#525)
-  string rc_file = asform("%s/.config/mintty/config", home);
+  string rc_file = asform("%s/.config/fatty/config", home);
   load_config(rc_file, true);
   delete(rc_file);
   // try home config file
-  rc_file = asform("%s/.minttyrc", home);
+  rc_file = asform("%s/.fattyrc", home);
   load_config(rc_file, true);
   delete(rc_file);
 
@@ -1832,11 +1849,11 @@ main(int argc, char *argv[])
   for (int i = 0; i < 32; i++)
     tablist_title[i] = NULL;
 
-  if (getenv("MINTTY_ICON")) {
-    //cfg.icon = strdup(getenv("MINTTY_ICON"));
-    cfg.icon = cs__utftowcs(getenv("MINTTY_ICON"));
+  if (getenv("FATTY_ICON")) {
+    //cfg.icon = strdup(getenv("FATTY_ICON"));
+    cfg.icon = cs__utftowcs(getenv("FATTY_ICON"));
     icon_is_from_shortcut = true;
-    unsetenv("MINTTY_ICON");
+    unsetenv("FATTY_ICON");
   }
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
@@ -1940,21 +1957,21 @@ main(int argc, char *argv[])
 
   int term_rows = cfg.rows;
   int term_cols = cfg.cols;
-  if (getenv("MINTTY_ROWS")) {
-    term_rows = atoi(getenv("MINTTY_ROWS"));
+  if (getenv("FATTY_ROWS")) {
+    term_rows = atoi(getenv("FATTY_ROWS"));
     if (term_rows < 1)
       term_rows = cfg.rows;
-    unsetenv("MINTTY_ROWS");
+    unsetenv("FATTY_ROWS");
   }
-  if (getenv("MINTTY_COLS")) {
-    term_cols = atoi(getenv("MINTTY_COLS"));
+  if (getenv("FATTY_COLS")) {
+    term_cols = atoi(getenv("FATTY_COLS"));
     if (term_cols < 1)
       term_cols = cfg.cols;
-    unsetenv("MINTTY_COLS");
+    unsetenv("FATTY_COLS");
   }
-  if (getenv("MINTTY_MONITOR")) {
-    monitor = atoi(getenv("MINTTY_MONITOR"));
-    unsetenv("MINTTY_MONITOR");
+  if (getenv("FATTY_MONITOR")) {
+    monitor = atoi(getenv("FATTY_MONITOR"));
+    unsetenv("FATTY_MONITOR");
   }
 
   // if started from console, try to detach from caller's terminal (~daemonizing)

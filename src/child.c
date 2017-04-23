@@ -441,17 +441,17 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
     // provide environment to clone size
     if (clone_size_token) {
-      setenvi("MINTTY_ROWS", child->term->rows);
-      setenvi("MINTTY_COLS", child->term->cols);
+      setenvi("FATTY_ROWS", child->term->rows);
+      setenvi("FATTY_COLS", child->term->cols);
     }
     else
       clone_size_token = true;
     // provide environment to select monitor
     if (moni > 0)
-      setenvi("MINTTY_MONITOR", moni);
+      setenvi("FATTY_MONITOR", moni);
     // propagate shortcut-inherited icon
     if (icon_is_from_shortcut)
-      setenv("MINTTY_ICON", cs__wcstoutf(cfg.icon), true);
+      setenv("FATTY_ICON", cs__wcstoutf(cfg.icon), true);
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
     execv("/proc/self/exe", argv);

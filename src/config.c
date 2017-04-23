@@ -617,29 +617,89 @@ parse_arg_option(string option)
   check_arg_option(parse_option(option, false));
 }
 
+
+#include "winpriv.h"  // home
+
+static char * * config_dirs = 0;
+static int last_config_dir = -1;
+
+static void
+init_config_dirs()
+{
+  if (config_dirs)
+    return;
+
+  char * appdata = getenv("APPDATA");
+  char * home = getenv("HOME");
+  if (appdata) {
+    config_dirs = newn(char *, 4);
+    appdata = newn(char, strlen(appdata) + 8);
+    sprintf(appdata, "%s/fatty", getenv("APPDATA"));
+  }
+  else
+    config_dirs = newn(char *, 3);
+
+  // /usr/share/fatty , $APPDATA/fatty , ~/.config/fatty , ~/.fatty
+  config_dirs[++last_config_dir] = "/usr/share/fatty";
+  if (appdata)
+    config_dirs[++last_config_dir] = appdata;
+  char * xdgconf = newn(char, strlen(home) + 16);
+  sprintf(xdgconf, "%s/.config/fatty", home);
+  config_dirs[++last_config_dir] = xdgconf;
+  char * homeconf = newn(char, strlen(home) + 9);
+  sprintf(homeconf, "%s/.fatty", home);
+  config_dirs[++last_config_dir] = homeconf;
+}
+
+#include <fcntl.h>
+
+char *
+get_resource_file(wstring sub, wstring res, bool towrite)
+{
+  init_config_dirs();
+  int fd;
+  for (int i = last_config_dir; i >= 0; i--) {
+    wchar * rf = path_posix_to_win_w(config_dirs[i]);
+    int len = wcslen(rf);
+    rf = renewn(rf, len + wcslen(sub) + wcslen(res) + 3);
+    rf[len++] = L'/';
+    wcscpy(&rf[len], sub);
+    len += wcslen(sub);
+    rf[len++] = L'/';
+    wcscpy(&rf[len], res);
+
+    char * resfn = path_win_w_to_posix(rf);
+    free(rf);
+    fd = open(resfn, towrite ? O_CREAT | O_EXCL | O_WRONLY | O_BINARY : O_RDONLY | O_BINARY, 0644);
+    if (fd >= 0) {
+      close(fd);
+      return resfn;
+    }
+    free(resfn);
+    if (errno == EACCES || errno == EEXIST)
+      break;
+  }
+  return null;
+}
+
+
 void
 load_theme(wstring theme)
 {
-  wchar * theme_file = (wchar *)theme;
-  char * home = getenv("HOME");
-  bool free_theme_file = false;
-  if (*theme && !wcschr(theme, L'/') && !wcschr(theme, L'\\')) {
-    string subfolder = ".mintty/themes";
-    char rcdir[strlen(home) + strlen(subfolder) + 2];
-    sprintf(rcdir, "%s/%s", home, subfolder);
-    wchar * rcpat = path_posix_to_win_w(rcdir);
-    int len = wcslen(rcpat);
-    rcpat = renewn(rcpat, len + wcslen(theme_file) + 2);
-    rcpat[len++] = L'/';
-    wcscpy(&rcpat[len], theme_file);
-    theme_file = rcpat;
-    free_theme_file = true;
+  if (*theme) {
+    if (wcschr(theme, L'/') || wcschr(theme, L'\\')) {
+      char * thf = path_win_w_to_posix(theme);
+      load_config(thf, false);
+      free(thf);
+    }
+    else {
+      char * thf = get_resource_file(L"themes", theme, false);
+      if (thf) {
+        load_config(thf, false);
+        free(thf);
+      }
+    }
   }
-  char * filename = path_win_w_to_posix(theme_file);
-  if (free_theme_file)
-    free(theme_file);
-  load_config(filename, false);
-  free(filename);
 }
 
 void
@@ -683,10 +743,10 @@ load_config(string filename, bool to_save)
   if (access(filename, R_OK) == 0 && access(filename, W_OK) < 0)
     to_save = false;
 
-  FILE *file = fopen(filename, "r");
+  FILE * file = fopen(filename, "r");
 
   if (to_save) {
-    if (file || (!rc_filename && strstr(filename, "/.minttyrc"))) {
+    if (file || (!rc_filename && strstr(filename, "/.fattyrc"))) {
       file_opts_num = arg_opts_num = 0;
 
       delete(rc_filename);
@@ -1095,31 +1155,32 @@ bell_handler(control *ctrl, int event)
   }
 }
 
-#include "winpriv.h"  // home
-
 static void
 add_file_resources(control *ctrl, wstring pattern)
 {
-  string subfolder = ".mintty";
-  char * home = getenv("HOME");
-  char rcdir[strlen(home) + strlen(subfolder) + 2];
-  sprintf(rcdir, "%s/%s", home, subfolder);
-  wchar * rcpat = path_posix_to_win_w(rcdir);
-  int len = wcslen(rcpat);
-  rcpat = renewn(rcpat, len + wcslen(pattern) + 2);
-  rcpat[len++] = L'/';
-  wcscpy(&rcpat[len], pattern);
-
   wstring suf = wcsrchr(pattern, L'.');
   int sufl = suf ? wcslen(suf) : 0;
 
+  init_config_dirs();
   WIN32_FIND_DATAW ffd;
-  HANDLE hFind = FindFirstFileW(rcpat, &ffd);
-  int ok = hFind != INVALID_HANDLE_VALUE;
-  //try /usr/share/mintty , $APPDATA/mintty , ~/.config/mintty , ~/.mintty
-  // reverse!
-  // until ok || GetLastError() == ERROR_FILE_NOT_FOUND (empty valid dir)
-  //(then check also win_bell() and load_theme())
+  HANDLE hFind;
+  int ok;
+  for (int i = last_config_dir; i >= 0; i--) {
+    wchar * rcpat = path_posix_to_win_w(config_dirs[i]);
+    int len = wcslen(rcpat);
+    rcpat = renewn(rcpat, len + wcslen(pattern) + 2);
+    rcpat[len++] = L'/';
+    wcscpy(&rcpat[len], pattern);
+
+    hFind = FindFirstFileW(rcpat, &ffd);
+    ok = hFind != INVALID_HANDLE_VALUE;
+    free(rcpat);
+    if (ok)
+      break;
+    if (GetLastError() == ERROR_FILE_NOT_FOUND)  // empty valid dir
+      break;
+  }
+
   while (ok) {
     if (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
       // skip
@@ -1254,8 +1315,8 @@ theme_handler(control *ctrl, int event)
 static void
 scheme_saver(control *ctrl, int event)
 {
+  wstring theme_name = new_cfg.theme_file;
   if (event == EVENT_REFRESH) {
-    wstring theme_name = new_cfg.theme_file;
     enable_widget(ctrl, 
                   *new_cfg.colour_scheme && *theme_name
                   && !wcschr(theme_name, L'/') && !wcschr(theme_name, L'\\')
@@ -1265,9 +1326,27 @@ scheme_saver(control *ctrl, int event)
 #ifdef debug_dragndrop
     printf("%ls <- <%s>\n", new_cfg.theme_file, new_cfg.colour_scheme);
 #endif
-    if (*new_cfg.colour_scheme && *new_cfg.theme_file) {
-      // save colour_scheme to theme_file
-    }
+    if (*new_cfg.colour_scheme && *theme_name)
+      if (!wcschr(theme_name, L'/') && !wcschr(theme_name, L'\\')) {
+        char * sn = get_resource_file(L"themes", theme_name, true);
+        if (sn) {
+          // save colour_scheme to theme_file
+          FILE * thf = fopen(sn, "w");
+          free(sn);
+          if (thf) {
+            char * sch = (char *)new_cfg.colour_scheme;
+            for (int i = 0; sch[i]; i++) {
+              if (sch[i] == ';')
+                sch[i] = '\n';
+            }
+            fprintf(thf, "%s", sch);
+            fclose(thf);
+
+            strset(&new_cfg.colour_scheme, "");
+            enable_widget(store_button, false);
+          }
+        }
+      }
   }
 }
 

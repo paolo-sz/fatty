@@ -38,8 +38,8 @@ printer_start_job(wstring printer_name)
   char n[11];
   sprintf(n, "%d", ++np);
 
-  // compose $tmpdir/$dirsuf/mintty.print.$USER.$$
-  char * pref = "mintty-print.";
+  // compose $tmpdir/$dirsuf/fatty.print.$USER.$$
+  char * pref = "fatty-print.";
   pf = malloc(strlen(tmpdir) + strlen(dirsuf) + strlen(pref) + strlen(user) + strlen(pid) + strlen(n) + 7);
   sprintf(pf, "%s%s/%s%s.%s-%s.prn", tmpdir, dirsuf, pref, user, pid, n);
 
