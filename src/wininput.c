@@ -361,6 +361,14 @@ win_key_reset()
   alt_state = ALT_NONE;
 }
 
+#define dont_debug_key
+
+#ifdef debug_key
+#define trace_key(tag)	printf(" <-%s\n", tag)
+#else
+#define trace_key(tag)	
+#endif
+
 bool
 win_key_down(WPARAM wp, LPARAM lp)
 {
@@ -471,6 +479,8 @@ win_key_down(WPARAM wp, LPARAM lp)
       return 1;
     }
 
+#ifdef check_alt_ret_space_first
+    // Moved to switch() below so we can override it with layout().
     // Window menu and fullscreen
     if (cfg.window_shortcuts && alt && !ctrl) {
       if (key == VK_RETURN) {
@@ -483,6 +493,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         return 1;
       }
     }
+#endif
 
     // Alt+Fn shortcuts
     if (cfg.alt_fn_shortcuts && alt && VK_F1 <= key && key <= VK_F24) {
@@ -793,6 +804,24 @@ win_key_down(WPARAM wp, LPARAM lp)
     return !ctrl;
   }
 
+  bool altgr_key(void) {
+    if (!altgr)
+      return false;
+
+    alt = lalt & !ctrl_lalt_altgr;
+
+    // Sync keyboard layout with our idea of AltGr.
+    kbd[VK_CONTROL] = altgr ? 0x80 : 0;
+
+    // Don't handle Ctrl combinations here.
+    // Need to check there's a Ctrl that isn't part of Ctrl+LeftAlt==AltGr.
+    if ((ctrl & !ctrl_lalt_altgr) | (lctrl & rctrl))
+      return false;
+
+    // Try the layout.
+    return layout();
+  }
+
   void ctrl_ch(uchar c) {
     esc_if(alt);
     if (shift) {
@@ -880,6 +909,12 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   switch (key) {
     when VK_RETURN:
+      if (!active_term->shortcut_override && cfg.window_shortcuts && alt && !ctrl) {
+        trace_resize (("--- Alt-Enter (shift %d)", shift));
+        send_syscommand(IDM_FULLSCREEN_ZOOM);
+        return 1;
+      }
+      else
       if (extended && !numlock && active_term->app_keypad)
         mod_ss3('M');
       else if (!extended && active_term->modify_other_keys && (shift || ctrl))
@@ -981,14 +1016,24 @@ win_key_down(WPARAM wp, LPARAM lp)
           alt_code_numpad_key(key - VK_NUMPAD0));
       else if (layout());
       else app_pad_code(key - VK_NUMPAD0 + '0');
-    when 'A' ... 'Z' or ' ':
-      if (key != ' ' && alt_code_key(key - 'A' + 0xA));
+    when 'A' ... 'Z' or ' ': {
+      bool check_menu = key == VK_SPACE && !active_term->shortcut_override
+                        && cfg.window_shortcuts && alt && !ctrl;
+      if (altgr_key()) trace_key("altgr");
+      else
+      if (check_menu) {
+        send_syscommand(SC_KEYMENU);
+        return 1;
+      }
+      else
+      if (key != ' ' && alt_code_key(key - 'A' + 0xA)) trace_key("alt");
       else if (shift && ctrl && key == 'T') win_tab_create();
       else if (shift && ctrl && key == 'W') child_terminate(active_term->child);
-      else if (char_key());
+      else if (char_key()) trace_key("char");
       else if (active_term->modify_other_keys > 1) modify_other_key();
-      else if (ctrl_key());
+      else if (ctrl_key()) trace_key("ctrl");
       else ctrl_ch(CTRL(key));
+    }
     when '0' ... '9' or VK_OEM_1 ... VK_OEM_102:
       if (key <= '9' && alt_code_key(key - '0'));
       else if (char_key());
