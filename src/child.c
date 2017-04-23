@@ -41,7 +41,7 @@ childerror(struct term* term, char * action, bool from_fork)
   char * err = strerror(errno);
   if (from_fork && errno == ENOENT)
     err = "There are no available terminals";
-  int len = asprintf(&msg, "\033[30;41m\033[KError: %s: %s.\033[0m\r\n", action, err);
+  int len = asprintf(&msg, "\033[30;%dm\033[KError: %s: %s.\033[0m\r\n", from_fork ? 41 : 43, action, err);
   if (len > 0) {
     term_write(term, msg, len);
     free(msg);
@@ -54,6 +54,7 @@ child_create(struct child* child, struct term* term,
 {
   int pid;
 
+  child->dir = null;
   child->pty_fd = -1;
   child->term = term;
 
@@ -141,7 +142,7 @@ child_create(struct child* child, struct term* term,
     execvp(child->cmd, argv);
 
     // If we get here, exec failed.
-    fprintf(stderr, "\r\n\033[30;41m\033[KFailed to run %s: %s\r\n", child->cmd, strerror(errno));
+    fprintf(stderr, "\033[30;41m\033[KFailed to run %s: %s\r\n", child->cmd, strerror(errno));
 
 #if CYGWIN_VERSION_DLL_MAJOR < 1005
     // Before Cygwin 1.5, the message above doesn't appear if we exit
@@ -362,6 +363,12 @@ child_conv_path(struct child* child, wstring wpath)
 }
 
 void
+child_set_fork_dir(struct child* child, char * dir)
+{
+  strset(&child->dir, dir);
+}
+
+void
 child_fork(struct child* child, int argc, char *argv[], int moni)
 {
   pid_t clone = fork();
@@ -392,6 +399,9 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
     if (child_log_fd >= 0)
       close(child_log_fd);
     close(child_win_fd);
+
+    if (child->dir)
+      chdir(child->dir);
 
 #ifdef add_child_parameters
     // add child parameters

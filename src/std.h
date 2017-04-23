@@ -3,6 +3,10 @@
 
 #include <cygwin/version.h>
 
+//unhide some definitions
+#define _XOPEN_SOURCE
+#define _GNU_SOURCE
+
 #include <assert.h>
 #include <limits.h>
 #include <stdbool.h>
@@ -77,9 +81,18 @@ typedef const wchar *wstring;
 #define lengthof(array) (sizeof(array) / sizeof(*(array)))
 #define endof(array) (&(array)[lengthof(array)])
 
-#define new(type) ((type *)malloc(sizeof(type)))
-#define newn(type, n) ((type *)calloc((n), sizeof(type)))
-#define renewn(p, n) ((typeof(p)) realloc((p), sizeof(*p) * (n)))
+static inline void *
+_realloc(void *aptr, size_t nbytes)
+{
+  if (aptr)
+    return realloc(aptr, nbytes);
+  else
+    return malloc(nbytes);
+}
+
+#define new(type) ((type *) malloc(sizeof(type)))
+#define newn(type, n) ((type *) calloc((n), sizeof(type)))
+#define renewn(p, n) ((typeof(p)) _realloc((p), sizeof(*p) * (n)))
 static inline void delete(const void *p) { free((void *)p); }
 
 void strset(string *sp, string s);

@@ -11,6 +11,7 @@ struct term;
 struct child
 {
   char *home, *cmd;
+  string dir;
 
   pid_t pid;
   bool killed;
@@ -21,8 +22,8 @@ struct child
 extern void child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path);
 extern void child_free(struct child* child);
-extern void child_proc();
-extern void child_kill();
+extern void child_proc(void);
+extern void child_kill(void);
 extern void child_terminate(struct child* child);
 extern void child_write(struct child* child, const char *, unsigned int len);
 extern void child_printf(struct child* child, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
@@ -34,6 +35,7 @@ extern bool child_is_parent(struct child* child);
 extern bool child_is_any_parent();
 extern wstring child_conv_path(struct child*, wstring);
 extern void child_fork(struct child* child, int argc, char *argv[], int moni);
+extern void child_set_fork_dir(struct child* child, char *);
 
 void child_onexit(int sig);
 void child_init();

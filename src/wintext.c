@@ -206,6 +206,15 @@ row_padding(int i, int e)
 #define trace_font(params)	
 #endif
 
+static void
+show_msg(wstring msg, wstring title)
+{
+  if (fprintf(stderr, "%ls", title) < 0 || fputs("\n", stderr) < 0 ||
+      fprintf(stderr, "%ls", msg) < 0 || fputs("\n", stderr) < 0 ||
+      fflush(stderr) < 0)
+    MessageBoxW(0, msg, title, MB_ICONWARNING);
+}
+
 #ifndef TCI_SRCLOCALE
 //old MinGW
 #define TCI_SRCLOCALE 0x1000
@@ -281,19 +290,19 @@ adjust_font_weights()
 
   HDC dc = GetDC(0);
   EnumFontFamiliesExW(dc, &lf, enum_fonts, 0, 0);
-  trace_font(("fw (%d)%d(%d)/(%d)%d(%d) -> ", fw_norm_0, fw_norm, fw_norm_1, fw_bold_0, fw_bold, fw_bold_1));
+  trace_font(("font width (%d)%d(%d)/(%d)%d(%d)", fw_norm_0, fw_norm, fw_norm_1, fw_bold_0, fw_bold, fw_bold_1));
   ReleaseDC(0, dc);
 
   // check if no font found
   if (!font_found) {
-    MessageBoxW(0, L"Font not found, using system substitute", cfg.font.name, MB_ICONWARNING);
+    show_msg(L"Font not found, using system substitute", cfg.font.name);
     fw_norm = 400;
     fw_bold = 700;
     trace_font(("//\n"));
     return;
   }
   if (!ansi_found && !cs_found) {
-    MessageBoxW(0, L"Font has limited support for character ranges", cfg.font.name, MB_ICONWARNING);
+    show_msg(L"Font has limited support for character ranges", cfg.font.name);
   }
 
   // find available widths closest to selected widths
@@ -307,7 +316,7 @@ adjust_font_weights()
     fw_bold = fw_bold_1;
   // distinguish bold from normal
   if (fw_bold == fw_norm) {
-    trace_font(("fw %d/%d -> ", fw_norm, fw_bold));
+    trace_font((" -> %d=", fw_norm));
     if (fw_norm_0 < fw_norm && fw_norm_0 > 0)
       fw_norm = fw_norm_0;
     if (fw_bold - fw_norm < 300) {
@@ -317,7 +326,7 @@ adjust_font_weights()
         fw_bold = min(fw_norm + 300, 1000);
     }
   }
-  trace_font(("fw %d/%d\n", fw_norm, fw_bold));
+  trace_font((" -> %d/%d\n", fw_norm, fw_bold));
 }
 
 /*
@@ -362,14 +371,14 @@ win_init_fonts(int size)
     fw_norm = cfg.font.weight;
     fw_bold = min(fw_norm + 300, 1000);
     // adjust selected font weights to available font weights
-    trace_font(("-> weight %d/%d\n", fw_norm, fw_bold));
+    trace_font(("-> Weight %d/%d\n", fw_norm, fw_bold));
     adjust_font_weights();
     trace_font(("->     -> %d/%d\n", fw_norm, fw_bold));
   }
   else if (cfg.font.isbold) {
     fw_norm = FW_BOLD;
     fw_bold = FW_HEAVY;
-    trace_font(("-> isbold %d/%d\n", fw_norm, fw_bold));
+    trace_font(("-> IsBold %d/%d\n", fw_norm, fw_bold));
   }
   else {
     fw_norm = FW_DONTCARE;
@@ -385,7 +394,7 @@ win_init_fonts(int size)
   fonts[FONT_NORMAL] = create_font(fw_norm, false);
 
   GetObject(fonts[FONT_NORMAL], sizeof (LOGFONT), &lfont);
-  trace_font(("font %s %ld it %d cs %d\n", lfont.lfFaceName, (long int)lfont.lfWeight, lfont.lfItalic, lfont.lfCharSet));
+  trace_font(("created font %s %ld it %d cs %d\n", lfont.lfFaceName, (long int)lfont.lfWeight, lfont.lfItalic, lfont.lfCharSet));
 
   SelectObject(dc, fonts[FONT_NORMAL]);
   GetTextMetrics(dc, &tm);
@@ -400,7 +409,7 @@ win_init_fonts(int size)
 #ifdef check_charset_only_for_returned_font
   int default_charset = get_default_charset();
   if (tm.tmCharSet != default_charset && default_charset != DEFAULT_CHARSET) {
-    MessageBoxW(0, L"Font does not support system locale", cfg.font.name, MB_ICONWARNING);
+    show_msg(L"Font does not support system locale", cfg.font.name);
   }
 #endif
 
