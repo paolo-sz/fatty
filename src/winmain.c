@@ -133,23 +133,31 @@ load_dwm_funcs(void)
 
 #define dont_debug_dpi
 
-static bool per_monitor_dpi_aware = false;
+bool per_monitor_dpi_aware = false;
 uint dpi = 96;
 
 #define WM_DPICHANGED 0x02E0
 const int Process_System_DPI_Aware = 1;
-const int Process_Per_Monitor_DPI_Aware  = 2;
-const int MDT_Effective_DPI = 0;
+const int Process_Per_Monitor_DPI_Aware = 2;
 static HRESULT (WINAPI * pGetProcessDpiAwareness)(HANDLE hprocess, int * value) = 0;
 static HRESULT (WINAPI * pSetProcessDpiAwareness)(int value) = 0;
 static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
 
+DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
+#define DPI_AWARENESS_CONTEXT_UNAWARE           ((DPI_AWARENESS_CONTEXT)-1)
+#define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE      ((DPI_AWARENESS_CONTEXT)-2)
+#define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE ((DPI_AWARENESS_CONTEXT)-3)
+static DPI_AWARENESS_CONTEXT (WINAPI * pSetThreadDpiAwarenessContext)(DPI_AWARENESS_CONTEXT dpic) = 0;
+static HRESULT (WINAPI * pEnableNonClientDpiScaling)(HWND win) = 0;
+static BOOL (WINAPI * pAdjustWindowRectExForDpi)(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle, UINT dpi) = 0;
+
 static void
-load_shcore_funcs(void)
+load_dpi_funcs(void)
 {
   HMODULE shc = load_sys_library("shcore.dll");
+  HMODULE user = load_sys_library("user32.dll");
 #ifdef debug_dpi
-  printf("load_shcore_funcs shc %d\n", !!shc);
+  printf("load_dpi_funcs shcore %d user32 %d\n", !!shc, !!user);
 #endif
   if (shc) {
     pGetProcessDpiAwareness =
@@ -158,15 +166,38 @@ load_shcore_funcs(void)
       (void *)GetProcAddress(shc, "SetProcessDpiAwareness");
     pGetDpiForMonitor =
       (void *)GetProcAddress(shc, "GetDpiForMonitor");
+  }
+  if (user) {
+    pSetThreadDpiAwarenessContext =
+      (void *)GetProcAddress(user, "SetThreadDpiAwarenessContext");
+    pEnableNonClientDpiScaling =
+      (void *)GetProcAddress(user, "EnableNonClientDpiScaling");
+    pAdjustWindowRectExForDpi =
+      (void *)GetProcAddress(user, "AdjustWindowRectExForDpi");
+  }
 #ifdef debug_dpi
-    printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor);
+  printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d SetThreadDpiAwarenessContext %d EnableNonClientDpiScaling %d AdjustWindowRectExForDpi %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor, !!pSetThreadDpiAwarenessContext, !!pEnableNonClientDpiScaling, !!pAdjustWindowRectExForDpi);
 #endif
+}
+
+void
+set_dpi_auto_scaling(bool on)
+{
+  if (pSetThreadDpiAwarenessContext) {
+    if (on)
+      pSetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_UNAWARE);
+    else
+      pSetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE);
   }
 }
 
 static bool
 set_per_monitor_dpi_aware()
 {
+  if (pSetThreadDpiAwarenessContext) {
+    if (pSetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE))
+      return true;
+  }
   if (pSetProcessDpiAwareness && pGetProcessDpiAwareness) {
     HRESULT hr = pSetProcessDpiAwareness(Process_Per_Monitor_DPI_Aware);
     // E_ACCESSDENIED:
@@ -756,7 +787,17 @@ win_adjust_borders(int t_width, int t_height)
     else
       window_style &= ~(WS_CAPTION | WS_BORDER);
   }
-  AdjustWindowRect(&wr, window_style, false);
+  if (pGetDpiForMonitor && pAdjustWindowRectExForDpi) {
+    HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+    uint x, dpi;
+    pGetDpiForMonitor(mon, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
+#ifdef debug_dpi
+    printf("adjust borders dpi %d\n", dpi);
+#endif
+    pAdjustWindowRectExForDpi(&wr, window_style, false, 0, dpi);
+  }
+  else
+    AdjustWindowRect(&wr, window_style, false);
   width = wr.right - wr.left;
   height = wr.bottom - wr.top;
 
@@ -778,7 +819,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
 
 #ifdef debug_dpi
   HDC dc = GetDC(wnd);
-  printf("monitor size %dmm*%dmm res %d*%d dpi %d",
+  printf("monitor size %dmm*%dmm res %d*%d dpi/dev %d",
          GetDeviceCaps(dc, HORZSIZE), GetDeviceCaps(dc, VERTSIZE), 
          GetDeviceCaps(dc, HORZRES), GetDeviceCaps(dc, VERTRES),
          GetDeviceCaps(dc, LOGPIXELSY));
@@ -793,8 +834,8 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     uint x, y;
     pGetDpiForMonitor(mon, 0, &x, &y);  // MDT_EFFECTIVE_DPI
     // we might think about scaling the font size by this factor,
-    // but in fact this is already achieved by the handling of WM_DPICHANGED, 
-    // see there; (unless we would want to consider it initially)
+    // but this is handled elsewhere; (used to be via WM_DPICHANGED, 
+    // now via WM_WINDOWPOSCHANGED and initially)
     printf(" eff %d", y);
   }
   printf("\n");
@@ -1449,6 +1490,7 @@ static struct {
                      SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
         int y = term->rows, x = term->cols;
         win_adapt_term_size(false, true);
+        //?win_init_fonts(cfg.font.size);
         // try to stabilize terminal size roundtrip
         if (term->rows != y || term->cols != x) {
           // win_fix_position also clips the window to desktop size
@@ -2038,7 +2080,7 @@ main(int argc, char *argv[])
 
   load_dwm_funcs();  // must be called after the fork() above!
 
-  load_shcore_funcs();
+  load_dpi_funcs();
   per_monitor_dpi_aware = set_per_monitor_dpi_aware();
 #ifdef debug_dpi
   printf("per_monitor_dpi_aware %d\n", per_monitor_dpi_aware);
@@ -2218,6 +2260,20 @@ main(int argc, char *argv[])
                         window_style | (cfg.scrollbar ? WS_VSCROLL : 0),
                         x, y, width, height,
                         null, null, inst, null);
+  if (pEnableNonClientDpiScaling) {
+    BOOL res = pEnableNonClientDpiScaling(wnd);
+    (void)res;
+#ifdef debug_dpi
+    uint err = GetLastError();
+    int wmlen = 1024;  // size of heap-allocated array
+    wchar winmsg[wmlen];  // constant and < 1273 or 1705 => issue #530
+    FormatMessageW(
+          FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+          0, err, 0, winmsg, wmlen, 0
+    );
+    printf("EnableNonClientDpiScaling: %d %ls\n", !!res, winmsg);
+#endif
+  }
 
   tab_wnd = CreateWindowW(WC_TABCONTROLW, 0, 
                           WS_CHILD | WS_CLIPSIBLINGS | TCS_FOCUSNEVER | TCS_OWNERDRAWFIXED, 
@@ -2311,7 +2367,10 @@ main(int argc, char *argv[])
       uint x;
       pGetDpiForMonitor(mon, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
 #ifdef debug_dpi
-      printf("initial dpi %d\n", dpi);
+      uint ang, raw;
+      pGetDpiForMonitor(mon, 1, &x, &ang);  // MDT_ANGULAR_DPI
+      pGetDpiForMonitor(mon, 2, &x, &raw);  // MDT_RAW_DPI
+      printf("initial dpi eff %d ang %d raw %d\n", dpi, ang, raw);
 #endif
       // recalculate effective font size and adjust window
       if (dpi != 96) {

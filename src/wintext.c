@@ -407,19 +407,19 @@ win_init_fonts(int size)
   }
 
   HDC dc = GetDC(wnd);
+
 #ifdef debug_dpi
   printf("dpi %d dev %d\n", dpi, GetDeviceCaps(dc, LOGPIXELSY));
 #endif
-  if (cfg.handle_dpichanged)
+  if (cfg.handle_dpichanged && per_monitor_dpi_aware)
     font_height =
       size > 0 ? -MulDiv(size, dpi, 72) : -size;
+      // dpi is determined initially and via WM_WINDOWPOSCHANGED;
+      // if WM_DPICHANGED were used, this would need to be modified
   else
     font_height =
       size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : -size;
-  // we might think about considering GetDpiForMonitor to scale the 
-  // font size here,
-  // but in fact this is already achieved by the handling of WM_DPICHANGED, 
-  // see there; (unless we would want to consider it initially)
+
   cell_width = 0;
 
   fonts[FONT_NORMAL] = create_font(fw_norm, false);
@@ -1139,6 +1139,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
                     + (lattr >= LATTR_WIDE ? 2 : 0)
                     + (lattr >= LATTR_TOP ? 2 : 0)
                    ) * cell_height / 40;
+  if (line_width < 1)
+    line_width = 1;
 
 #define dont_debug_vt100_line_drawing_chars
 #ifdef debug_vt100_line_drawing_chars
@@ -1163,7 +1165,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
 
   if (graph >> 4) {  // VT100 horizontal lines ⎺⎻(─)⎼⎽
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-    int yoff = cell_height * (graph >> 4) / 5 - cell_height / 10 - line_width / 2;
+    int yoff = (cell_height - line_width) * (graph >> 4) / 5;
     if (lattr >= LATTR_TOP)
       yoff *= 2;
     if (lattr == LATTR_BOT)
@@ -1178,7 +1180,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl
   else if (graph) {  // VT100 box drawing characters ┘┐┌└┼ ─ ├┤┴┬│
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
     int y0 = (lattr == LATTR_BOT) ? y - cell_height : y;
-    int yoff = cell_height * 3 / 5 - cell_height / 10 - line_width / 2;
+    int yoff = (cell_height - line_width) * 3 / 5;
     if (lattr >= LATTR_TOP)
       yoff *= 2;
     int xoff = (char_width - line_width) / 2;
