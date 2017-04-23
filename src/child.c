@@ -40,8 +40,8 @@ childerror(struct term* term, char * action, bool from_fork, int code)
   char * msg;
   char * err = strerror(errno);
   if (from_fork && errno == ENOENT)
-    err = "There are no available terminals";
-  int len = asprintf(&msg, "\033[30;%dm\033[KError: %s: %s (%d).\033[0m\r\n", from_fork ? 41 : 43, action, err, code);
+    err = _("There are no available terminals");
+  int len = asprintf(&msg, "\033[30;%dm\033[K%s: %s: %s (%d).\033[0m\r\n", from_fork ? 41 : 43, _("Error"), action, err, code);
   if (len > 0) {
     term_write(term, msg, len);
     free(msg);
@@ -68,11 +68,12 @@ child_create(struct child* child, struct term* term,
     //EAGAIN  Cannot allocate sufficient memory to allocate a task structure.
     //EAGAIN  Not possible to create a new process; RLIMIT_NPROC limit.
     //ENOMEM  Memory is tight.
-    childerror(term, "could not fork child process", true, pid);
+    childerror(term, _("could not fork child process"), true, pid);
     if (rebase_prompt) {
-      static const char msg[] =
-        "\033[30;43m\033[KDLL rebasing may be required. See 'rebaseall / rebase --help'.\033[0m\r\n";
-      term_write(term, msg, sizeof msg - 1);
+      term_write(term, "\033[30;43m\033[K", 11);
+      string msg = _("DLL rebasing may be required. See 'rebaseall / rebase --help'.");
+      term_write(term, msg, strlen(msg));
+      term_write(term, "\033[0m\r\n", 6);
     }
 
     child->pid = pid = 0;
@@ -377,7 +378,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      childerror(child->term, "could not fork child daemon", true, 0);
+      childerror(child->term, _("could not fork child daemon"), true, 0);
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
