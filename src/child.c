@@ -157,7 +157,7 @@ child_create(struct child* child, struct term* term,
 
     fcntl(child->pty_fd, F_SETFL, O_NONBLOCK);
     
-    if (cfg.utmp) {
+    if (cfg.create_utmp) {
       char *dev = ptsname(child->pty_fd);
       if (dev) {
         struct utmp ut;

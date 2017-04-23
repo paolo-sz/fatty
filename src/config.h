@@ -118,7 +118,7 @@ typedef struct {
   wstring log;
   wstring title;
   bool title_settable;
-  bool utmp;
+  bool create_utmp;
   char window;
   int x, y;
   bool daemonize;
@@ -129,6 +129,8 @@ typedef struct {
   wstring app_launch_cmd;
   int col_spacing, row_spacing;
   int padding;
+  bool handle_dpichanged;
+  bool wide_indic;
   string word_chars;
   string word_chars_excl;
   colour ime_cursor_colour;

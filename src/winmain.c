@@ -137,6 +137,9 @@ const int Process_Per_Monitor_DPI_Aware  = 2;
 const int MDT_Effective_DPI = 0;
 static HRESULT (WINAPI * pGetProcessDpiAwareness)(HANDLE hprocess, int * value) = 0;
 static HRESULT (WINAPI * pSetProcessDpiAwareness)(int value) = 0;
+#ifdef debug_dpi
+static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
+#endif
 
 static void
 load_shcore_funcs(void)
@@ -151,7 +154,11 @@ load_shcore_funcs(void)
     pSetProcessDpiAwareness =
       (void *)GetProcAddress(shc, "SetProcessDpiAwareness");
 #ifdef debug_dpi
-      printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness);
+    pGetDpiForMonitor =
+      (void *)GetProcAddress(shc, "GetDpiForMonitor");
+#endif
+#ifdef debug_dpi
+    printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor);
 #endif
   }
 }
@@ -747,6 +754,30 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   if (IsIconic(wnd))
     return;
 
+#ifdef debug_dpi
+  HDC dc = GetDC(wnd);
+  printf("monitor size %dmm*%dmm res %d*%d dpi %d",
+         GetDeviceCaps(dc, HORZSIZE), GetDeviceCaps(dc, VERTSIZE), 
+         GetDeviceCaps(dc, HORZRES), GetDeviceCaps(dc, VERTRES),
+         GetDeviceCaps(dc, LOGPIXELSY));
+  //googled this:
+  //int physical_width = GetDeviceCaps(dc, DESKTOPHORZRES);
+  //int virtual_width = GetDeviceCaps(dc, HORZRES);
+  //int dpi = (int)(96f * physical_width / virtual_width);
+  //but as observed here, physical_width and virtual_width are always equal
+  ReleaseDC(wnd, dc);
+  if (pGetDpiForMonitor) {
+    HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+    uint x, y;
+    pGetDpiForMonitor(mon, 0, &x, &y);  // MDT_EFFECTIVE_DPI
+    // we might think about scaling the font size by this factor,
+    // but in fact this is already achieved by the handling of WM_DPICHANGED, 
+    // see there; (unless we would want to consider it initially)
+    printf(" eff %d", y);
+  }
+  printf("\n");
+#endif
+
   struct term* term = win_active_terminal();
   if (sync_size_with_font && !win_is_fullscreen) {
     win_set_chars(term->rows, term->cols);
@@ -1002,7 +1033,7 @@ static struct {
   uint wm_;
   char * wm_name;
 } wm_names[] = {
-#include "wm_names.t"
+#include "_wm.t"
 };
   char * wm_name = "?";
   for (uint i = 0; i < lengthof(wm_names); i++)
@@ -1050,7 +1081,7 @@ static struct {
         uint idm_;
         char * idm_name;
       } idm_names[] = {
-# include "winidm_names.t"
+# include "_winidm.t"
       };
       char * idm_name = "?";
       for (uint i = 0; i < lengthof(idm_names); i++)
@@ -1329,12 +1360,24 @@ static struct {
 #ifdef debug_dpi
       printf("WM_DPICHANGED %d\n", per_monitor_dpi_aware);
 #endif
-      if (per_monitor_dpi_aware) {
+      if (per_monitor_dpi_aware && cfg.handle_dpichanged) {
+        // this RECT is adjusted with respect to the monitor dpi already,
+        // so we don't need to consider GetDpiForMonitor
         LPRECT r = (LPRECT) lp;
-        SetWindowPos(wnd, 0,
-          r->left, r->top, r->right - r->left, r->bottom - r->top,
-          SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+        // try to stabilize font size roundtrip; 
+        // heuristic tweak of window size to compensate for 
+        // font scaling rounding errors that would continuously 
+        // decrease the window size if moving between monitors repeatedly
+        long width = (r->right - r->left) * 20 / 19;
+        long height = (r->bottom - r->top) * 20 / 19;
+        SetWindowPos(wnd, 0, r->left, r->top, width, height,
+                     SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+        int y = term->rows, x = term->cols;
         win_adapt_term_size(false, true);
+        // try to stabilize terminal size roundtrip
+        win_set_chars(y, x);  // also clips to desktop size (win_fix_position)
+                              // but not stripping taskbar (?)
+                              // as win_fix_position would do initially
 #ifdef debug_dpi
         printf("SM_CXVSCROLL %d\n", GetSystemMetrics(SM_CXVSCROLL));
 #endif
@@ -1857,7 +1900,7 @@ main(int argc, char *argv[])
         cfg.title_settable = false;
       when 'B':
         border_style = strdup(optarg);
-      when 'u': cfg.utmp = true;
+      when 'u': cfg.create_utmp = true;
       when '':
         prevent_pinning = true;
         store_taskbar_properties = true;
