@@ -19,7 +19,7 @@ void win_update(void);
 void win_update_term(struct term* term);
 void win_schedule_update(void);
 
-void win_text(int x, int y, wchar_t *text, int len, cattr attr, int lattr);
+void win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl);
 void win_update_mouse(void);
 void win_capture_mouse(void);
 void win_bell(struct term* term, config *);

@@ -172,6 +172,9 @@ get_font_quality(void) {
 static HFONT
 create_font(int weight, bool underline)
 {
+#ifdef debug_create_font
+  printf("font [??]: %d 0 w%4d i0 u%d s0\n", font_height, weight, underline);
+#endif
   return
     CreateFontW(
       font_height, 0, 0, 0, weight, false, underline, false,
@@ -408,6 +411,7 @@ win_init_fonts(int size)
   SelectObject(dc, fonts[FONT_NORMAL]);
   GetTextMetrics(dc, &tm);
   row_spacing = row_padding(tm.tmInternalLeading, tm.tmExternalLeading);
+  trace_font(("h %ld asc %ld dsc %ld ild %ld eld %ld %ls\n", tm.tmHeight, tm.tmAscent, tm.tmDescent, tm.tmInternalLeading, tm.tmExternalLeading, cfg.font.name));
   row_spacing += cfg.row_spacing;
   if (row_spacing < -tm.tmDescent)
     row_spacing = -tm.tmDescent;
@@ -422,6 +426,9 @@ win_init_fonts(int size)
   }
 #endif
 
+  // to be checked: whether usages of font_height should include row_spacing
+  // (and likewise for font_width);
+  // for font creation, as a workaround, row_spacing is removed again
   font_height = tm.tmHeight + row_spacing;
   font_width = tm.tmAveCharWidth + cfg.col_spacing;
   font_dualwidth = (tm.tmMaxCharWidth >= tm.tmAveCharWidth * 3 / 2);
@@ -499,6 +506,7 @@ win_init_fonts(int size)
     DeleteObject(und_bm);
     DeleteDC(und_dc);
     if (!gotit) {
+      trace_font(("ul outbox %ls\n", cfg.font.name));
       und_mode = UND_LINE;
       DeleteObject(fonts[FONT_UNDERLINE]);
       fonts[FONT_UNDERLINE] = 0;
@@ -526,6 +534,7 @@ win_init_fonts(int size)
   ReleaseDC(wnd, dc);
 
   if (fontsize[FONT_UNDERLINE] != fontsize[FONT_NORMAL]) {
+    trace_font(("ul size!= %ls\n", cfg.font.name));
     und_mode = UND_LINE;
     DeleteObject(fonts[FONT_UNDERLINE]);
     fonts[FONT_UNDERLINE] = 0;
@@ -727,8 +736,13 @@ another_font(int fontno)
   if (fontno & FONT_UNDERLINE)
     u = true;
 
+#ifdef debug_create_font
+  printf("font [%02X]: %d %d w%4d i%d u%d s%d\n", fontno, font_height * (1 + !!(fontno & FONT_HIGH)), x, w, i, u, s);
+#endif
   fonts[fontno] =
-    CreateFontW(font_height * (1 + !!(fontno & FONT_HIGH)), x, 0, 0, w, i, u, s,
+    // workaround: remove effect of row_spacing from font creation;
+    // to be checked: usages of font_height elsewhere
+    CreateFontW((font_height - row_spacing) * (1 + !!(fontno & FONT_HIGH)), x, 0, 0, w, i, u, s,
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 get_font_quality(), FIXED_PITCH | FF_DONTCARE, cfg.font.name);
 
@@ -746,6 +760,26 @@ win_set_ime_open(bool open)
 }
 
 
+#define dont_debug_win_text
+
+#ifdef debug_win_text
+
+void trace_line(char * tag, wchar * text, int len)
+{
+  bool show = false;
+  for (int i = 0; i < len; i++)
+    if (text[i] != ' ') show = true;
+  if (show) {
+    printf("%s", tag);
+    for (int i = 0; i < len; i++) printf(" %04X", text[i]);
+    printf("\n");
+  }
+}
+
+#else
+#define trace_line(tag, text, len)	
+#endif
+
 /*
  * Draw a line of text in the window, at given character
  * coordinates, in given attributes.
@@ -753,10 +787,16 @@ win_set_ime_open(bool open)
  * We are allowed to fiddle with the contents of `text'.
  */
 void
-win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
+win_text(int x, int y, wchar *text, int len, cattr attr, int lattr, bool has_rtl)
 {
+  trace_line("win_text:", text, len);
   lattr &= LATTR_MODE;
   int char_width = font_width * (1 + (lattr != LATTR_NORM));
+
+ /* Only want the left half of double width lines */
+  // check this before scaling up x to pixels!
+  if (lattr != LATTR_NORM && x * 2 >= win_active_terminal()->cols)
+    return;
 
  /* Convert to window coordinates */
   x = x * char_width + PADDING;
@@ -764,10 +804,6 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
 
   if (attr.attr & ATTR_WIDE)
     char_width *= 2;
-
- /* Only want the left half of double width lines */
-  if (lattr != LATTR_NORM && x * 2 >= win_active_terminal()->cols)
-    return;
 
   uint nfont;
   switch (lattr) {
@@ -889,9 +925,12 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
   SetBkColor(dc, bg);
 
  /* Check whether the text has any right-to-left characters */
+#ifdef check_rtl_here
+#warning now passed as a parameter to avoid redundant checking
   bool has_rtl = false;
   for (int i = 0; i < len && !has_rtl; i++)
     has_rtl = is_rtl(text[i]);
+#endif
 
   uint eto_options = ETO_CLIPPED;
   if (has_rtl) {
@@ -910,8 +949,10 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
       .nGlyphs = len
     };
 
+    trace_line(" <ChrPlc:", text, len);
     GetCharacterPlacementW(dc, text, len, 0, &gcpr,
                            FLI_MASK | GCP_CLASSIN | GCP_DIACRITIC);
+    trace_line(" >ChrPlc:", text, len);
     len = gcpr.nGlyphs;
     eto_options |= ETO_GLYPH_INDEX;
   }
@@ -935,43 +976,74 @@ win_text(int x, int y, wchar *text, int len, cattr attr, int lattr)
 
  /* Finally, draw the text */
   SetBkMode(dc, OPAQUE);
+  trace_line(" TextOut:", text, len);
   ExtTextOutW(dc, xt, yt, eto_options | ETO_OPAQUE, &box, text, len, dxs);
 
  /* Shadow/Overstrike bold */
   if (apply_shadow && bold_mode == BOLD_SHADOW && (attr.attr & ATTR_BOLD)) {
     SetBkMode(dc, TRANSPARENT);
     ExtTextOutW(dc, xt + 1, yt, eto_options, &box, text, len, dxs);
+    if (lattr != LATTR_NORM) {
+      ExtTextOutW(dc, xt + 2, yt, eto_options, &box, text, len, dxs);
+      //ExtTextOutW(dc, xt + 3, yt, eto_options, &box, text, len, dxs);
+    }
   }
 
  /* Manual underline */
+  colour ul = fg;
+  int uloff = descent + (font_height - descent + 1) / 2;
+  if (lattr == LATTR_BOT)
+    uloff = descent + (font_height - descent + 1) / 2;
+
+#ifdef debug_underline
+  ul = 0x802020E0;
+  if (lattr == LATTR_TOP)
+    ul = 0x80E0E020;
+  if (lattr == LATTR_BOT)
+    ul = 0x80E02020;
+#endif
+
   if (lattr != LATTR_TOP &&
       (force_manual_underline ||
        (und_mode == UND_LINE && (attr.attr & ATTR_UNDER)) ||
        (attr.attr & ATTR_DOUBLYUND))) {
-    int dec = (lattr == LATTR_BOT) ? descent * 2 - font_height : descent;
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-    MoveToEx(dc, x, y + dec, null);
-    LineTo(dc, x + len * char_width, y + dec);
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    MoveToEx(dc, x, y + uloff, null);
+    LineTo(dc, x + len * char_width, y + uloff);
+    if ((attr.attr & ATTR_BOLD) && !(attr.attr & ATTR_DOUBLYUND)
+        && uloff > descent) {
+      MoveToEx(dc, x, y + uloff - 1, null);
+      LineTo(dc, x + len * char_width, y + uloff - 1);
+    }
+    if ((lattr == LATTR_BOT) && uloff < font_height) {
+      MoveToEx(dc, x, y + uloff + 1, null);
+      LineTo(dc, x + len * char_width, y + uloff + 1);
+    }
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
  /* Doubly underline */
   if (lattr != LATTR_TOP && attr.attr & ATTR_DOUBLYUND) {
-    int dec = (lattr == LATTR_BOT) ? descent * 2 - font_height : descent;
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-    MoveToEx(dc, x, y + dec + 2, null);
-    LineTo(dc, x + len * char_width, y + dec + 2);
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    int dbluloff = uloff - 2;
+    if (lattr == LATTR_BOT)
+      dbluloff--;
+    MoveToEx(dc, x, y + dbluloff, null);
+    LineTo(dc, x + len * char_width, y + dbluloff);
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
  /* Overline */
-  if (lattr != LATTR_TOP && attr.attr & ATTR_OVERL) {
-    //int dec = (lattr == LATTR_BOT) ? descent * 2 - font_height : descent;
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+  if (lattr != LATTR_BOT && attr.attr & ATTR_OVERL) {
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     MoveToEx(dc, x, y - 1, null);
     LineTo(dc, x + len * char_width, y - 1);
+    if (lattr == LATTR_TOP) {
+      MoveToEx(dc, x, y, null);
+      LineTo(dc, x + len * char_width, y);
+    }
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }

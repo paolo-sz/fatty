@@ -489,8 +489,12 @@ paste_hdrop(HDROP drop)
     free(fn);
   }
   buf_pos--;  // Drop trailing space
+  if (win_active_terminal()->bracketed_paste)
+    child_write(win_active_terminal()->child, "\e[200~", 6);
   child_send(win_active_terminal()->child, buf, buf_pos);
   free(buf);
+  if (win_active_terminal()->bracketed_paste)
+    child_write(win_active_terminal()->child, "\e[201~", 6);
 }
 
 static void

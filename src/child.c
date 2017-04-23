@@ -400,7 +400,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
       close(child_log_fd);
     close(child_win_fd);
 
-    if (child->dir)
+    if (child->dir && *child->dir)
       chdir(child->dir);
 
 #ifdef add_child_parameters

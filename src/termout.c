@@ -1058,7 +1058,7 @@ do_cmd(struct term* term)
         s += 11;
       else if (!strncmp(s, "///", 3))
         s += 2;
-      if (*s == '/')
+      if (!*s || *s == '/')
         child_set_fork_dir(term->child, s);
     when 701:  // Set/get locale (from urxvt).
       if (!strcmp(s, "?"))
