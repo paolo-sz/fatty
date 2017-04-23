@@ -407,8 +407,15 @@ win_init_fonts(int size)
   }
 
   HDC dc = GetDC(wnd);
-  font_height =
-    size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : -size;
+#ifdef debug_dpi
+  printf("dpi %d dev %d\n", dpi, GetDeviceCaps(dc, LOGPIXELSY));
+#endif
+  if (cfg.handle_dpichanged)
+    font_height =
+      size > 0 ? -MulDiv(size, dpi, 72) : -size;
+  else
+    font_height =
+      size > 0 ? -MulDiv(size, GetDeviceCaps(dc, LOGPIXELSY), 72) : -size;
   // we might think about considering GetDpiForMonitor to scale the 
   // font size here,
   // but in fact this is already achieved by the handling of WM_DPICHANGED, 
@@ -610,22 +617,13 @@ win_paint(void)
   // to be consistent during with the visual state of things
   g_render_tab_height = win_tab_height();
 
-#ifdef strange_calculation
   term_invalidate(term,
     (p.rcPaint.left - PADDING) / cell_width,
     (p.rcPaint.top - PADDING) / cell_height,
     (p.rcPaint.right - PADDING - 1) / cell_width,
     (p.rcPaint.bottom - PADDING - 1) / cell_height
   );
-#else
-  term_invalidate(term,
-    (p.rcPaint.left) / cell_width,
-    (p.rcPaint.top) / cell_height,
-    (p.rcPaint.right - 2 * PADDING) / cell_width,
-    (p.rcPaint.bottom - 2 * PADDING) / cell_height
-  );
-  // or simply term_invalidate(0, 0, term.cols, term.rows) ?
-#endif
+
 
   if (update_state != UPDATE_PENDING)
     term_paint(term);

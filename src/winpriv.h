@@ -25,6 +25,7 @@ extern int PADDING;
 extern int g_render_tab_height; // current tab height in pixels
 
 extern bool win_is_fullscreen;
+extern uint dpi;
 
 extern void win_paint(void);
 
