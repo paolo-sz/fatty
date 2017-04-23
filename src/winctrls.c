@@ -7,6 +7,7 @@
 #include "winctrls.h"
 
 #include "winpriv.h"
+#include "charset.h"  // wcscpy
 
 #define _RPCNDR_H
 #define _WTYPES_H
@@ -814,7 +815,11 @@ winctrl_set_focus(control *ctrl, int has_focus)
 }
 
 #ifndef CF_INACTIVEFONTS
+# ifdef __MSABI_LONG
 #define CF_INACTIVEFONTS __MSABI_LONG (0x02000000)
+# else
+#define CF_INACTIVEFONTS 0x02000000
+# endif
 #endif
 
 #define dont_debug_fontsel
@@ -850,7 +855,7 @@ select_font(winctrl *c)
     wcscpy(lf.lfFaceName, L"Lucida Console");
 #endif
 
-  UINT APIENTRY applyfont(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)
+  UINT_PTR CALLBACK fonthook(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)
   {
     (void)lParam;
     if (uiMsg == WM_COMMAND && wParam == 1026) {  // Apply
@@ -901,7 +906,7 @@ select_font(winctrl *c)
   cf.lStructSize = sizeof (cf);
   cf.hwndOwner = dlg.wnd;
   cf.lpLogFont = &lf;
-  cf.lpfnHook = (LPCFHOOKPROC)applyfont;
+  cf.lpfnHook = fonthook;
   cf.Flags =
     CF_INITTOLOGFONTSTRUCT | CF_FORCEFONTEXIST
     | CF_FIXEDPITCHONLY | CF_NOVERTFONTS

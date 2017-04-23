@@ -335,13 +335,11 @@ child_conv_path(struct child* child, wstring wpath)
   else
     exp_path = path;
 
-#if CYGWIN_VERSION_API_MINOR >= 181
 # if CYGWIN_VERSION_API_MINOR >= 222
   // CW_INT_SETLOCALE was introduced in API 0.222
   cygwin_internal(CW_INT_SETLOCALE);
 # endif
-  wchar *win_wpath = cygwin_create_path(CCP_POSIX_TO_WIN_W, exp_path);
-
+  wchar *win_wpath = path_posix_to_win_w(exp_path);
   // Drop long path prefix if possible,
   // because some programs have trouble with them.
   if (win_wpath && wcslen(win_wpath) < MAX_PATH) {
@@ -356,12 +354,6 @@ child_conv_path(struct child* child, wstring wpath)
       free(old_win_wpath);
     }
   }
-#else
-  char win_path[MAX_PATH];
-  cygwin_conv_to_win32_path(exp_path, win_path);
-  wchar *win_wpath = newn(wchar, MAX_PATH);
-  MultiByteToWideChar(0, 0, win_path, -1, win_wpath, MAX_PATH);
-#endif
 
   if (exp_path != path)
     free(exp_path);
