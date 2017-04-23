@@ -404,11 +404,11 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
         addnew = false;
         // insert additional parameters here
         newargv[j++] = "-o";
-        char parbuf1[28];
+        static char parbuf1[28];  // static to prevent #530
         sprintf(parbuf1, "Rows=%d",  child->term->rows);
         newargv[j++] = parbuf1;
         newargv[j++] = "-o";
-        char parbuf2[31];
+        static char parbuf2[31];  // static to prevent #530
         sprintf(parbuf2, "Columns=%d",  child->term->cols);
         newargv[j++] = parbuf2;
       }
@@ -424,7 +424,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 #endif
 
     void setenvi(char * env, int val) {
-      char valbuf[22];
+      static char valbuf[22];  // static to prevent #530
       sprintf(valbuf, "%d", val);
       setenv(env, valbuf, true);
     }
