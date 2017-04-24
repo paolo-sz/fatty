@@ -169,8 +169,6 @@ determine_geometry(HWND wnd)
   dialog_height = 100 * (r.bottom - r.top) / normr.bottom;
 }
 
-#define dont_debug_messages
-
 #ifdef debug_dialog_crash
 
 static char * debugopt = 0;
@@ -211,6 +209,8 @@ debug(char *tag)
 # define debug(tag)	
 #endif
 
+#define dont_debug_messages
+
 /*
  * This function is the configuration box.
  * (Being a dialog procedure, in general it returns 0 if the default
@@ -220,6 +220,7 @@ static INT_PTR CALLBACK
 config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 #ifdef debug_messages
+#include <time.h>
   static struct {
   uint wm_;
   char * wm_name;
@@ -229,6 +230,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
   char * wm_name = "WM_?";
   if ((msg != WM_SETCURSOR && msg != WM_NCHITTEST && msg != WM_MOUSEFIRST
        && msg != WM_ERASEBKGND && msg != WM_CTLCOLORDLG && msg != WM_PRINTCLIENT && msg != WM_CTLCOLORBTN
+       && msg != WM_ENTERIDLE
        && (msg != WM_NOTIFY || (LOWORD(wParam) == IDCX_TREEVIEW && ((LPNMHDR) lParam)->code == TVN_SELCHANGED))
      )) {
     for (uint i = 0; i < lengthof(wm_names); i++)
@@ -432,14 +434,12 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
         debug("WM_COMMAND: Destroy");
       }
       debug("WM_COMMAND: end");
-#ifdef debug_messages
-      printf(" end dialog_proc %04X %s (%04X %08X)\n", msg, wm_name, (unsigned)wParam, (unsigned)lParam);
-#endif
       return ret;
     }
   }
 #ifdef debug_messages
-  printf(" end dialog_proc %04X %s (%04X %08X)\n", msg, wm_name, (unsigned)wParam, (unsigned)lParam);
+//  catch return above
+//  printf(" end dialog_proc %04X %s (%04X %08X)\n", msg, wm_name, (unsigned)wParam, (unsigned)lParam);
 #endif
   return 0;
 }
@@ -486,6 +486,7 @@ win_open_config(void)
   determine_geometry(config_wnd);  // dummy call
 
   // Set title of Options dialog explicitly to facilitate I18N
+  //__ Options: dialog title
   SendMessageW(config_wnd, WM_SETTEXT, 0, (LPARAM)_W("Options"));
 
   ShowWindow(config_wnd, SW_SHOW);
@@ -519,14 +520,13 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
 
   if (nCode == HCBT_ACTIVATE) {
     if ((oktype & MB_TYPEMASK) == MB_OK)
-      //__ take notice
       setlabel(IDOK, _W("I see"));
     else
-      //__ confirm action
       setlabel(IDOK, _W("OK"));
     setlabel(IDCANCEL, _W("Cancel"));
 #ifdef we_would_use_these_in_any_message_box
 #warning W -> _W to add the labels to the localization repository
+#warning predefine button labels in config.c
     setlabel(IDABORT, W("&Abort"));
     setlabel(IDRETRY, W("&Retry"));
     setlabel(IDIGNORE, W("&Ignore"));

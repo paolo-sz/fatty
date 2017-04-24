@@ -800,6 +800,7 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
       }
       when CTRL_FONTSELECT: {
         num_ids = 3;
+        //__ Options - Text: font chooser activation button
         staticbtn(&pos, "", base_id + 1, _("&Select..."), base_id + 2);
         data = new(font_spec);
       }
@@ -857,6 +858,8 @@ winctrl_set_focus(control *ctrl, int has_focus)
     dlg.focused = null;
 }
 
+static HWND font_sample = 0;
+
 /*
    adapted from messageboxmanager.zip
    @ https://www.codeproject.com/articles/18399/localizing-system-messagebox
@@ -867,13 +870,22 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
 
 #define dont_debug_dialog_hook
 
+#ifdef debug_dialog_hook
+  void
+  trace_label(int id, HWND button, wstring label)
+  {
+    if (!button) button = GetDlgItem((HWND)wParam, id);
+    wchar buf [99];
+    GetWindowTextW(button, buf, 99);
+    printf("%d <%ls> -> <%ls>\n", id, buf, label);
+  }
+#endif
+
   void setlabel(int id, wstring label) {
     HWND button = GetDlgItem((HWND)wParam, id);
     if (localize && button) {
 #ifdef debug_dialog_hook
-      wchar buf [99];
-      GetWindowTextW(button, buf, 99);
-      printf("%d <%ls> -> <%ls>\n", id, buf, label);
+      trace_label(id, button, label);
 #endif
       SetWindowTextW(button, label);
     }
@@ -903,18 +915,25 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
   // because SetWindowPos would cause HCBT_ACTIVATE to be invoked 
   // when the dialog is not yet populated with the other dialog items
   if (nCode == HCBT_ACTIVATE) {
-    setlabel(IDOK, wloctext("OK"));
+    setlabel(IDOK, _W("OK"));
     setlabel(IDCANCEL, _W("Cancel"));
 
     if (localize && GetDlgItem((HWND)wParam, 1088))
-      SetWindowTextW((HWND)wParam, _W("Font"));
+      //__ Font chooser: title bar label
+      SetWindowTextW((HWND)wParam, _W("Font "));
+    //__ Font chooser: button
     setlabel(1026, _W("&Apply"));
+    //__ Font chooser:
     setlabel(1088, _W("&Font:"));
+    //__ Font chooser:
     setlabel(1089, _W("Font st&yle:"));
+    //__ Font chooser:
     setlabel(1090, _W("&Size:"));
+    //__ Font chooser:
     setlabel(1073, _W("Sample"));
-    //__ font chooser text sample ("AaBbYyZz" by default)
+    //__ Font chooser: text sample ("AaBbYyZz" by default)
     setlabel(1092, _W("Ferqœm’4€"));
+    font_sample = GetDlgItem((HWND)wParam, 1092);
     // if we manage to get the field longer, 
     // sample text could be picked from http://clagnut.com/blog/2380/,
     // e.g. "Cwm fjord bank glyphs vext quiz"
@@ -930,35 +949,56 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
         DestroyWindow(weg);
     }
     else {
-      //__ this field is only shown with OldFontMenu=true
+      //__ Font chooser: this field is only shown with OldFontMenu=true
       setlabel(1094, _W("Sc&ript:"));
-      //__ this field is only shown with OldFontMenu=true
+      //__ Font chooser: this field is only shown with OldFontMenu=true
       setlabel(1592, _W("<A>Show more fonts</A>"));
     }
 
     if (localize && GetDlgItem((HWND)wParam, 730))
-      SetWindowTextW((HWND)wParam, _W("Color"));
+      //__ Colour chooser: title bar label
+      SetWindowTextW((HWND)wParam, _W("Colour "));
     // tricky way to adjust "Basic colors:" and "Custom colors:" labels 
     // which insanely have the same dialog item ID, see
     // http://www.xtremevbtalk.com/api/181863-changing-custom-color-label-choosecolor-dialog-comdlg32-dll.html
     HWND custom_colors = GetDlgItem((HWND)wParam, 65535);
     if (custom_colors) {
+#ifdef debug_dialog_hook
+      trace_label(65535, custom_colors, _W("B&asic colours:"));
+#endif
       LRESULT fnt = SendMessage(custom_colors, WM_GETFONT, 0, 0);
       DestroyWindow(custom_colors);
-      custom_colors = CreateWindowExW(4, W("Static"), _W("&Basic colors:"), 0x50020000, 6, 7, 210, 15, (HWND)wParam, 0, inst, 0);
+      //__ Colour chooser:
+      custom_colors = CreateWindowExW(4, W("Static"), _W("B&asic colours:"), 0x50020000, 6, 7, 210, 15, (HWND)wParam, 0, inst, 0);
+                      //shortkey disambiguated from original "&Basic colors:"
       SendMessage(custom_colors, WM_SETFONT, fnt, MAKELPARAM(true, 0));
-      setlabel(65535, _W("&Custom colors:"));
+      //__ Colour chooser:
+      setlabel(65535, _W("&Custom colours:"));
     }
-    setlabel(719, _W("&Define Custom Colors >>"));
-    setlabel(730, _W("Color"));
+    //__ Colour chooser:
+    setlabel(719, _W("De&fine Custom Colours >>"));
+          //shortkey disambiguated from original "&Define Custom Colours >>"
+    //__ Colour chooser:
+    setlabel(730, _W("Colour"));
+    //__ Colour chooser:
     setlabel(731, _W("|S&olid"));
-    setlabel(723, _W("Hu&e:"));
+    //__ Colour chooser:
+    setlabel(723, _W("&Hue:"));
+            //shortkey disambiguated from original "Hu&e:"
+    //__ Colour chooser:
     setlabel(724, _W("&Sat:"));
+    //__ Colour chooser:
     setlabel(725, _W("&Lum:"));
+    //__ Colour chooser:
     setlabel(726, _W("&Red:"));
+    //__ Colour chooser:
     setlabel(727, _W("&Green:"));
-    setlabel(728, _W("Bl&ue:"));
-    setlabel(712, _W("&Add to Custom Colors"));
+    //__ Colour chooser:
+    setlabel(728, _W("&Blue:"));
+            //shortkey disambiguated from original "Bl&ue:"
+    //__ Colour chooser:
+    setlabel(712, _W("A&dd to Custom Colours"));
+            //shortkey disambiguated from original "&Add to Custom Colours"
 
 #ifdef debug_dialog_hook
     for (int id = 12; id < 65536; id++) {
@@ -1045,13 +1085,52 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
 
 static winctrl * font_ctrl;
 
+#define dont_debug_messages
+
 static UINT_PTR CALLBACK
-fonthook(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)
+fonthook(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam)
 {
   (void)lParam;
+#ifdef debug_messages
+#include <time.h>
+  static struct {
+  uint wm_;
+  char * wm_name;
+  } wm_names[] = {
+#  include "_wm.t"
+  };
+  char * wm_name = "WM_?";
+  if ((msg != WM_SETCURSOR && msg != WM_NCHITTEST && msg != WM_MOUSEFIRST
+       && msg != WM_ERASEBKGND && msg != WM_CTLCOLORDLG && msg != WM_PRINTCLIENT && msg != WM_CTLCOLORBTN
+       && msg != WM_ENTERIDLE
+       && (msg != WM_NOTIFY)
+     )) {
+    for (uint i = 0; i < lengthof(wm_names); i++)
+      if (msg == wm_names[i].wm_) {
+        wm_name = wm_names[i].wm_name;
+        break;
+      }
+    printf("[%d] fonthook %04X %s (%04X %08X)\n", (int)time(0), msg, wm_name, (unsigned)wParam, (unsigned)lParam);
+  }
+#endif
+
+  if (msg == WM_DRAWITEM) {
+    // restore our own font sample text
+#define disp ((DRAWITEMSTRUCT*)lParam)
+#ifdef debug_messages
+    printf("                           %04X %d %2d %04X %04X %p\n",
+           disp->CtlType, disp->CtlID, disp->itemID, disp->itemAction, disp->itemState, 
+           disp->hwndItem);
+#endif
+    if (disp->CtlID == 1137 && (disp->itemAction == ODA_SELECT))
+      // or any of CtlID=1137 (font style)/itemID=0...
+      // or CtlID=1138 (font size)/itemID=2... will do
+      SetWindowTextW(font_sample, _W("Ferqœm’4€"));
+  }
+
   //winctrl * c = (winctrl *)lParam;  // does not work
   winctrl * c = font_ctrl;
-  if (uiMsg == WM_COMMAND && wParam == 1026) {  // Apply
+  if (msg == WM_COMMAND && wParam == 1026) {  // Apply
     LOGFONTW lfapply;
     SendMessageW(hdlg, WM_CHOOSEFONT_GETLOGFONT, 0, (LPARAM)&lfapply);
     font_spec * fsp = &new_cfg.font;
@@ -1068,7 +1147,7 @@ fonthook(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)
     c->ctrl->handler(c->ctrl, EVENT_REFRESH);  // -> dlg_stdfontsel_handler
     //or dlg_fontsel_set(c->ctrl, fsp);
   }
-  else if (uiMsg == WM_COMMAND && wParam == 1) {  // OK
+  else if (msg == WM_COMMAND && wParam == 1) {  // OK
 #ifdef failed_workaround_for_no_font_issue
     /*
       Trying to work-around issue #507
@@ -1090,7 +1169,7 @@ fonthook(HWND hdlg, UINT uiMsg, WPARAM wParam, LPARAM lParam)
     // what a crap!
 #endif
   }
-  else if (uiMsg == WM_COMMAND && wParam == 2) {  // Cancel
+  else if (msg == WM_COMMAND && wParam == 2) {  // Cancel
   }
   return 0;  // default processing
 }
