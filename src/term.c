@@ -1234,7 +1234,7 @@ term_paint(struct term* term)
         //text[textlen] = 0xFFFD;
         // or:
         // blank region of SIXEL image
-        text[textlen] = ' ';
+        text[textlen] = ' ';  // or any of █░▒▓▚▞, e.g. 0x2591 ?
       }
       else
         text[textlen] = tchar;

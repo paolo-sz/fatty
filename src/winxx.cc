@@ -191,6 +191,7 @@ static void newtab(
     tabs.push_back(Tab());
     Tab& tab = tabs.back();
     tab.terminal->child = tab.chld.get();
+    tab.terminal.get()->show_scrollbar = cfg.scrollbar;  // hotfix #597
     term_reset(tab.terminal.get());
     term_resize(tab.terminal.get(), rows, cols);
     tab.chld->cmd = g_cmd;

@@ -153,6 +153,7 @@ DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
 static DPI_AWARENESS_CONTEXT (WINAPI * pSetThreadDpiAwarenessContext)(DPI_AWARENESS_CONTEXT dpic) = 0;
 static HRESULT (WINAPI * pEnableNonClientDpiScaling)(HWND win) = 0;
 static BOOL (WINAPI * pAdjustWindowRectExForDpi)(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle, UINT dpi) = 0;
+static INT (WINAPI * pGetSystemMetricsForDpi)(INT index, UINT dpi) = 0;
 
 static void
 load_dpi_funcs(void)
@@ -177,9 +178,11 @@ load_dpi_funcs(void)
       (void *)GetProcAddress(user, "EnableNonClientDpiScaling");
     pAdjustWindowRectExForDpi =
       (void *)GetProcAddress(user, "AdjustWindowRectExForDpi");
+    pGetSystemMetricsForDpi =
+      (void *)GetProcAddress(user, "GetSystemMetricsForDpi");
   }
 #ifdef debug_dpi
-  printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d SetThreadDpiAwarenessContext %d EnableNonClientDpiScaling %d AdjustWindowRectExForDpi %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor, !!pSetThreadDpiAwarenessContext, !!pEnableNonClientDpiScaling, !!pAdjustWindowRectExForDpi);
+  printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d SetThreadDpiAwarenessContext %d EnableNonClientDpiScaling %d AdjustWindowRectExForDpi %d GetSystemMetricsForDpi %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor, !!pSetThreadDpiAwarenessContext, !!pEnableNonClientDpiScaling, !!pAdjustWindowRectExForDpi, !!pGetSystemMetricsForDpi);
 #endif
 }
 
@@ -524,7 +527,8 @@ win_get_pixels(int *height_p, int *width_p)
   RECT r;
   GetWindowRect(wnd, &r);
   // report inner pixel size, without padding, like xterm:
-  *height_p = r.bottom - r.top - extra_height - 2 * PADDING;
+  int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
+  *height_p = r.bottom - r.top - extra_height - 2 * PADDING - sy;
   *width_p = r.right - r.left - extra_width - 2 * PADDING;
 }
 
@@ -542,9 +546,10 @@ void
 win_set_pixels(int height, int width)
 {
   trace_resize(("--- win_set_pixels %d %d\n", height, width));
+  int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
   SetWindowPos(wnd, null, 0, 0,
                width + extra_width + 2 * PADDING,
-               height + extra_height + 2 * PADDING,
+               height + extra_height + 2 * PADDING + sy,
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
 }
 
@@ -806,6 +811,36 @@ win_invalidate_all(void)
   win_for_each_term(term_paint);
 }
 
+
+#ifdef debug_dpi
+static void
+print_system_metrics(int dpi, string tag)
+{
+# ifndef SM_CXPADDEDBORDER
+# define SM_CXPADDEDBORDER 92
+# endif
+  printf("metrics /%d [%s]\n"
+         "        border %d/%d %d/%d edge %d/%d %d/%d\n"
+         "        frame  %d/%d %d/%d size %d/%d %d/%d\n"
+         "        padded %d/%d\n"
+         "        caption %d/%d\n"
+         "        scrollbar %d/%d\n",
+         dpi, tag,
+         GetSystemMetrics(SM_CXBORDER), pGetSystemMetricsForDpi(SM_CXBORDER, dpi),
+         GetSystemMetrics(SM_CYBORDER), pGetSystemMetricsForDpi(SM_CYBORDER, dpi),
+         GetSystemMetrics(SM_CXEDGE), pGetSystemMetricsForDpi(SM_CXEDGE, dpi),
+         GetSystemMetrics(SM_CYEDGE), pGetSystemMetricsForDpi(SM_CYEDGE, dpi),
+         GetSystemMetrics(SM_CXFIXEDFRAME), pGetSystemMetricsForDpi(SM_CXFIXEDFRAME, dpi),
+         GetSystemMetrics(SM_CYFIXEDFRAME), pGetSystemMetricsForDpi(SM_CYFIXEDFRAME, dpi),
+         GetSystemMetrics(SM_CXSIZEFRAME), pGetSystemMetricsForDpi(SM_CXSIZEFRAME, dpi),
+         GetSystemMetrics(SM_CYSIZEFRAME), pGetSystemMetricsForDpi(SM_CYSIZEFRAME, dpi),
+         GetSystemMetrics(SM_CXPADDEDBORDER), pGetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi),
+         GetSystemMetrics(SM_CYCAPTION), pGetSystemMetricsForDpi(SM_CYCAPTION, dpi),
+         GetSystemMetrics(SM_CXVSCROLL), pGetSystemMetricsForDpi(SM_CXVSCROLL, dpi)
+         );
+}
+#endif
+
 static void
 win_adjust_borders(int t_width, int t_height)
 {
@@ -830,8 +865,9 @@ win_adjust_borders(int t_width, int t_height)
 #ifdef debug_dpi
     RECT wr0 = cr;
     AdjustWindowRect(&wr0, window_style, false);
-    printf("adjust borders dpi %3d: %ld %ld\n", dpi, wr.right - wr.left, wr.bottom - wr.top);
-    printf("                      : %ld %ld\n", wr0.right - wr0.left, wr0.bottom - wr0.top);
+    printf("adjust borders dpi %3d: %ld %ld\n", dpi, (long)wr.right - wr.left, (long)wr.bottom - wr.top);
+    printf("                      : %ld %ld\n", (long)wr0.right - wr0.left, (long)wr0.bottom - wr0.top);
+    print_system_metrics(dpi, "win_adjust_borders");
 #endif
   }
   else
@@ -852,7 +888,7 @@ win_adjust_borders(int t_width, int t_height)
 void
 win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
 {
-  trace_resize(("--- win_adapt_term_size full %d Zoomed %d\n", win_is_fullscreen, IsZoomed(wnd)));
+  trace_resize(("--- win_adapt_term_size sync_size %d scale_font %d (full %d Zoomed %d)\n", sync_size_with_font, scale_font_with_size, win_is_fullscreen, IsZoomed(wnd)));
   if (IsIconic(wnd))
     return;
 
@@ -1164,7 +1200,7 @@ static struct {
   if (term_initialized) term = win_active_terminal();
   switch (message) {
     when WM_NCCREATE:
-      if (pEnableNonClientDpiScaling) {
+      if (cfg.handle_dpichanged && pEnableNonClientDpiScaling) {
         //CREATESTRUCT * csp = (CREATESTRUCT *)lp;
         resizing = true;
         BOOL res = pEnableNonClientDpiScaling(wnd);
@@ -1371,7 +1407,7 @@ static struct {
       win_key_reset();
 
     when WM_SETFOCUS:
-      trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", (uchar)GetKeyState(VK_SHIFT)));
       term_set_focus(term, true, false);
       CreateCaret(wnd, caretbm, 0, 0);
       //flash_taskbar(false);  /* stop; not needed when leaving search bar */
@@ -1390,15 +1426,15 @@ static struct {
       return 0;
 
     when WM_MOVING:
-      trace_resize(("# WM_MOVING VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_MOVING VK_SHIFT %02X\n", (uchar)GetKeyState(VK_SHIFT)));
       zoom_token = -4;
 
     when WM_ENTERSIZEMOVE:
-      trace_resize(("# WM_ENTERSIZEMOVE VK_SHIFT %02X\n", GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_ENTERSIZEMOVE VK_SHIFT %02X\n", (uchar)GetKeyState(VK_SHIFT)));
       resizing = true;
 
     when WM_SIZING: {  // mouse-drag window resizing
-      trace_resize(("# WM_SIZING (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_SIZING (resizing %d) VK_SHIFT %02X\n", resizing, (uchar)GetKeyState(VK_SHIFT)));
       zoom_token = 2;
      /*
       * This does two jobs:
@@ -1434,7 +1470,7 @@ static struct {
     }
 
     when WM_SIZE: {
-      trace_resize(("# WM_SIZE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_SIZE (resizing %d) VK_SHIFT %02X\n", resizing, (uchar)GetKeyState(VK_SHIFT)));
       if (wp == SIZE_RESTORED && win_is_fullscreen)
         clear_fullscreen();
       else if (wp == SIZE_MAXIMIZED && go_fullscr_on_max) {
@@ -1479,7 +1515,7 @@ static struct {
       win_paint_tabs(lp, 0);
 
     when WM_EXITSIZEMOVE or WM_CAPTURECHANGED: { // after mouse-drag resizing
-      trace_resize(("# WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, GetKeyState(VK_SHIFT)));
+      trace_resize(("# WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, (uchar)GetKeyState(VK_SHIFT)));
       bool shift = GetKeyState(VK_SHIFT) & 0x80;
 
       if (resizing) {
@@ -2324,6 +2360,13 @@ main(int argc, char *argv[])
   cs_reconfig();
 
   // Determine window sizes.
+#if 0
+  if (per_monitor_dpi_aware && pGetDpiForMonitor) {
+    HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+    uint x;
+    pGetDpiForMonitor(mon, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
+  }
+#endif
   win_adjust_borders(cell_width * term_cols, cell_height * term_rows);
 
   // Having x == CW_USEDEFAULT but not y still triggers default positioning,
@@ -2449,6 +2492,7 @@ main(int argc, char *argv[])
       pGetDpiForMonitor(mon, 1, &x, &ang);  // MDT_ANGULAR_DPI
       pGetDpiForMonitor(mon, 2, &x, &raw);  // MDT_RAW_DPI
       printf("initial dpi eff %d ang %d raw %d\n", dpi, ang, raw);
+      print_system_metrics(dpi, "initial");
 #endif
       // recalculate effective font size and adjust window
       if (dpi != 96) {
