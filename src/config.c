@@ -31,6 +31,7 @@ const config default_cfg = {
   .tab_active_bg_colour = 0x323232,
   .tab_attention_bg_colour = 0x003200,
   .cursor_colour = 0xBFBFBF,
+  .underl_colour = (colour)-1,
   .search_fg_colour = 0x000000,
   .search_bg_colour = 0x00DDDD,
   .search_current_colour = 0x0099DD,
@@ -173,6 +174,7 @@ options[] = {
   // Looks
   {"BoldColour", OPT_COLOUR, offcfg(bold_colour)},
   {"CursorColour", OPT_COLOUR, offcfg(cursor_colour)},
+  {"UnderlineColour", OPT_COLOUR, offcfg(underl_colour)},
   {"SearchForegroundColour", OPT_COLOUR, offcfg(search_fg_colour)},
   {"SearchBackgroundColour", OPT_COLOUR, offcfg(search_bg_colour)},
   {"SearchCurrentColour", OPT_COLOUR, offcfg(search_current_colour)},
