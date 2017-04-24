@@ -24,6 +24,7 @@ extern int PADDING;
 
 extern int g_render_tab_height; // current tab height in pixels
 extern bool disable_bidi;
+extern bool support_wsl;
 
 extern bool win_is_fullscreen;
 extern uint dpi;

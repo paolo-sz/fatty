@@ -79,6 +79,7 @@ static bool maxheight = false;
 static bool store_taskbar_properties = false;
 static bool prevent_pinning = false;
 bool disable_bidi = false;
+bool support_wsl = false;
 
 
 static HBITMAP caretbm;
@@ -378,6 +379,8 @@ static long current_monitor = 1 - 1;  // assumption for MonitorFromWindow
        stores info of primary monitor
    search_monitors(&x, &y, mon, false/true, 0)
      returns index of given monitor (0/primary if not found)
+   search_monitors(&x, &y, 0, false/true, 0)
+     prints information about all monitors
  */
 int
 search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, MONITORINFO *mip)
@@ -423,6 +426,11 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, M
   * minx = 0;
   * miny = 0;
   HMONITOR refmon = 0;
+  HMONITOR curmon = lookup_mon ? 0 : MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+  bool print_monitors = !lookup_mon && !mip;
+#ifdef debug_display_monitors
+  print_monitors = !lookup_mon;
+#endif
 
   BOOL CALLBACK
   monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
@@ -452,10 +460,14 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, M
     if (*miny == 0 || *miny > fr.bottom - fr.top)
       *miny = fr.bottom - fr.top;
 
-#ifdef debug_display_monitors
-    if (!lookup_mon)
-      printf("Monitor %d: %d,%d...%d,%d %s\n", moni, fr.left, fr.top, fr.right, fr.bottom, mi.dwFlags & MONITORINFOF_PRIMARY ? "primary" : "");
-#endif
+    if (print_monitors) {
+      printf("Monitor %d %s %s width,height %4d,%4d (%4d,%4d...%4d,%4d)\n", 
+             moni,
+             hMonitor == curmon ? "current" : "       ",
+             mi.dwFlags & MONITORINFOF_PRIMARY ? "primary" : "       ",
+             (int)(fr.right - fr.left), (int)(fr.bottom - fr.top),
+             (int)fr.left, (int)fr.top, (int)fr.right, (int)fr.bottom);
+    }
 
     return TRUE;
   }
@@ -464,18 +476,20 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, M
   if (lookup_mon) {
     return moni_found;
   }
-  else {
-    if (!refmon)
+  else if (mip) {
+    if (!refmon)  // not detected primary monitor as requested?
+      // determine current monitor
       refmon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
     mip->cbSize = sizeof(MONITORINFO);
     GetMonitorInfo(refmon, mip);
     return moni;  // number of monitors
   }
+  else
+    return moni;  // number of monitors printed
 }
 
 /*
- * Minimise or restore the window in response to a server-side
- * request.
+ * Minimise or restore the window in response to a server-side request.
  */
 void
 win_set_iconic(bool iconic)
@@ -865,8 +879,8 @@ win_adjust_borders(int t_width, int t_height)
 #ifdef debug_dpi
     RECT wr0 = cr;
     AdjustWindowRect(&wr0, window_style, false);
-    printf("adjust borders dpi %3d: %ld %ld\n", dpi, (long)wr.right - wr.left, (long)wr.bottom - wr.top);
-    printf("                      : %ld %ld\n", (long)wr0.right - wr0.left, (long)wr0.bottom - wr0.top);
+    printf("adjust borders dpi %3d: %d %d\n", dpi, (int)(wr.right - wr.left), (int)(wr.bottom - wr.top));
+    printf("                      : %d %d\n", (int)(wr0.right - wr0.left), (int)(wr0.bottom - wr0.top));
     print_system_metrics(dpi, "win_adjust_borders");
 #endif
   }
@@ -1964,6 +1978,7 @@ opts[] = {
   {"dir",        required_argument, 0, ''},  // short option not enabled
   {"nobidi",     no_argument,       0, ''},  // short option not enabled
   {"nortl",      no_argument,       0, ''},  // short option not enabled
+  {"wsl",        no_argument,       0, ''},  // short option not enabled
   {"help",       no_argument,       0, 'H'},
   {"version",    no_argument,       0, 'V'},
   {"nodaemon",   no_argument,       0, 'd'},
@@ -2125,6 +2140,7 @@ main(int argc, char *argv[])
         current_tab_size++;
       when '': set_arg_option("Class", optarg);
       when '': disable_bidi = true;
+      when '': support_wsl = true;
       when '':
         if (chdir(optarg) < 0) {
           if (*optarg == '"' || *optarg == '\'')
@@ -2381,7 +2397,7 @@ main(int argc, char *argv[])
 
 #define dont_debug_position
 #ifdef debug_position
-#define printpos(tag, x, y, mon)	printf("%s %d %d (%ld %ld %ld %ld)\n", tag, x, y, mon.left, mon.top, mon.right, mon.bottom);
+#define printpos(tag, x, y, mon)	printf("%s %d %d (%d %d %d %d)\n", tag, x, y, (int)mon.left, (int)mon.top, (int)mon.right, (int)mon.bottom);
 #else
 #define printpos(tag, x, y, mon)
 #endif
@@ -2579,21 +2595,6 @@ main(int argc, char *argv[])
   go_fullscr_on_max = (cfg.window == -1);
   ShowWindow(wnd, go_fullscr_on_max ? SW_SHOWMAXIMIZED : cfg.window);
   SetFocus(wnd);
-
-#ifdef debug_display_monitors_mockup
-  {
-    int x, y;
-    MONITORINFO mi;
-    int n = search_monitors(&x, &y, 0, false, &mi);
-    printf("%d monitors, smallest %dx%d, current %d,%d...%d,%d\n", n, x, y, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom);
-    n = search_monitors(&x, &y, 0, true, &mi);
-    printf("%d monitors, smallest %dx%d, primary %d,%d...%d,%d\n", n, x, y, mi.rcMonitor.left, mi.rcMonitor.top, mi.rcMonitor.right, mi.rcMonitor.bottom);
-    n = search_monitors(&x, &y, (HMONITOR)(current_monitor + 1), false, 0);
-    printf("current monitor: %d\n", n);
-    n = search_monitors(&x, &y, (HMONITOR)(primary_monitor + 1), false, 0);
-    printf("primary monitor: %d\n", n);
-  }
-#endif
 
   // Message loop.
   do {
