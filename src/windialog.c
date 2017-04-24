@@ -17,7 +17,7 @@ extern void setup_config_box(controlbox *);
 
 #include <commctrl.h>
 
-#define debug_dialog_crash
+# define debug_dialog_crash
 
 #ifdef debug_dialog_crash
 #include <signal.h>
@@ -173,13 +173,16 @@ determine_geometry(HWND wnd)
 
 #ifdef debug_dialog_crash
 
+static char * debugopt = 0;
 static char * debugtag = "none";
 
 static void
 sigsegv(int sig)
 {
-  printf("catch %d: %s\n", sig, debugtag);
   signal(sig, SIG_DFL);
+  printf("catch %d: %s\n", sig, debugtag);
+  fflush(stdout);
+  MessageBoxA(0, debugtag, "Critical Error", MB_ICONSTOP);
 }
 
 inline static void
@@ -189,7 +192,20 @@ crashtest()
   *x0 = 'x';
 }
 
-# define debug(tag)	debugtag = tag
+static void
+debug(char *tag)
+{
+  if (!debugopt) {
+    debugopt = getenv("MINTTY_DEBUG");
+    if (!debugopt)
+      debugopt = "";
+  }
+
+  debugtag = tag;
+
+  if (debugopt && *debugopt)
+    printf("%s\n", tag);
+}
 
 #else
 # define debug(tag)	
@@ -267,7 +283,7 @@ static struct {
       SendMessage(treeview, WM_SETFONT, font, MAKELPARAM(true, 0));
       treeview_faff tvfaff;
       tvfaff.treeview = treeview;
-      memset(tvfaff.lastat, 0, sizeof (tvfaff.lastat));
+      memset(tvfaff.lastat, 0, sizeof(tvfaff.lastat));
 
      /*
       * Set up the tree view contents.
@@ -326,6 +342,9 @@ static struct {
       }
     }
 
+    when WM_CLOSE:
+      DestroyWindow(wnd);
+
     when WM_DESTROY:
       winctrl_cleanup(&ctrls_base);
       winctrl_cleanup(&ctrls_panel);
@@ -336,8 +355,39 @@ static struct {
       signal(SIGSEGV, SIG_DFL);
 #endif
 
-    when WM_CLOSE:
-      DestroyWindow(wnd);
+    when WM_USER: {
+      debug("WM_USER");
+      HWND target = (HWND)wParam;
+      // could delegate this to winctrls.c, like winctrl_handle_command;
+      // but then we'd have to fiddle with the location of dragndrop
+     /*
+      * Look up the window handle in our data; find the control.
+        (Hmm, apparently it works without looking for the widget entry 
+        that was particularly introduced for this purpose...)
+      */
+      control * ctrl = null;
+      for (winctrl *c = ctrls_panel.first; c && !ctrl; c = c->next) {
+        if (c->ctrl)
+          for (int k = 0; k < c->num_ids; k++) {
+#ifdef debug_dragndrop
+            printf(" [->%8p] %8p\n", target, GetDlgItem(wnd, c->base_id + k));
+#endif
+            if (target == GetDlgItem(wnd, c->base_id + k)) {
+              ctrl = c->ctrl;
+              break;
+            }
+        }
+      }
+      debug("WM_USER: lookup");
+      if (ctrl) {
+        //dlg_editbox_set_w(ctrl, L"Test");  // may hit unrelated items...
+        // drop the drag-and-drop contents here
+        dragndrop = (wstring)lParam;
+        ctrl->handler(ctrl, EVENT_DROP);
+        debug("WM_USER: handler");
+      }
+      debug("WM_USER: end");
+    }
 
     when WM_NOTIFY: {
       if (LOWORD(wParam) == IDCX_TREEVIEW &&
@@ -382,40 +432,8 @@ static struct {
         DestroyWindow(wnd);
         debug("WM_COMMAND: Destroy");
       }
+      debug("WM_COMMAND: end");
       return ret;
-    }
-
-    when WM_USER: {
-      debug("WM_USER");
-      HWND target = (HWND)wParam;
-      // could delegate this to winctrls.c, like winctrl_handle_command;
-      // but then we'd have to fiddle with the location of dragndrop
-     /*
-      * Look up the window handle in our data; find the control.
-        (Hmm, apparently it works without looking for the widget entry 
-        that was particularly introduced for this purpose...)
-      */
-      control * ctrl = null;
-      for (winctrl *c = ctrls_panel.first; c && !ctrl; c = c->next) {
-        if (c->ctrl)
-          for (int k = 0; k < c->num_ids; k++) {
-#ifdef debug_dragndrop
-            printf(" [->%8p] %8p\n", target, GetDlgItem(wnd, c->base_id + k));
-#endif
-            if (target == GetDlgItem(wnd, c->base_id + k)) {
-              ctrl = c->ctrl;
-              break;
-            }
-        }
-      }
-      debug("WM_USER: lookup");
-      if (ctrl) {
-        //dlg_editbox_set_w(ctrl, L"Test");  // may hit unrelated items...
-        // drop the drag-and-drop contents here
-        dragndrop = (wstring)lParam;
-        ctrl->handler(ctrl, EVENT_DROP);
-        debug("WM_USER: handler");
-      }
     }
   }
   return 0;
@@ -442,7 +460,7 @@ win_open_config(void)
       .style = CS_DBLCLKS,
       .lpfnWndProc = DefDlgProc,
       .cbClsExtra = 0,
-      .cbWndExtra = DLGWINDOWEXTRA + 2 * sizeof (LONG_PTR),
+      .cbWndExtra = DLGWINDOWEXTRA + 2 * sizeof(LONG_PTR),
       .hInstance = inst,
       .hIcon = null,
       .hCursor = LoadCursor(null, IDC_ARROW),
@@ -470,6 +488,99 @@ win_open_config(void)
   set_dpi_auto_scaling(false);
 }
 
+/*
+   adapted from messageboxmanager.zip
+   @ https://www.codeproject.com/articles/18399/localizing-system-messagebox
+ */
+static wstring oklabel = null;
+static int oktype = MB_OK;
+
+static LRESULT CALLBACK
+set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
+  (void)lParam;
+
+  void setlabel(int id, wstring label) {
+    HWND button = GetDlgItem((HWND)wParam, id);
+#ifdef debug_message_box
+    if (button) {
+      wchar buf [99];
+      GetWindowTextW(button, buf, 99);
+      printf("%d <%ls> -> <%ls>\n", id, buf, label);
+    }
+#endif
+    if (button)
+      SetWindowTextW(button, label);
+  }
+
+  if (nCode == HCBT_ACTIVATE) {
+    if ((oktype & MB_TYPEMASK) == MB_OK)
+      //__ take notice
+      setlabel(IDOK, _W("I see"));
+    else
+      //__ confirm action
+      setlabel(IDOK, _W("OK"));
+    setlabel(IDCANCEL, _W("Cancel"));
+#ifdef we_would_use_these_in_any_message_box
+#warning W -> _W to add the labels to the localization repository
+    setlabel(IDABORT, W("&Abort"));
+    setlabel(IDRETRY, W("&Retry"));
+    setlabel(IDIGNORE, W("&Ignore"));
+    setlabel(IDYES, W("&Yes"));
+    setlabel(IDNO, W("&No"));
+    //IDCLOSE has no label
+    setlabel(IDHELP, W("Help"));
+    setlabel(IDTRYAGAIN, W("&Try Again"));
+    setlabel(IDCONTINUE, W("&Continue"));
+#endif
+
+    if (oklabel) {
+      SetWindowTextW(GetDlgItem((HWND) wParam, IDOK), oklabel);
+      SetWindowTextW(GetDlgItem((HWND) wParam, IDYES), oklabel);
+    }
+  }
+  return 0;
+}
+
+int
+message_box(HWND parwnd, char * text, char * caption, int type, wstring ok)
+{
+  oklabel = ok;
+  oktype = type;
+//  HINSTANCE hinst = GetModuleHandle(NULL);
+//  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, hinst, thrid);
+  DWORD thrid = GetCurrentThreadId();
+  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, 0, thrid);
+  int ret;
+  if (nonascii(text) || nonascii(caption)) {
+    wchar * wtext = text ? cs__utftowcs(text) : 0;
+    wchar * wcapt = caption ? cs__utftowcs(caption) : 0;
+    ret = MessageBoxW(parwnd, wtext, wcapt, type);
+    if (wtext)
+      free(wtext);
+    if (wcapt)
+      free(wcapt);
+  }
+  else
+    ret = MessageBox(parwnd, text, caption, type);
+  UnhookWindowsHookEx(hook);
+  return ret;
+}
+
+int
+message_box_w(HWND parwnd, wchar * wtext, wchar * wcaption, int type, wstring ok)
+{
+  oklabel = ok;
+  oktype = type;
+//  HINSTANCE hinst = GetModuleHandle(NULL);
+//  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, hinst, thrid);
+  DWORD thrid = GetCurrentThreadId();
+  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, 0, thrid);
+  int ret;
+  ret = MessageBoxW(parwnd, wtext, wcaption, type);
+  UnhookWindowsHookEx(hook);
+  return ret;
+}
+
 void
 win_show_about(void)
 {
@@ -489,6 +600,9 @@ win_show_about(void)
   free(aboutfmt);
   wchar * wmsg = cs__utftowcs(abouttext);
   free(abouttext);
+  oklabel = null;
+  oktype = MB_OK;
+  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, 0, GetCurrentThreadId());
   MessageBoxIndirectW(&(MSGBOXPARAMSW){
     .cbSize = sizeof(MSGBOXPARAMSW),
     .hwndOwner = config_wnd,
@@ -498,29 +612,19 @@ win_show_about(void)
     .lpszIcon = MAKEINTRESOURCEW(IDI_MAINICON),
     .lpszText = wmsg
   });
+  UnhookWindowsHookEx(hook);
   free(wmsg);
-}
-
-static void
-win_show_msg(char * msg, UINT type)
-{
-  if (nonascii(msg)) {
-    wchar * wmsg = cs__utftowcs(msg);
-    MessageBoxW(0, wmsg, 0, type);
-    free(wmsg);
-  }
-  else
-    MessageBoxA(0, msg, 0, type);
 }
 
 void
 win_show_error(char * msg)
 {
-  win_show_msg(msg, MB_ICONERROR);
+  message_box(0, msg, 0, MB_ICONERROR, 0);
 }
 
 void
 win_show_warning(char * msg)
 {
-  win_show_msg(msg, MB_ICONWARNING);
+  message_box(0, msg, 0, MB_ICONWARNING, 0);
 }
+

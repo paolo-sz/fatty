@@ -539,8 +539,8 @@ win_key_reset(void)
   compose_clear();
 }
 
-#define dont_debug_compose
 #define dont_debug_key
+#define dont_debug_compose
 
 #ifdef debug_compose
 # define debug_key
@@ -671,7 +671,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     // Window menu and fullscreen
     if (cfg.window_shortcuts && alt && !ctrl) {
       if (key == VK_RETURN) {
-        trace_resize (("--- Alt-Enter (shift %d)", shift));
+        trace_resize(("--- Alt-Enter (shift %d)", shift));
         send_syscommand(IDM_FULLSCREEN_ZOOM);
         return true;
       }
@@ -1172,7 +1172,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   switch (key) {
     when VK_RETURN:
       if (!active_term->shortcut_override && cfg.window_shortcuts && alt && !ctrl) {
-        trace_resize (("--- Alt-Enter (shift %d)", shift));
+        trace_resize(("--- Alt-Enter (shift %d)", shift));
         send_syscommand(IDM_FULLSCREEN_ZOOM);
         return true;
       }
@@ -1284,7 +1284,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       bool check_menu = key == VK_SPACE && !active_term->shortcut_override
                         && cfg.window_shortcuts && alt && !ctrl;
 #ifdef debug_key
-      printf("mods %d (modf %d)\n", mods, term.modify_other_keys);
+      printf("mods %d (modf %d comp %d)\n", mods, term.modify_other_keys, comp_state);
 #endif
       if (altgr_key())
         trace_key("altgr");
@@ -1298,7 +1298,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 	    win_tab_create();
       else if (shift && ctrl && key == 'W')
 	    child_terminate(active_term->child);
-      else if (active_term->modify_other_keys > 1 && mods == MDK_SHIFT)
+      else if (active_term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
         modify_other_key();
       else if (char_key())
