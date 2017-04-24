@@ -38,9 +38,6 @@ $(BIN): $(objfiles)
 #############################################################################
 # generate
 
-#WGET=curl -R -O --connect-timeout 55
-WGET=wget -N -t 1 --timeout=55
-
 rgb.t:	# /usr/share/X11/rgb.txt # X11 color names
 #	255 250 250		snow
 #	->
@@ -55,13 +52,13 @@ winprint.c:
 prepare_build = mkdir -pv $(dir $@)
 
 compileflags = -c $< -o $@ -MMD -MT $@
-$(BUILD_DIR)%.o: %.cc Makefile $(debug_t) rgb.t
+$(BUILD_DIR)%.o: %.cc Makefile $(BUILD_DIR)%.d
 	@$(prepare_build)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.c Makefile $(debug_t) rgb.t
+$(BUILD_DIR)%.o: %.c Makefile $(BUILD_DIR)%.d
 	@$(prepare_build)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.rc $(debug_t) rgb.t
+$(BUILD_DIR)%.o: %.rc $(BUILD_DIR)%.d
 	@$(prepare_build)
 	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED -MMD -MT $@ $(CPPFLAGS)' $< $*.o
 	@mv -v res.o res.d $(BUILD_DIR)
