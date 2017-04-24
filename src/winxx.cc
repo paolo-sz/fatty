@@ -139,15 +139,15 @@ static void set_active_tab(unsigned int index) {
     
     struct term *term = active->terminal.get();
     term->results.update_type = DISABLE_UPDATE;
-    if (IsWindowVisible(search_wnd) != term->search_window_visible) {
-      ShowWindow(search_wnd, term->search_window_visible ? SW_SHOW : SW_HIDE);
+    if (IsWindowVisible(win_get_search_wnd()) != term->search_window_visible) {
+      ShowWindow(win_get_search_wnd(), term->search_window_visible ? SW_SHOW : SW_HIDE);
     }
     if (term->search_window_visible) {
       if (term->results.query) {
-        SetWindowTextW(search_edit_wnd, term->results.query);
+        SetWindowTextW(win_get_search_edit_wnd(), term->results.query);
       }
       else {
-        SetWindowTextW(search_edit_wnd, L"");
+        SetWindowTextW(win_get_search_edit_wnd(), L"");
       }
     }
 

@@ -1,23 +1,13 @@
 #ifndef TERMSEARCH_H
 #define TERMSEARCH_H
 
-#define SEARCHBARCLASS "SearchBar"
-#define SEARCHBAR_HEIGHT 26
+extern int SEARCHBAR_HEIGHT;
 
-bool search_initialised;
-HWND search_wnd;
-HWND search_close_wnd;
-HWND search_prev_wnd;
-HWND search_next_wnd;
-HWND search_edit_wnd;
-WNDPROC default_edit_proc;
-HFONT search_font;
-
-void win_toggle_search(bool show, bool focus);
-void win_open_search(void);
-void win_hide_search(void);
-void win_update_search(void);
-void win_paint_exclude_search(HDC dc);
-bool win_search_visible(void);
+extern bool win_search_visible(void);
+extern void win_open_search(void);
+extern void win_update_search(void);
+extern void win_paint_exclude_search(HDC dc);
+extern HWND win_get_search_wnd(void);
+extern HWND win_get_search_edit_wnd(void);
 
 #endif

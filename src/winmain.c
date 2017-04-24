@@ -208,7 +208,7 @@ set_dpi_auto_scaling(bool on)
 }
 
 static bool
-set_per_monitor_dpi_aware()
+set_per_monitor_dpi_aware(void)
 {
 #if 0
  /* this was added under the assumption it might be needed 
@@ -939,6 +939,10 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   int term_width = client_width - 2 * PADDING;
   int term_height = client_height - 2 * PADDING - g_render_tab_height;
 
+  if (!sync_size_with_font && win_search_visible()) {
+    term_height -= SEARCHBAR_HEIGHT;
+  }
+
   if (scale_font_with_size && term->cols != 0 && term->rows != 0) {
     // calc preliminary size (without font scaling), as below
     // should use term_height rather than rows; calc and store in term_resize
@@ -972,10 +976,6 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
 
     if (font_size1 != font_size)
       win_set_font_size(font_size1, false);
-  }
-
-  if (win_search_visible()) {
-    term_height -= SEARCHBAR_HEIGHT;
   }
 
   int cols = max(1, term_width / cell_width);
@@ -1759,7 +1759,7 @@ get_shortcut_icon_location(wchar * iconfile)
 #endif
 
 static void
-configure_taskbar()
+configure_taskbar(void)
 {
 #define no_patch_jumplist
 #ifdef patch_jumplist
