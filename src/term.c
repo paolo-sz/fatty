@@ -1095,13 +1095,12 @@ term_paint(struct term* term)
     }
 
    /*
-    * Now loop over the line again, noting where things have
-    * changed.
+    * Now loop over the line again, noting where things have changed.
     *
-    * During this loop, we keep track of where we last saw
-    * DATTR_STARTRUN. Any mismatch automatically invalidates
-    * _all_ of the containing run that was last printed: that
-    * is, any rectangle that was drawn in one go in the
+    * During this loop, we keep track of where we last saw DATTR_STARTRUN.
+    * Any mismatch automatically invalidates
+    * _all_ of the containing run that was last printed: that is,
+    * any rectangle that was drawn in one go in the
     * previous update should be either left completely alone
     * or overwritten in its entirety. This, along with the
     * expectation that front ends clip all text runs to their
@@ -1138,6 +1137,8 @@ term_paint(struct term* term)
     int textlen = 0;
     bool has_rtl = false;
     uchar bc = 0;
+    bool combdouble_pending = false;
+    bool was_combdouble_pending = false;
     bool dirty_run = (line->attr != displine->attr);
     bool dirty_line = dirty_run;
     cattr attr = CATTR_DEFAULT;
@@ -1171,14 +1172,10 @@ term_paint(struct term* term)
       */
       if (d->cc_next || (j > 0 && d[-1].cc_next))
         trace_run("cc"), break_run = true;
-
-#ifdef workaround_combining_double_issue_553
-     /*
-      * ... but not after a COMBINING DOUBLE (class 233 or 234)
-      */
-      if (textlen && text[textlen - 1] >= 0x035C && text[textlen - 1] <= 0x0362)
-        trace_run("dbl"), break_run = false;
-#endif
+      if (was_combdouble_pending) {
+        trace_run("cd"), break_run = true;
+        was_combdouble_pending = false;
+      }
 
       if (!dirty_line) {
         if (dispchars[j].chr == tchar &&
@@ -1222,22 +1219,56 @@ term_paint(struct term* term)
         !termchars_equal_override(&dispchars[j], d, tchar, tattr);
       dirty_run |= do_copy;
 
-      if (tchar == SIXELCH)
+      if (tchar == SIXELCH) {
+        // displaying region of a SIXEL image before actual graphics display;
+        // this includes selection over a SIXEL image but also moments 
+        // before display of a new image or refreshed image when scrolling 
+        // or otherwise refreshing the screen.
+        // options:
         // indicate visually that the image will not be copied
-        text[textlen++] = 0xFFFD;
+        // (would flicker in other cases)
+        //text[textlen] = 0xFFFD;
+        // or:
+        // blank region of SIXEL image
+        text[textlen] = ' ';
+      }
       else
-        text[textlen++] = tchar;
+        text[textlen] = tchar;
+      textlen++;
 
       if (!has_rtl)
         has_rtl = is_rtl_class(tbc);
 
+      if (combdouble_pending) {
+        // Rearrange combining double characters of previous position 
+        // to be displayed at this position.
+        // We could append them after any "normal" combinings (below) 
+        // to enable win_text to render those unseparated ...
+        termchar *dp = &d[-1];
+        while (dp->cc_next && textlen < 16) {
+          dp += dp->cc_next;
+          if (combiningdouble(dp->chr)) {
+            text[textlen++] = dp->chr;
+            attr.attr |= TATTR_COMBDOUBL;
+          }
+        }
+        was_combdouble_pending = true;  // break_run after this position
+        combdouble_pending = false;
+      }
       if (d->cc_next) {
         termchar *dd = d;
         while (dd->cc_next && textlen < 16) {
           dd += dd->cc_next;
-          text[textlen++] = dd->chr;
+          if (combiningdouble(dd->chr)) {
+            // Postpone combining double characters of this position
+            // to be displayed with next position (second character).
+            combdouble_pending = true;
+          }
+          else {
+            text[textlen++] = dd->chr;
+            attr.attr |= TATTR_COMBINING;
+          }
         }
-        attr.attr |= TATTR_COMBINING;
       }
 
       if (do_copy) {

@@ -819,11 +819,6 @@ win_adjust_borders(int t_width, int t_height)
       window_style &= ~(WS_CAPTION | WS_BORDER);
   }
 
-#if 0
- /* this had been changed under the vague assumption 
-    it might be appropriate if EnableNonClientDpiScaling is used;
-    but it makes no difference
- */
   if (pGetDpiForMonitor && pAdjustWindowRectExForDpi) {
     HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
     uint x, dpi;
@@ -837,7 +832,6 @@ win_adjust_borders(int t_width, int t_height)
 #endif
   }
   else
-#endif
     AdjustWindowRect(&wr, window_style, false);
 
   width = wr.right - wr.left;
@@ -2326,6 +2320,9 @@ main(int argc, char *argv[])
                         window_style | (cfg.scrollbar ? WS_VSCROLL : 0),
                         x, y, width, height,
                         null, null, inst, null);
+  // Workaround for failing title parameter:
+  if (pEnableNonClientDpiScaling)
+    SetWindowTextW(wnd, wtitle);
 
   tab_wnd = CreateWindowW(WC_TABCONTROLW, 0, 
                           WS_CHILD | WS_CLIPSIBLINGS | TCS_FOCUSNEVER | TCS_OWNERDRAWFIXED, 
