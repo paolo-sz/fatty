@@ -74,9 +74,10 @@ treeview_insert(treeview_faff * faff, int level, char *text, char *path)
     ins.hInsertAfter = faff->lastat[level];
     ins.item.mask = TVIF_TEXT | TVIF_PARAM;
     ins.item.pszText = utext;
-    ins.item.cchTextMax = wcslen(utext) + 1;  // ignored when setting
+    //ins.item.cchTextMax = wcslen(utext) + 1;  // ignored when setting
     ins.item.lParam = (LPARAM) path;
     newitem = (HTREEITEM)SendMessageW(faff->treeview, TVM_INSERTITEM, 0, (LPARAM)&ins);
+    //TreeView_SetUnicodeFormat((HWND)newitem, TRUE);  // does not work
     free(utext);
   }
   else {
@@ -85,7 +86,7 @@ treeview_insert(treeview_faff * faff, int level, char *text, char *path)
     ins.hInsertAfter = faff->lastat[level];
     ins.item.mask = TVIF_TEXT | TVIF_PARAM;
     ins.item.pszText = text;
-    ins.item.cchTextMax = strlen(text) + 1;  // ignored when setting
+    //ins.item.cchTextMax = strlen(text) + 1;  // ignored when setting
     ins.item.lParam = (LPARAM) path;
     newitem = TreeView_InsertItem(faff->treeview, &ins);
   }
@@ -213,6 +214,10 @@ static struct {
       MapDialogRect(wnd, &r);
       HWND treeview =
         CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
+#ifdef Unicode_TreeView
+                       // this doesn't have any effect
+                       SS_OWNERDRAW |
+#endif
                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASLINES |
                        TVS_DISABLEDRAGDROP | TVS_HASBUTTONS | TVS_LINESATROOT
                        | TVS_SHOWSELALWAYS, r.left, r.top, r.right - r.left,
@@ -419,10 +424,19 @@ win_open_config(void)
 void
 win_show_about(void)
 {
+#if CYGWIN_VERSION_API_MINOR < 74
+  char * aboutfmt = newn(char, 
+    strlen(VERSION_TEXT) + strlen(COPYRIGHT) + strlen(LICENSE_TEXT) + strlen(_(WARRANTY_TEXT)) + strlen(_(ABOUT_TEXT)) + 11);
+  sprintf(aboutfmt, "%s\n%s\n%s\n%s\n\n%s", 
+           VERSION_TEXT, COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT), _(ABOUT_TEXT));
+  char * abouttext = newn(char, strlen(aboutfmt) + strlen(WEBSITE));
+  sprintf(abouttext, aboutfmt, WEBSITE);
+#else
   char * aboutfmt =
     asform("%s\n%s\n%s\n%s\n\n%s", 
            VERSION_TEXT, COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT), _(ABOUT_TEXT));
   char * abouttext = asform(aboutfmt, WEBSITE);
+#endif
   free(aboutfmt);
   wchar * wmsg = cs__utftowcs(abouttext);
   free(abouttext);

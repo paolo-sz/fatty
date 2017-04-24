@@ -8,7 +8,7 @@ msgid ""
 msgstr ""
 "Project-Id-Version: mintty\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2016-11-25 14:02+0100\n"
+"POT-Creation-Date: 2016-11-25 17:08+0100\n"
 "PO-Revision-Date: YEAR-MO-DA HO:MI+ZONE\n"
 "Last-Translator: FULL NAME <EMAIL@ADDRESS>\n"
 "Language-Team: LANGUAGE <LL@li.org>\n"
@@ -31,61 +31,62 @@ msgstr ""
 
 #: child.c:73
 msgid "There are no available terminals"
-msgstr ""
+msgstr "Keine verfügbaren Terminals"
 
 #: child.c:119
 msgid "Error: Could not fork child process"
-msgstr ""
+msgstr "Fehler: Konnte Prozess nicht erzeugen"
 
 #: child.c:121
 msgid "DLL rebasing may be required; see 'rebaseall / rebase --help'"
 msgstr ""
+"DLL rebasing vielleicht erforderlich; siehe 'rebaseall / rebase --help'"
 
 #. __ %1$s: client command (e.g. shell) to be run; %2$s: error message
 #: child.c:192
 msgid "Failed to run '%s': %s"
-msgstr ""
+msgstr "Starten von '%s' fehlgeschlagen: %s"
 
 #: child.c:266
 msgid "Error: Could not open log file"
-msgstr ""
+msgstr "Fehler: Konnte Log-Datei nicht öffnen"
 
 #. __ %1$s: client command (e.g. shell) terminated, %2$i: exit code
 #: child.c:340
 msgid "%s: Exit %i"
-msgstr ""
+msgstr "%s: Beendigung %i"
 
 #. __ default inline notification if ExitWrite=yes
 #: child.c:347
 msgid "TERMINATED"
-msgstr ""
+msgstr "BEENDET"
 
 #: child.c:591
 msgid "Error: Could not fork child daemon"
-msgstr ""
+msgstr "Fehler: Konnte Daemon-Prozess nicht starten"
 
 #. __ %s: unknown option name
 #: config.c:430
 msgid "Ignoring unknown option '%s'"
-msgstr ""
+msgstr "Ignoriere unbekannte Option '%s'"
 
 #: config.c:475 config.c:504
 msgid "Internal error: too many options"
-msgstr ""
+msgstr "Interner Fehler: zu viele Optionen"
 
 #: config.c:491
 msgid "Internal error: too many options/comments"
-msgstr ""
+msgstr "Interner Fehler: zu viele Optionen/Kommentare"
 
 #. __ %2$s: option name, %1$s: invalid value
 #: config.c:621
 msgid "Ignoring invalid value '%s' for option '%s'"
-msgstr ""
+msgstr "Ignoriere ungültigen Wert '%s' für Option '%s'"
 
 #. __ %s: option name
 #: config.c:632
 msgid "Ignoring option '%s' with missing value"
-msgstr ""
+msgstr "Ignoriere Option '%s' – Wert fehlt"
 
 #. __ %1$s: config file name, %2$s: error message
 #: config.c:1148
@@ -93,114 +94,116 @@ msgid ""
 "Could not save options to '%s':\n"
 "%s."
 msgstr ""
+"Konnte Option nicht in '%s' schreiben:\n"
+"%s."
 
 #: config.c:1348
 msgid "◇ None (printing disabled) ◇"
-msgstr ""
+msgstr "◇ Keiner (Drucken deaktiviert) ◇"
 
 #: config.c:1350
 msgid "◆ Default printer ◆"
-msgstr ""
+msgstr "◆ Default-Drucker ◆"
 
 #: config.c:1458 config.c:1652
 msgid "◇ None ◇"
-msgstr ""
+msgstr "◇ Keins ◇"
 
 #: config.c:1459
 msgid "◆ conf. Locale ◆"
-msgstr ""
+msgstr "◆ konf. Locale ◆"
 
 #: config.c:1460
 msgid "◆ locale env. ◆"
-msgstr ""
+msgstr "◆ Locale-Umgebung ◆"
 
 #: config.c:1515
 msgid "simple beep"
-msgstr ""
+msgstr "einfacher Piep"
 
 #: config.c:1516
 msgid "no beep"
-msgstr ""
+msgstr "kein Piep"
 
 #: config.c:1517
 msgid "Default Beep"
-msgstr ""
+msgstr "Default-Piep"
 
 #: config.c:1518
 msgid "Critical Stop"
-msgstr ""
+msgstr "Fehler"
 
 #: config.c:1519
 msgid "Question"
-msgstr ""
+msgstr "Frage"
 
 #: config.c:1520
 msgid "Exclamation"
-msgstr ""
+msgstr "Warnung"
 
 #: config.c:1521
 msgid "Asterisk"
-msgstr ""
+msgstr "Hinweis"
 
 #: config.c:1549
 msgid "◇ None (system sound) ◇"
-msgstr ""
+msgstr "◇ Keine (Systemklang) ◇"
 
 #: config.c:1738
 msgid "Could not load web theme"
-msgstr ""
+msgstr "Konnte Web-Schema nicht laden"
 
 #: config.c:1787
 msgid "Cannot write theme file"
-msgstr ""
+msgstr "Kann Schema nicht schreiben"
 
 #: config.c:1792
 msgid "Cannot store theme file"
-msgstr ""
+msgstr "Kann Schema nicht speichern"
 
 #: config.c:1829
 msgid "About..."
-msgstr ""
+msgstr "Über..."
 
 #: config.c:1831
 msgid "Save"
-msgstr ""
+msgstr "Sichern"
 
 #: config.c:1834
 msgid "Cancel"
-msgstr ""
+msgstr "Abbruch"
 
 #: config.c:1837
 msgid "Apply"
-msgstr ""
+msgstr "Anwenden"
 
 #: config.c:1843 config.c:1864 config.c:1895
 msgid "Looks"
-msgstr ""
+msgstr "Aussehen"
 
 #: config.c:1843
 msgid "Looks in Terminal"
-msgstr ""
+msgstr "Aussehen im Terminal"
 
 #: config.c:1843
 msgid "Colours"
-msgstr ""
+msgstr "Farben"
 
 #: config.c:1846
 msgid "&Foreground..."
-msgstr ""
+msgstr "&Vordergrund.."
 
 #: config.c:1849
 msgid "&Background..."
-msgstr ""
+msgstr "&Hintergrund.."
 
 #: config.c:1852
 msgid "&Cursor..."
-msgstr ""
+msgstr "&Zeiger.."
 
 #: config.c:1855
 msgid "&Theme"
-msgstr ""
+msgstr "&Schema"
 
 #: config.c:1859
 msgid "Color Scheme Designer"
@@ -208,108 +211,108 @@ msgstr ""
 
 #: config.c:1861
 msgid "Store"
-msgstr ""
+msgstr "Sichern"
 
 #: config.c:1864
 msgid "Transparency"
-msgstr ""
+msgstr "Transparenz"
 
 #: config.c:1869 config.c:2001 config.c:2057 config.c:2096
 msgid "&Off"
-msgstr ""
+msgstr "&Aus"
 
 #: config.c:1870
 msgid "&Low"
-msgstr ""
+msgstr "&Klein"
 
 #. __ short form of radio button label "Medium"
 #: config.c:1872
 msgid "&Med."
-msgstr ""
+msgstr "&Mittel"
 
 #: config.c:1873
 msgid "&Medium"
-msgstr ""
+msgstr "&Mittel"
 
 #: config.c:1874
 msgid "&High"
-msgstr ""
+msgstr "&Hoch"
 
 #: config.c:1875
 msgid "Gla&ss"
-msgstr ""
+msgstr "&Glas"
 
 #: config.c:1881 config.c:1890
 msgid "Opa&que when focused"
-msgstr ""
+msgstr "Undurchsichtig wenn im &Fokus"
 
 #: config.c:1885
 msgid "&Blur"
-msgstr ""
+msgstr "&Unklar"
 
 #: config.c:1895
 msgid "Cursor"
-msgstr ""
+msgstr "Zeiger"
 
 #: config.c:1899
 msgid "Li&ne"
-msgstr ""
+msgstr "&Linie"
 
 #: config.c:1900
 msgid "Bloc&k"
-msgstr ""
+msgstr "&Block"
 
 #: config.c:1901
 msgid "&Underscore"
-msgstr ""
+msgstr "&Unterstrich"
 
 #: config.c:1905
 msgid "Blinkin&g"
-msgstr ""
+msgstr "Blinken&d"
 
 #: config.c:1911 config.c:1916 config.c:1941
 msgid "Text"
-msgstr ""
+msgstr "Schrift"
 
 #: config.c:1911
 msgid "Text and Font properties"
-msgstr ""
+msgstr "Text und Schrift – Eigenschaften"
 
 #: config.c:1911
 msgid "Font"
-msgstr ""
+msgstr "Schrift"
 
 #: config.c:1919
 msgid "Font smoothing"
-msgstr ""
+msgstr "Schriftglättung"
 
 #: config.c:1921
 msgid "&Default"
-msgstr ""
+msgstr "&Default"
 
 #: config.c:1922 config.c:2086
 msgid "&None"
-msgstr ""
+msgstr "&Keine"
 
 #: config.c:1923
 msgid "&Partial"
-msgstr ""
+msgstr "&Teilweise"
 
 #: config.c:1924
 msgid "&Full"
-msgstr ""
+msgstr "&Voll"
 
 #: config.c:1929
 msgid "Sho&w bold as font"
-msgstr ""
+msgstr "Zeige &fett als Schrift"
 
 #: config.c:1933
 msgid "Show &bold as colour"
-msgstr ""
+msgstr "Zeige fett als F&arbe"
 
 #: config.c:1937
 msgid "&Allow blinking"
-msgstr ""
+msgstr "&Bliken zulassen"
 
 #: config.c:1944
 msgid "&Locale"
@@ -317,59 +320,59 @@ msgstr ""
 
 #: config.c:1947
 msgid "&Character set"
-msgstr ""
+msgstr "&Zeichensatz"
 
 #: config.c:1953 config.c:1968 config.c:1994
 msgid "Keys"
-msgstr ""
+msgstr "Tastatur"
 
 #: config.c:1953
 msgid "Keyboard features"
-msgstr ""
+msgstr "Tastatur-Eigenschaften"
 
 #: config.c:1956
 msgid "&Backarrow sends ^H"
-msgstr ""
+msgstr "&Rückwärts sendet ^H"
 
 #: config.c:1960
 msgid "&Delete sends DEL"
-msgstr ""
+msgstr "&Entf sendet DEL"
 
 #: config.c:1964
 msgid "Ctrl+LeftAlt is Alt&Gr"
-msgstr ""
+msgstr "Strg+LeftAlt ist Alt&Gr"
 
 #: config.c:1968
 msgid "Shortcuts"
-msgstr ""
+msgstr "Kürzel"
 
 #: config.c:1970
 msgid "Cop&y and Paste (Ctrl/Shift+Ins)"
-msgstr ""
+msgstr "K&opieren/Einfügen (Strg/Shift+Ins)"
 
 #: config.c:1974
 msgid "&Menu and Full Screen (Alt+Space/Enter)"
-msgstr ""
+msgstr "&Menü und Vollbildschirm (Alt+Space/Enter)"
 
 #: config.c:1978
 msgid "&Switch window (Ctrl+[Shift+]Tab)"
-msgstr ""
+msgstr "&Fenster wechseln (Strg+[Shift+]Tab)"
 
 #: config.c:1982
 msgid "&Zoom (Ctrl+plus/minus/zero)"
-msgstr ""
+msgstr "&Zoomen (Strg+plus/minus/zero)"
 
 #: config.c:1986
 msgid "&Alt+Fn shortcuts"
-msgstr ""
+msgstr "&Alt+Fn Kürzel"
 
 #: config.c:1990
 msgid "&Ctrl+Shift+letter shortcuts"
-msgstr ""
+msgstr "&Strg+Shift+letter Kürzel"
 
 #: config.c:1994
 msgid "Compose key"
-msgstr ""
+msgstr "Compose-Taste"
 
 #: config.c:1998 config.c:2054 config.c:2093
 msgid "&Shift"
@@ -377,7 +380,7 @@ msgstr ""
 
 #: config.c:1999 config.c:2055 config.c:2094
 msgid "&Ctrl"
-msgstr ""
+msgstr "St&rg"
 
 #: config.c:2000 config.c:2056 config.c:2095
 msgid "&Alt"
@@ -385,127 +388,127 @@ msgstr ""
 
 #: config.c:2008 config.c:2023 config.c:2043
 msgid "Mouse"
-msgstr ""
+msgstr "Maus"
 
 #: config.c:2008
 msgid "Mouse functions"
-msgstr ""
+msgstr "Maus-Funktionen"
 
 #: config.c:2011
 msgid "Cop&y on select"
-msgstr ""
+msgstr "K&opieren bei Auswahl"
 
 #: config.c:2015
 msgid "Copy as &rich text"
-msgstr ""
+msgstr "Kopieren als &Rich Text"
 
 #: config.c:2019
 msgid "Clic&ks place command line cursor"
-msgstr ""
+msgstr "&Klick platziert in Kommandozeile"
 
 #: config.c:2023
 msgid "Click actions"
-msgstr ""
+msgstr "Klick-Aktionen"
 
 #: config.c:2025
 msgid "Right mouse button"
-msgstr ""
+msgstr "Rechte Maustaste"
 
 #: config.c:2027 config.c:2036 wininput.c:175
 msgid "&Paste"
-msgstr ""
+msgstr "&Einfügen"
 
 #: config.c:2028 config.c:2037
 msgid "E&xtend"
-msgstr ""
+msgstr "&Dehnen"
 
 #: config.c:2029
 msgid "&Menu"
-msgstr ""
+msgstr "&Menü"
 
 #: config.c:2030 config.c:2039
 msgid "Ente&r"
-msgstr ""
+msgstr "Eing&abe"
 
 #: config.c:2034
 msgid "Middle mouse button"
-msgstr ""
+msgstr "Mittlere Maustaste"
 
 #: config.c:2038
 msgid "&Nothing"
-msgstr ""
+msgstr "&Nichts"
 
 #: config.c:2043
 msgid "Application mouse mode"
-msgstr ""
+msgstr "Anwendungs-Maus-Modus"
 
 #: config.c:2045
 msgid "Default click target"
-msgstr ""
+msgstr "Default-Klickziel"
 
 #: config.c:2047
 msgid "&Window"
-msgstr ""
+msgstr "&Fenster"
 
 #: config.c:2048
 msgid "Applicatio&n"
-msgstr ""
+msgstr "&Anwendung"
 
 #: config.c:2052
 msgid "Modifier for overriding default"
-msgstr ""
+msgstr "Modifizierer zum Ändern des Defaults"
 
 #: config.c:2064 config.c:2076 config.c:2104
 msgid "Window"
-msgstr ""
+msgstr "Fenster"
 
 #: config.c:2064
 msgid "Window properties"
-msgstr ""
+msgstr "Fenster-Eigenschaften"
 
 #: config.c:2064
 msgid "Default size"
-msgstr ""
+msgstr "Default-Größe"
 
 #: config.c:2067
 msgid "Colu&mns"
-msgstr ""
+msgstr "&Spalten"
 
 #: config.c:2070
 msgid "Ro&ws"
-msgstr ""
+msgstr "&Zeilen"
 
 #: config.c:2073
 msgid "C&urrent size"
-msgstr ""
+msgstr "&Aktuelle"
 
 #: config.c:2079
 msgid "Scroll&back lines"
-msgstr ""
+msgstr "Zurück&roll-Zeilen"
 
 #: config.c:2083
 msgid "Scrollbar"
-msgstr ""
+msgstr "Rollbalken"
 
 #: config.c:2085
 msgid "&Left"
-msgstr ""
+msgstr "&Links"
 
 #: config.c:2087
 msgid "&Right"
-msgstr ""
+msgstr "&Rechts"
 
 #: config.c:2091
 msgid "Modifier for scrolling"
-msgstr ""
+msgstr "Modifizierer für Rollen"
 
 #: config.c:2100
 msgid "&PgUp and PgDn scroll without modifier"
-msgstr ""
+msgstr "&Bild↑ und Bild↓ rollen ohne Modifizierer"
 
 #: config.c:2104
 msgid "UI language"
-msgstr ""
+msgstr "Sprache"
 
 #: config.c:2113 config.c:2122 config.c:2148 config.c:2159
 msgid "Terminal"
@@ -513,55 +516,55 @@ msgstr ""
 
 #: config.c:2113
 msgid "Terminal features"
-msgstr ""
+msgstr "Terminal-Eigenschaften"
 
 #: config.c:2116
 msgid "&Type"
-msgstr ""
+msgstr "&Typ"
 
 #: config.c:2119
 msgid "&Answerback"
-msgstr ""
+msgstr "Rück&antwort"
 
 #: config.c:2122
 msgid "Bell (sound overridden by Wave/BellFile or BellFreq)"
-msgstr ""
+msgstr "Glocke (überlagert von Klangdatei/-frequenz)"
 
 #: config.c:2128
 msgid "&Flash"
-msgstr ""
+msgstr "&Blitz"
 
 #: config.c:2131
 msgid "&Highlight in taskbar"
-msgstr ""
+msgstr "Blitz in &Taskleiste"
 
 #: config.c:2137 config.c:2141
 msgid "&Wave"
-msgstr ""
+msgstr "Klang"
 
 #: config.c:2145
 msgid "► &Play"
-msgstr ""
+msgstr "►"
 
 #: config.c:2148
 msgid "Printer"
-msgstr ""
+msgstr "Drucker"
 
 #: config.c:2161
 msgid "&Prompt about running processes on close"
-msgstr ""
+msgstr "Vor &Schließen nach laufenden Prozessen fragen"
 
 #: textprint.c:48 textprint.c:112
 msgid "[Printing...] "
-msgstr ""
+msgstr "[Druckt...] "
 
-#: windialog.c:412
+#: windialog.c:416
 msgid "Options"
-msgstr ""
+msgstr "Optionen"
 
 #: wininput.c:119 wininput.c:125
 msgid "Ctrl+"
-msgstr ""
+msgstr "Strg+"
 
 #: wininput.c:120 wininput.c:126
 msgid "Alt+"
@@ -573,91 +576,91 @@ msgstr ""
 
 #: wininput.c:151
 msgid "&Restore"
-msgstr ""
+msgstr "&Wiederherstellen"
 
 #: wininput.c:152
 msgid "&Move"
-msgstr ""
+msgstr "&Bewegen"
 
 #: wininput.c:153
 msgid "&Size"
-msgstr ""
+msgstr "&Größe"
 
 #: wininput.c:154
 msgid "Mi&nimize"
-msgstr ""
+msgstr "Ver&kleinern"
 
 #: wininput.c:155
 msgid "Ma&ximize"
-msgstr ""
+msgstr "Vergr&ößern"
 
 #: wininput.c:156
 msgid "&Close"
-msgstr ""
+msgstr "&Schließen"
 
 #: wininput.c:160
 msgid "Ne&w"
-msgstr ""
+msgstr "&Neu"
 
 #: wininput.c:166
 msgid "&Copy"
-msgstr ""
+msgstr "&Kopieren"
 
 #: wininput.c:179
 msgid "S&earch"
-msgstr ""
+msgstr "S&uchen"
 
 #: wininput.c:183
 msgid "&Reset"
-msgstr ""
+msgstr "Zu&rücksetzen"
 
 #: wininput.c:190
 msgid "&Default Size"
-msgstr ""
+msgstr "Default-Gr&öße"
 
 #: wininput.c:195
 msgid "&Full Screen"
-msgstr ""
+msgstr "&Vollbildschirm"
 
 #: wininput.c:200
 msgid "Flip &Screen"
-msgstr ""
+msgstr "Anzeige &wechseln"
 
 #: wininput.c:209 wininput.c:245
 msgid "Copy &Title"
-msgstr ""
+msgstr "&Titel kopieren"
 
 #: wininput.c:210 wininput.c:233 wininput.c:246
 msgid "&Options..."
-msgstr ""
+msgstr "&Optionen..."
 
 #: wininput.c:220
 msgid "Ope&n"
-msgstr ""
+msgstr "Ö&ffnen"
 
 #: wininput.c:224
 msgid "Select &All"
-msgstr ""
+msgstr "Alles &auswählen"
 
 #: winmain.c:1240
 msgid "Processes are running in session:"
-msgstr ""
+msgstr "Laufende Prozesse:"
 
 #: winmain.c:1241
 msgid "Close anyway?"
-msgstr ""
+msgstr "Trotzdem schließen?"
 
 #: winmain.c:1761
 msgid "Try '--help' for more information"
-msgstr ""
+msgstr "Versuche '--help' für mehr Information"
 
 #: winmain.c:1769
 msgid "Could not load icon"
-msgstr ""
+msgstr "Konnte Symbol nicht laden"
 
 #: winmain.c:2073
 msgid "Usage:"
-msgstr ""
+msgstr "Aufruf:"
 
 #: winmain.c:2074
 msgid "[OPTION]... [ PROGRAM [ARG]... | - ]"
@@ -696,30 +699,64 @@ msgid ""
 "  -V, --version         Print version information and exit\n"
 "See manual page for further command line options and configuration.\n"
 msgstr ""
+"Startet eine neue Terminal-Sitzung mit dem angegebenen Programm oder der "
+"Standard-Kommandozeile.\n"
+"Mit Bindestrich/Minus statt einem Programm wird eine Anmelde-Kommandozeile "
+"gestartet.\n"
+"\n"
+"Optionen:\n"
+"  -c, --config FILE     Lädt angegebene Konfigurationsdatei (s.a. -C oder -o "
+"ThemeFile)\n"
+"  -e, --exec ...        Behandelt weitere Paramater als auszuführendes "
+"Programm\n"
+"  -h, --hold never|start|error|always  Halte Fenster nach Programmende "
+"offen\n"
+"  -p, --position X,Y    Öffne Fenster an gegebenen Koordinaten\n"
+"  -p, --position center|left|right|top|bottom  Öffne Fenster an spezieller "
+"Stelle\n"
+"  -p, --position @N     Öffne Fenster auf Bildschirm N\n"
+"  -s, --size COLS,ROWS  Setze Terminalgröße in Zeichen (auch COLSxROWS)\n"
+"  -s, --size maxwidth|maxheight  Setze max. Größe in gegebener Richtung\n"
+"  -t, --title TITLE     Setze Fenstertitel (Default: ausgeführtes Programm) "
+"(s.. -T)\n"
+"  -w, --window normal|min|max|full|hide  Setze anfänglichen Fenster-Modus\n"
+"  -i, --icon FILE[,IX]  Lade Fenstersymbol aus Datei, optional mit Index\n"
+"  -l, --log FILE|-      Protokolliere Ausgabe in Datei oder Standardausgabe\n"
+"      --nobidi|--nortl  Deaktiviere bidirektionale Ausgabe (rechts-nach-"
+"links)\n"
+"  -o, --option OPT=VAL  Setze Konfigurationsoption mit gegebenem Wert\n"
+"  -B, --Border frame|void  Lege dünnen bzw. keinen Fensterrand fest\n"
+"  -R, --Reportpos s|o   Berichte Fensterposition (kurz/lang) nach Ende\n"
+"      --nopin           Dieses Fenster kann nicht an Taskleiste geheftet "
+"werden\n"
+"  -D, --daemon          Starte neues Fenster mit Windows Kurztaste\n"
+"  -H, --help            Zeige nur Hilfe-Text\n"
+"  -V, --version         Zeige nur Versions-Information\n"
+"Siehe die Manual-Seite für weitere Optionen und Konfiguration.\n"
 
 #: winmain.c:2251
 msgid "Syntax error in position argument '%s'"
-msgstr ""
+msgstr "Formatfehler in Positionsparameter '%s'"
 
 #: winmain.c:2262
 msgid "Syntax error in size argument '%s'"
-msgstr ""
+msgstr "Formatfehler in Größenparameter '%s'"
 
 #: winmain.c:2316
 msgid "Unknown option '%s'"
-msgstr ""
+msgstr "Unbekannte Option '%s'"
 
 #: winmain.c:2318
 msgid "Option '%s' requires an argument"
-msgstr ""
+msgstr "Option '%s' benötigt einen Parameter"
 
 #: winmain.c:2364
 msgid "Mintty could not detach from caller, starting anyway"
-msgstr ""
+msgstr "Mintty konnte nicht vom Aufrufer abkoppeln, startet trotzdem"
 
 #: winmain.c:2497
 msgid "Using default title due to invalid characters in program name"
-msgstr ""
+msgstr "Nehme Default-Titel wegen ungültiger Zeichen im Programmnamen"
 
 #. __ label of search bar close button; not actually "localization"
 #: winsearch.c:245
@@ -738,23 +775,23 @@ msgstr ""
 
 #: wintext.c:313
 msgid "Font not found, using system substitute"
-msgstr ""
+msgstr "Schrift nicht gefunden, nehme System-Ersatz"
 
 #: wintext.c:320
 msgid "Font has limited support for character ranges"
-msgstr ""
+msgstr "Schrift hat beschränkte Unterstützung für Zeichensätze"
 
 #: wintext.c:441
 msgid "Font installation corrupt, using system substitute"
-msgstr ""
+msgstr "Schriftinstallation defekt, nehme System-Ersatz"
 
 #: wintext.c:461
 msgid "Font does not support system locale"
-msgstr ""
+msgstr "Schrift unterstützt System-Zeichensatz nicht"
 
 #: appinfo.h:56
 msgid "There is no warranty, to the extent permitted by law."
-msgstr ""
+msgstr "Gewährleistung ist ausgeschlossen, soweit gesetzlich zulässig."
 
 #. __ %s: WEBSITE (URL)
 #: appinfo.h:61
@@ -764,3 +801,8 @@ msgid ""
 "%s.\n"
 "See also the Wiki there for further hints, thanks and credits."
 msgstr ""
+"Fehler oder Verbesserungswünsche bitte über das Verfolgungssystem auf der "
+"Projektseite\n"
+"%s.\n"
+"berichten. Siehe auch die Wiki-Seite dort für weitere Hinweise und "
+"Danksagungen."
