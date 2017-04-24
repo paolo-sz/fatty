@@ -38,6 +38,7 @@ const config default_cfg = {
   .tab_attention_bg_colour = 0x003200,
   .cursor_colour = 0xBFBFBF,
   .underl_colour = (colour)-1,
+  .underl_manual = false,
   .search_fg_colour = 0x000000,
   .search_bg_colour = 0x00DDDD,
   .search_current_colour = 0x0099DD,
@@ -52,6 +53,7 @@ const config default_cfg = {
   .font = {.name = W("Lucida Console"), .size = 9, .weight = 400, .isbold = false},
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
+  .font_render = FR_TEXTOUT,
   .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
   .bold_as_colour = true,
   .allow_blinking = false,
@@ -157,7 +159,7 @@ const config default_cfg = {
 config cfg, new_cfg, file_cfg;
 
 typedef enum {
-  OPT_BOOL, OPT_MOD, OPT_TRANS, OPT_CURSOR, OPT_FONTSMOOTH,
+  OPT_BOOL, OPT_MOD, OPT_TRANS, OPT_CURSOR, OPT_FONTSMOOTH, OPT_FONTRENDER,
   OPT_MIDDLECLICK, OPT_RIGHTCLICK, OPT_SCROLLBAR, OPT_WINDOW, OPT_HOLD,
   OPT_INT, OPT_COLOUR, OPT_STRING, OPT_WSTRING,
   OPT_LEGACY = 16
@@ -181,6 +183,7 @@ options[] = {
   {"BoldColour", OPT_COLOUR, offcfg(bold_colour)},
   {"CursorColour", OPT_COLOUR, offcfg(cursor_colour)},
   {"UnderlineColour", OPT_COLOUR, offcfg(underl_colour)},
+  {"UnderlineManual", OPT_BOOL, offcfg(underl_manual)},
   {"SearchForegroundColour", OPT_COLOUR, offcfg(search_fg_colour)},
   {"SearchBackgroundColour", OPT_COLOUR, offcfg(search_bg_colour)},
   {"SearchCurrentColour", OPT_COLOUR, offcfg(search_current_colour)},
@@ -212,6 +215,7 @@ options[] = {
   {"AllowBlinking", OPT_BOOL, offcfg(allow_blinking)},
   {"Locale", OPT_STRING, offcfg(locale)},
   {"Charset", OPT_STRING, offcfg(charset)},
+  {"FontRender", OPT_FONTRENDER, offcfg(font_render)},
   {"OldFontMenu", OPT_BOOL, offcfg(old_fontmenu)},
 
   // Keys
@@ -365,6 +369,11 @@ static opt_val
     {"none", FS_NONE},
     {"partial", FS_PARTIAL},
     {"full", FS_FULL},
+    {0, 0}
+  },
+  [OPT_FONTRENDER] = (opt_val[]) {
+    {"textout", FR_TEXTOUT},
+    {"uniscribe", FR_UNISCRIBE},
     {0, 0}
   },
   [OPT_MIDDLECLICK] = (opt_val[]) {

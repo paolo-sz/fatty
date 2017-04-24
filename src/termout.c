@@ -30,7 +30,8 @@ static string primary_da2 = "\e[?62;1;2;4;6;22c";
 static string primary_da3 = "\e[?63;1;2;4;6;22c";
 
 
-static bool term_push_cmd(struct term* term, char c)
+static bool
+term_push_cmd(struct term* term, char c)
 {
   uint new_size;
 
@@ -316,11 +317,15 @@ write_char(struct term* term, wchar c, int width)
           x--;
         }
        /* Try to precompose with the cell's base codepoint */
-        wchar pc = win_combine_chars(line->chars[x].chr, c);
+        wchar pc;
+        if (termattrs_equal_fg(&line->chars[x].attr, &curs->attr))
+          pc = win_combine_chars(line->chars[x].chr, c);
+        else
+          pc = 0;
         if (pc)
           line->chars[x].chr = pc;
         else
-          add_cc(line, x, c);
+          add_cc(line, x, c, curs->attr);
       }
       return;
     otherwise:  // Anything else. Probably shouldn't get here.
