@@ -582,14 +582,14 @@ win_is_glass_available(void)
 }
 
 static void
-update_blur(void)
+win_update_blur(bool opaque)
 {
 // This feature is disabled in config.c as it does not seem to work,
 // see https://github.com/mintty/mintty/issues/501
   if (pDwmEnableBlurBehindWindow) {
     bool blur =
       cfg.transparency && cfg.blurred && !win_is_fullscreen &&
-      !(cfg.opaque_when_focused && win_active_terminal()->has_focus);
+      !(opaque && win_active_terminal()->has_focus);
 #define dont_use_dwmapi_h
 #ifdef use_dwmapi_h
 #warning dwmapi_include_shown_for_documentation
@@ -614,12 +614,12 @@ update_blur(void)
 }
 
 static void
-update_glass(void)
+win_update_glass(bool opaque)
 {
   if (pDwmExtendFrameIntoClientArea) {
     bool enabled =
       cfg.transparency == TR_GLASS && !win_is_fullscreen &&
-      !(cfg.opaque_when_focused && win_active_terminal()->has_focus);
+      !(opaque && win_active_terminal()->has_focus);
     pDwmExtendFrameIntoClientArea(wnd, &(MARGINS){enabled ? -1 : 0, 0, 0, 0});
   }
 }
@@ -638,7 +638,7 @@ make_fullscreen(void)
   SetWindowLong(wnd, GWL_STYLE, style);
 
  /* The glass effect doesn't work for fullscreen windows */
-  update_glass();
+  win_update_glass(cfg.opaque_when_focused);
 
  /* Resize ourselves to exactly cover the nearest monitor. */
   MONITORINFO mi;
@@ -655,7 +655,7 @@ static void
 clear_fullscreen(void)
 {
   win_is_fullscreen = false;
-  update_glass();
+  win_update_glass(cfg.opaque_when_focused);
 
  /* Reinstate the window furniture. */
   LONG style = GetWindowLong(wnd, GWL_STYLE);
@@ -1047,7 +1047,7 @@ default_size(void)
 }
 
 void
-update_transparency(void)
+win_update_transparency(bool opaque)
 {
   int trans = cfg.transparency;
   if (trans == TR_GLASS)
@@ -1056,13 +1056,13 @@ update_transparency(void)
   style = trans ? style | WS_EX_LAYERED : style & ~WS_EX_LAYERED;
   SetWindowLong(wnd, GWL_EXSTYLE, style);
   if (trans) {
-    if (cfg.opaque_when_focused && win_active_terminal()->has_focus)
+    if (opaque && win_active_terminal()->has_focus)
       trans = 0;
     SetLayeredWindowAttributes(wnd, 0, 255 - (uchar)trans, LWA_ALPHA);
   }
 
-  update_blur();
-  update_glass();
+  win_update_blur(opaque);
+  win_update_glass(opaque);
 }
 
 void
@@ -1098,7 +1098,7 @@ static void font_cs_reconfig(bool font_changed) {
     win_adapt_term_size(true, false);
   }
   win_update_scrollbar();
-  update_transparency();
+  win_update_transparency(cfg.opaque_when_focused);
   win_update_mouse();
 
   old_ambig_wide = cs_ambig_wide;
@@ -1428,7 +1428,7 @@ static struct {
       } else {
         term_set_focus(term, false, true);
       }
-      update_transparency();
+      win_update_transparency(cfg.opaque_when_focused);
       win_key_reset();
 
     when WM_SETFOCUS:
@@ -2671,7 +2671,7 @@ main(int argc, char *argv[])
   // Initialise various other stuff.
   win_init_drop_target();
   win_init_menus();
-  update_transparency();
+  win_update_transparency(cfg.opaque_when_focused);
 
   // Finally show the window!
   go_fullscr_on_max = (cfg.window == -1);
