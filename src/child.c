@@ -125,7 +125,7 @@ child_create(struct child* child, struct term* term,
     if (win_version >= 0x0601)  // Windows 7 is NT 6.1.
 #endif
       if (AllocConsole()) {
-        HMODULE kernel = GetModuleHandle("kernel32");
+        HMODULE kernel = GetModuleHandleA("kernel32");
         HWND (WINAPI *pGetConsoleWindow)(void) =
           (void *)GetProcAddress(kernel, "GetConsoleWindow");
         ShowWindowAsync(pGetConsoleWindow(), SW_HIDE);
