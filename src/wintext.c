@@ -1393,7 +1393,7 @@ win_char_width(xchar c)
   if (c >= ' ' && c < '~')  // exclude 0x7E (overline in Shift_JIS X 0213)
     return 1;
 
-  dc = GetDC(wnd);
+  HDC dc = GetDC(wnd);
 #ifdef debug_win_char_width
   bool ok0 = !!
 #endif
@@ -1420,7 +1420,9 @@ win_char_width(xchar c)
 #endif
 
   int ibuf = 0;
-  if (!GetCharWidth32W(dc, c, c, &ibuf))
+  bool ok = GetCharWidth32W(dc, c, c, &ibuf);
+  ReleaseDC(wnd, dc);
+  if (!ok)
     return 0;
 
   // report char as wide if its width is more than 1½ cells

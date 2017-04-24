@@ -14,6 +14,7 @@
 #include "term.h"
 #include "winpriv.h"
 #include "winsearch.h"
+#include "winimg.h"
 
 #include "term.h"
 #include "appinfo.h"
@@ -77,6 +78,8 @@ static bool maxwidth = false;
 static bool maxheight = false;
 static bool store_taskbar_properties = false;
 static bool prevent_pinning = false;
+bool disable_bidi = false;
+
 
 static HBITMAP caretbm;
 
@@ -1222,7 +1225,7 @@ static struct {
         when IDM_COPY: term_copy(term);
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(term); win_update();
-        when IDM_RESET: term_reset(term); win_update();
+        when IDM_RESET: winimgs_clear(term); term_reset(term); win_update();
         when IDM_DEFSIZE:
           default_size();
         when IDM_DEFSIZE_ZOOM:
@@ -1875,23 +1878,32 @@ static const char help[] =
   "If a dash is given instead of a program, invoke the shell as a login shell.\n"
   "\n"
   "Options:\n"
+///12345678901234567890123456789012345678901234567890123456789012345678901234567890
   "  -b, --tab COMMAND     Spawn a new tab and execute the command\n"
-  "  -c, --config FILE     Load specified config file\n"
-  "  -e, --exec            Treat remaining arguments as the command to execute\n"
+  "  -c, --config FILE     Load specified config file (cf. -C or -o ThemeFile)\n"
+  "  -e, --exec ...        Treat remaining arguments as the command to execute\n"
   "  -h, --hold never|start|error|always  Keep window open after command finishes\n"
-  "  -i, --icon FILE[,IX]  Load window icon from file, optionally with index\n"
-  "  -l, --log FILE|-      Log output to file or stdout\n"
-  "  -o, --option OPT=VAL  Override config file option with given value\n"
   "  -p, --position X,Y    Open window at specified coordinates\n"
-  "  -s, --size COLS,ROWS  Set screen size in characters\n"
+  "  -p, --position center|left|right|top|bottom  Open window at special position\n"
+  "  -p, --position @N     Open window on monitor N\n"
+  "  -s, --size COLS,ROWS  Set screen size in characters (also COLSxROWS)\n"
+  "  -s, --size maxwidth|maxheight  Set max screen size in given dimension\n"
   "  -T, --Title TITLE     Set window title (default: the invoked command)\n"
-  "  -t, --title TITLE     Set tab title (default: the invoked command)\n"
+  "  -t, --title TITLE     Set window title (default: the invoked command) (cf. -T)\n"
   "                        Must be set before -b/--tab option\n"
   "  -u, --utmp            Create a utmp entry\n"
   "  -w, --window normal|min|max|full|hide  Set initial window state\n"
+  "  -i, --icon FILE[,IX]  Load window icon from file, optionally with index\n"
+  "  -l, --log FILE|-      Log output to file or stdout\n"
+  "      --nobidi|--nortl  Disable bidi (right-to-left support)\n"
+  "  -o, --option OPT=VAL  Set/Override config file option with given value\n"
+  "  -B, --Border frame|void  Use thin/no window border\n"
+  "      --nopin           Make this instance not pinnable to taskbar\n"
+  "  -D, --daemon          Start new instance with Windows shortcut key\n"
   "      --class CLASS     Set window class name (default: " APPNAME ")\n"
   "  -H, --help            Display help and exit\n"
   "  -V, --version         Print version information and exit\n"
+  "See manual page for further command line options and configuration.\n"
 ;
 
 static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVdD";
@@ -1914,6 +1926,8 @@ opts[] = {
   {"window",     required_argument, 0, 'w'},
   {"class",      required_argument, 0, ''},  // short option not enabled
   {"dir",        required_argument, 0, ''},  // short option not enabled
+  {"nobidi",     no_argument,       0, ''},  // short option not enabled
+  {"nortl",      no_argument,       0, ''},  // short option not enabled
   {"help",       no_argument,       0, 'H'},
   {"version",    no_argument,       0, 'V'},
   {"nodaemon",   no_argument,       0, 'd'},
@@ -2074,6 +2088,7 @@ main(int argc, char *argv[])
         tablist[current_tab_size] = optarg;
         current_tab_size++;
       when '': set_arg_option("Class", optarg);
+      when '': disable_bidi = true;
       when '':
         if (chdir(optarg) < 0) {
           if (*optarg == '"' || *optarg == '\'')
