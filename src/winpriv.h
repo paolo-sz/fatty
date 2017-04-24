@@ -62,6 +62,8 @@ extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get
 
 extern void win_set_ime_open(bool);
 
+extern void show_message(char * msg, UINT type);
+
 void win_process_timer_message(WPARAM message);
 
 void win_tab_set_argv(char** argv);

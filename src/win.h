@@ -63,6 +63,7 @@ extern void win_paste(void);
 
 extern void win_set_timer(void (*cb)(void*), void* data, uint ticks);
 
+extern bool print_opterror(FILE * stream, string msg, bool utf8params, string p1, string p2);
 extern void win_show_about(void);
 extern void win_show_error(char * msg);
 extern void win_show_warning(char * msg);

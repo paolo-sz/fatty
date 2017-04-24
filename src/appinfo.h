@@ -38,8 +38,8 @@
 #define POINT_VERSION \
   STRINGIFY(MAJOR_VERSION.MINOR_VERSION.PATCH_NUMBER)
 #define COMMA_VERSION \
-  MAJOR_VERSION,MINOR_VERSION,PATCH_NUMBER
-#define COPYRIGHT "(C) " YEAR " " AUTHOR
+  MAJOR_VERSION,MINOR_VERSION,PATCH_NUMBER,BUILD_NUMBER
+#define COPYRIGHT "© (C) " YEAR " " AUTHOR
 
 // needed for secondary device attributes report
 #define DECIMAL_VERSION \
@@ -47,12 +47,16 @@
 
 // needed for fatty -V and Options... - About...
 #define VERSION_TEXT \
-  APPNAME " " VERSION " (" STRINGIFY(TARGET) ")\n" \
-  COPYRIGHT "\n" \
-  "License GPLv3+: GNU GPL version 3 or later\n" \
-  "There is no warranty, to the extent permitted by law.\n"
+  APPNAME " " VERSION " (" STRINGIFY(TARGET) ")"
+
+#define LICENSE_TEXT \
+  "License GPLv3+: GNU GPL version 3 or later"
+
+#define WARRANTY_TEXT \
+  __("There is no warranty, to the extent permitted by law.")
 
 // needed for Options... - About...
+//_ %s: WEBSITE (URL)
 #define ABOUT_TEXT \
   "Thanks to creators of mintty and PuTTY for creating working\n"\
   "terminal emulator for windows. This software is largely based\n"\

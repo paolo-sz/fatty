@@ -412,15 +412,24 @@ static opt_val
 #endif
 
 
+#define dont_debug_opterror
+
+static void
+opterror(string msg, bool utf8params, string p1, string p2)
+{
+  print_opterror(stderr, msg, utf8params, p1, p2);
+}
+
+
 static int
-find_option(string name)
+find_option(bool from_file, string name)
 {
   for (uint i = 0; i < lengthof(options); i++) {
     if (!strcasecmp(name, options[i].name))
       return i;
   }
-  fprintf(stderr, _("Ignoring unknown option '%s'"), name);
-  fprintf(stderr, ".\n");
+  //_ %s: unknown option name
+  opterror(_("Ignoring unknown option '%s'"), from_file, name, 0);
   return -1;
 }
 
@@ -465,8 +474,7 @@ remember_file_option(char * tag, uint i)
   (void)tag;
   trace_theme(("[%s] remember_file_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (file_opts_num >= lengthof(file_opts)) {
-    fprintf(stderr, _("Internal error: too many options"));
-    fprintf(stderr, ".\n");
+    opterror(_("Internal error: too many options"), true, 0, 0);
     exit(1);
   }
 
@@ -482,8 +490,7 @@ remember_file_comment(char * comment)
 {
   trace_theme(("[] remember_file_comment <%s>\n", comment));
   if (file_opts_num >= lengthof(file_opts)) {
-    fprintf(stderr, _("Internal error: too many options/comments"));
-    fprintf(stderr, ".\n");
+    opterror(_("Internal error: too many options/comments"), true, 0, 0);
     exit(1);
   }
 
@@ -496,19 +503,12 @@ remember_arg_option(char * tag, uint i)
   (void)tag;
   trace_theme(("[%s] remember_arg_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (arg_opts_num >= lengthof(arg_opts)) {
-    fprintf(stderr, _("Internal error: too many options"));
-    fprintf(stderr, ".\n");
+    opterror(_("Internal error: too many options"), false, 0, 0);
     exit(1);
   }
 
   if (!seen_arg_option(i))
     arg_opts[arg_opts_num++] = i;
-}
-
-void
-remember_arg(string option)
-{
-  remember_arg_option("rem_arg", find_option(option));
 }
 
 static void
@@ -568,7 +568,7 @@ parse_colour(string s, colour *cp)
 static int
 set_option(string name, string val_str, bool from_file)
 {
-  int i = find_option(name);
+  int i = find_option(from_file, name);
   if (i < 0)
     return i;
 
@@ -619,8 +619,9 @@ set_option(string name, string val_str, bool from_file)
       }
     }
   }
-  fprintf(stderr, _("Ignoring invalid value '%s' for option '%s'"), val_str, name);
-  fprintf(stderr, ".\n");
+  //_ %2$s: option name, %1$s: invalid value
+  opterror(_("Ignoring invalid value '%s' for option '%s'"), 
+           from_file, val_str, name);
   return -1;
 }
 
@@ -629,8 +630,9 @@ parse_option(string option, bool from_file)
 {
   const char *eq = strchr(option, '=');
   if (!eq) {
-    fprintf(stderr, _("Ignoring malformed option '%s'"), option);
-    fprintf(stderr, ".\n");
+    //_ %s: option name
+    opterror(_("Ignoring option '%s' with missing value"), 
+             from_file, option, 0);
     return -1;
   }
 
@@ -734,6 +736,20 @@ get_resource_file(wstring sub, wstring res, bool towrite)
       break;
   }
   return null;
+}
+
+
+static inline
+void
+load_i18n(wstring locale)
+{
+  if (*locale) {
+      char * textdb = get_resource_file(W("lang"), locale, false);
+      if (textdb) {
+        //load_text(textdb, false);
+        free(textdb);
+      }
+  }
 }
 
 
@@ -875,6 +891,11 @@ init_config(void)
 void
 finish_config(void)
 {
+#ifdef debug_opterror
+  opterror("TÃ¤st L %s %s", false, "böh", "büh€");
+  opterror("TÃ¤st U %s %s", true, "bÃ¶h", "bÃ¼hâ‚¬");
+#endif
+
   // Avoid negative sizes.
   cfg.rows = max(1, cfg.rows);
   cfg.cols = max(1, cfg.cols);
@@ -887,7 +908,7 @@ finish_config(void)
   // bold_as_font used to be implied by !bold_as_colour.
   if (cfg.bold_as_font == -1) {
     cfg.bold_as_font = !cfg.bold_as_colour;
-    remember_file_option("finish", find_option("BoldAsFont"));
+    remember_file_option("finish", find_option(true, "BoldAsFont"));
   }
 
   if (0 < cfg.transparency && cfg.transparency <= 3)
@@ -905,8 +926,11 @@ save_config(void)
 
   if (!file) {
     char *msg;
+    char * up = cs__wcstoutf(rc_filename);
+    //_ %1$s: config file name, %2$s: error message
     int len = asprintf(&msg, _("Could not save options to '%s':\n%s."),
-                       filename, strerror(errno));
+                       up, strerror(errno));
+    free(up);
     if (len > 0) {
       win_show_error(msg);
       delete(msg);
@@ -1071,11 +1095,14 @@ printer_handler(control *ctrl, int event)
       dlg_editbox_set_w(ctrl, *printer ? printer : NONE);
   }
   else if (event == EVENT_VALCHANGE || event == EVENT_SELCHANGE) {
-    dlg_editbox_get_w(ctrl, &printer);
-    if (!wcscmp(printer, NONE))
+    int n = dlg_listbox_getcur(ctrl);
+    if (n == 0)
       wstrset(&printer, CFG_NONE);
-    else if (!wcscmp(printer, DEFAULT))
+    else if (n == 1)
       wstrset(&printer, CFG_DEFAULT);
+    else
+      dlg_editbox_get_w(ctrl, &printer);
+
     new_cfg.printer = printer;
   }
 }
@@ -1181,13 +1208,13 @@ term_handler(control *ctrl, int event)
 //  5 -> 0x00000040 MB_ICONASTERISK    Asterisk
 // -1 -> 0xFFFFFFFF                    Simple Beep
 static string beeps[] = {
-  "simple",
-  "none",
-  "default",
-  "Critical Stop",
-  "Question",
-  "Exclamation",
-  "Asterisk",
+  __("simple beep"),
+  __("no beep"),
+  __("Default Beep"),
+  __("Critical Stop"),
+  __("Question"),
+  __("Exclamation"),
+  __("Asterisk"),
 };
 
 static void
@@ -1198,22 +1225,15 @@ bell_handler(control *ctrl, int event)
       dlg_listbox_clear(ctrl);
       int sel = -1;
       for (uint i = 0; i < lengthof(beeps); i++) {
-        dlg_listbox_add(ctrl, beeps[i]);
+        dlg_listbox_add(ctrl, _(beeps[i]));
         if ((int)i == new_cfg.bell_type + 1)
           sel = i;
       }
       if (sel >= 0)
         dlg_editbox_set(ctrl, beeps[sel]);
     when EVENT_VALCHANGE or EVENT_SELCHANGE: {
-      char * beep = malloc(0);
-      dlg_editbox_get(ctrl, (string *)&beep);
-      for (uint i = 0; i < lengthof(beeps); i++) {
-        if (!strcmp(beep, beeps[i])) {
-          new_cfg.bell_type = i - 1;
-          break;
-        }
-      }
-      free(beep);
+      new_cfg.bell_type = dlg_listbox_getcur(ctrl) - 1;
+
       win_bell(win_active_terminal(), &new_cfg);
     }
   }
@@ -1279,9 +1299,11 @@ bellfile_handler(control *ctrl, int event)
     dlg_editbox_set_w(ctrl, *bell_file ? bell_file : NONE);
   }
   else if (event == EVENT_VALCHANGE || event == EVENT_SELCHANGE) {
-    dlg_editbox_get_w(ctrl, &bell_file);
-    if (!wcscmp(bell_file, NONE))
+    if (dlg_listbox_getcur(ctrl) == 0)
       wstrset(&bell_file, CFG_NONE);
+    else
+      dlg_editbox_get_w(ctrl, &bell_file);
+
     // add std dir prefix?
     new_cfg.bell_file = bell_file;
     win_bell(win_active_terminal(), &new_cfg);
@@ -1386,9 +1408,11 @@ theme_handler(control *ctrl, int event)
     dlg_editbox_set_w(ctrl, *theme_name ? theme_name : NONE);
   }
   else if (event == EVENT_SELCHANGE) {  // pull-down selection
-    dlg_editbox_get_w(ctrl, &theme_name);
-    if (wcscmp(theme_name, NONE) == 0)
+    if (dlg_listbox_getcur(ctrl) == 0)
       wstrset(&theme_name, CFG_NONE);
+    else
+      dlg_editbox_get_w(ctrl, &theme_name);
+
     new_cfg.theme_file = theme_name;
     // clear pending colour scheme
     strset(&new_cfg.colour_scheme, "");
@@ -1586,7 +1610,9 @@ setup_config_box(controlbox * b)
     dlg_stdradiobutton_handler, &new_cfg.transparency,
     _("&Off"), TR_OFF,
     _("&Low"), TR_LOW,
-    with_glass ? _("&Med.") : _("&Medium"), TR_MEDIUM,
+    //_ short form of radio button label "Medium"
+    with_glass ? _("&Med.")
+               : _("&Medium"), TR_MEDIUM,
     _("&High"), TR_HIGH,
     with_glass ? _("Gla&ss") : null, TR_GLASS,
     null

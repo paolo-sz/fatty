@@ -34,17 +34,48 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 
 bool clone_size_token = true;
 
+#if CYGWIN_VERSION_API_MINOR >= 66
+#include <langinfo.h>
+#endif
+
 static void
-childerror(struct term* term, char * action, bool from_fork, int code)
+childerror(struct term* term, char * action, bool from_fork, int errno_code, int code)
 {
-  char * msg;
-  char * err = strerror(errno);
-  if (from_fork && errno == ENOENT)
-    err = _("There are no available terminals");
-  int len = asprintf(&msg, "\033[30;%dm\033[K%s: %s: %s (%d).\033[0m\r\n", from_fork ? 41 : 43, _("Error"), action, err, code);
-  if (len > 0) {
-    term_write(term, msg, len);
-    free(msg);
+#if CYGWIN_VERSION_API_MINOR >= 66
+  bool utf8 = strcmp(nl_langinfo(CODESET), "UTF-8") == 0;
+  char * oldloc;
+#else
+  char * oldloc = (char *)cs_get_locale();
+  bool utf8 = strstr(oldloc, ".65001");
+#endif
+  if (utf8)
+    oldloc = null;
+  else {
+    oldloc = strdup(cs_get_locale());
+    cs_set_locale("C.UTF-8");
+  }
+
+  char s[33];
+  bool colour_code = code && !errno_code;
+  sprintf(s, "\033[30;%dm\033[K", from_fork ? 41 : colour_code ? code : 43);
+  term_write(term, s, strlen(s));
+  term_write(term, action, strlen(action));
+  if (errno_code) {
+    char * err = strerror(errno_code);
+    if (from_fork && errno_code == ENOENT)
+      err = _("There are no available terminals");
+    term_write(term, ": ", 2);
+    term_write(term, err, strlen(err));
+  }
+  if (code && !colour_code) {
+    sprintf(s, " (%d)", code);
+    term_write(term, s, strlen(s));
+  }
+  term_write(term, ".\033[0m\r\n", 7);
+
+  if (oldloc) {
+    cs_set_locale(oldloc);
+    free(oldloc);
   }
 }
 
@@ -68,13 +99,9 @@ child_create(struct child* child, struct term* term,
     //EAGAIN  Cannot allocate sufficient memory to allocate a task structure.
     //EAGAIN  Not possible to create a new process; RLIMIT_NPROC limit.
     //ENOMEM  Memory is tight.
-    childerror(term, _("could not fork child process"), true, pid);
-    if (rebase_prompt) {
-      term_write(term, "\033[30;43m\033[K", 11);
-      string msg = _("DLL rebasing may be required. See 'rebaseall / rebase --help'.");
-      term_write(term, msg, strlen(msg));
-      term_write(term, "\033[0m\r\n", 6);
-    }
+    childerror(term, _("Error: Could not fork child process"), true, errno, pid);
+    if (rebase_prompt)
+      childerror(term, _("DLL rebasing may be required; see 'rebaseall / rebase --help'"), false, 0, 0);
 
     child->pid = pid = 0;
 
@@ -145,7 +172,12 @@ child_create(struct child* child, struct term* term,
     execvp(child->cmd, argv);
 
     // If we get here, exec failed.
-    fprintf(stderr, "\033[30;41m\033[KFailed to run %s: %s\r\n", child->cmd, strerror(errno));
+    fprintf(stderr, "\033]701;C.UTF-8\007");
+    fprintf(stderr, "\033[30;41m\033[K");
+    //_ %1$s: client command (e.g. shell) to be run; %2$s: error message
+    fprintf(stderr, _("Failed to run '%s': %s"), child->cmd, strerror(errno));
+    fprintf(stderr, "\r\n");
+    fflush(stderr);
 
 #if CYGWIN_VERSION_DLL_MAJOR < 1005
     // Before Cygwin 1.5, the message above doesn't appear if we exit
@@ -378,7 +410,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      childerror(child->term, _("could not fork child daemon"), true, 0);
+      childerror(child->term, _("Error: Could not fork child daemon"), true, errno, 0);
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
