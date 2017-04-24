@@ -56,7 +56,7 @@ const config default_cfg = {
   .font_sample = W(""),
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
-  .font_render = FR_TEXTOUT,
+  .font_render = FR_UNISCRIBE,
   .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
   .bold_as_colour = true,
   .allow_blinking = false,
@@ -122,6 +122,7 @@ const config default_cfg = {
   .exit_title = W(""),
   .icon = W(""),
   .log = W(""),
+  .logging = true,
   .create_utmp = false,
   .title =  W(""),
   .title_settable = true,
@@ -131,6 +132,7 @@ const config default_cfg = {
   .app_id = W(""),
   .app_name = W(""),
   .app_launch_cmd = W(""),
+  .drop_commands = W(""),
   .col_spacing = 0,
   .row_spacing = 0,
   .padding = 1,
@@ -290,6 +292,7 @@ options[] = {
   {"ExitTitle", OPT_WSTRING, offcfg(exit_title)},
   {"Icon", OPT_WSTRING, offcfg(icon)},
   {"Log", OPT_WSTRING, offcfg(log)},
+  {"Logging", OPT_BOOL, offcfg(logging)},
   {"Title", OPT_WSTRING, offcfg(title)},
   {"TitleSettable", OPT_BOOL, offcfg(title_settable)},
   {"Utmp", OPT_BOOL, offcfg(create_utmp)},
@@ -301,6 +304,7 @@ options[] = {
   {"AppID", OPT_WSTRING, offcfg(app_id)},
   {"AppName", OPT_WSTRING, offcfg(app_name)},
   {"AppLaunchCmd", OPT_WSTRING, offcfg(app_launch_cmd)},
+  {"DropCommands", OPT_WSTRING, offcfg(drop_commands)},
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"Padding", OPT_INT, offcfg(padding)},
@@ -1086,7 +1090,10 @@ load_config(string filename, bool to_save)
 
   if (file) {
     while (fgets(linebuf, sizeof linebuf, file)) {
-      linebuf[strcspn(linebuf, "\r\n")] = 0;  /* trim newline */
+      //linebuf[strcspn(linebuf, "\r\n")] = 0;  /* trim newline */
+      // trim newline but allow embedded CR (esp. for DropCommands)
+      linebuf[strcspn(linebuf, "\n")] = 0;
+      // preserve comment lines and empty lines
       if (linebuf[0] == '#' || linebuf[0] == '\0') {
         if (to_save)
           remember_file_comment(linebuf);
@@ -1097,6 +1104,7 @@ load_config(string filename, bool to_save)
           if (i >= 0)
             remember_file_option("load", i);
           else
+            // preserve unknown options as comment lines
             remember_file_comment(linebuf);
         }
       }
@@ -1366,7 +1374,8 @@ closemuicache()
 }
 
 static wchar *
-getreg(HKEY key, wchar * subkey, wchar * attribute) {
+getreg(HKEY key, wchar * subkey, wchar * attribute)
+{
 #if CYGWIN_VERSION_API_MINOR < 74
   (void)key;
   (void)subkey;
@@ -1388,7 +1397,8 @@ getreg(HKEY key, wchar * subkey, wchar * attribute) {
 }
 
 static wchar *
-muieventlabel(wchar * event) {
+muieventlabel(wchar * event)
+{
   // HKEY_CURRENT_USER\AppEvents\EventLabels\SystemAsterisk
   // DispFileName -> "@mmres.dll,-5843"
   wchar * rsr = getreg(evlabels, event, W("DispFileName"));

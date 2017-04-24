@@ -299,14 +299,17 @@ term_reconfig(struct term* term)
     term->vt220_keys = vt220(new_cfg.term);
 }
 
-bool in_result(struct term* term, pos abspos, result run) {
+static bool
+in_result(struct term* term, pos abspos, result run)
+{
   return
     (abspos.x + abspos.y * term->cols >= run.x + run.y * term->cols) &&
     (abspos.x + abspos.y * term->cols <  run.x + run.y * term->cols + run.len);
 }
 
-bool
-in_results_recurse(struct term* term, pos abspos, int lo, int hi) {
+static bool
+in_results_recurse(struct term* term, pos abspos, int lo, int hi)
+{
   if (hi - lo == 0) {
     return false;
   }
@@ -320,7 +323,7 @@ in_results_recurse(struct term* term, pos abspos, int lo, int hi) {
   return true;
 }
 
-int
+static int
 in_results(struct term* term, pos scrpos)
 {
   if (term->results.length == 0) {
@@ -337,7 +340,7 @@ in_results(struct term* term, pos scrpos)
   return match;
 }
 
-void
+static void
 results_add(struct term* term, result abspos)
 {
   assert(term->results.capacity > 0);
@@ -350,7 +353,7 @@ results_add(struct term* term, result abspos)
   ++term->results.length;
 }
 
-void
+static void
 results_partial_clear(struct term* term, int pos)
 {
   int i = term->results.length;
@@ -370,7 +373,7 @@ term_set_search(struct term* term, wchar * needle)
   term->results.query_length = wcslen(needle);
 }
 
-void
+static void
 circbuf_init(circbuf * cb, int sz)
 {
   cb->capacity = sz;
@@ -379,7 +382,7 @@ circbuf_init(circbuf * cb, int sz)
   cb->buf = newn(termline*, sz);
 }
 
-void
+static void
 circbuf_destroy(circbuf * cb)
 {
   cb->capacity = 0;
@@ -396,7 +399,7 @@ circbuf_destroy(circbuf * cb)
   cb->buf = NULL;
 }
 
-void
+static void
 circbuf_push(circbuf * cb, termline * tl)
 {
   int pos = (cb->start + cb->length) % cb->capacity;
@@ -410,7 +413,7 @@ circbuf_push(circbuf * cb, termline * tl)
   cb->buf[pos] = tl;
 }
 
-termline *
+static termline *
 circbuf_get(circbuf * cb, int i)
 {
   assert(i < cb->length);

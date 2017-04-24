@@ -4,3 +4,6 @@ exe:
 clean:
 	cd src; $(MAKE) clean
 
+checksrc:
+	cd src; $(MAKE) checksrc
+

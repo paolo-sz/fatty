@@ -5,6 +5,7 @@
 
 extern bool icon_is_from_shortcut;
 extern bool clone_size_token;
+extern bool logging;
 
 struct term;
 
@@ -21,6 +22,8 @@ struct child
 
 extern void child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path);
+extern void open_logfile(bool toggling);
+extern void toggle_logging(void);
 extern void child_free(struct child* child);
 extern void child_proc(void);
 extern void child_kill(void);
@@ -33,6 +36,7 @@ extern void child_resize(struct child* child, struct winsize *winp);
 extern bool child_is_alive(struct child* child);
 extern bool child_is_parent(struct child* child);
 extern bool child_is_any_parent();
+extern int foreground_pid(struct child* child);
 extern wstring child_conv_path(struct child*, wstring);
 extern void child_fork(struct child* child, int argc, char *argv[], int moni);
 extern void child_set_fork_dir(struct child* child, char *);

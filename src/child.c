@@ -5,6 +5,7 @@
 
 #include "child.h"
 
+#include "win.h"
 #include "term.h"
 #include "charset.h"
 
@@ -33,6 +34,8 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 #endif
 
 bool clone_size_token = true;
+
+bool logging = false;
 
 #if CYGWIN_VERSION_API_MINOR >= 66
 #include <langinfo.h>
@@ -77,6 +80,81 @@ childerror(struct term* term, char * action, bool from_fork, int errno_code, int
     cs_set_locale(oldloc);
     free(oldloc);
   }
+}
+
+void
+open_logfile(bool toggling)
+{
+  // Open log file if any
+  if (*cfg.log) {
+    // use cygwin conversion function to escape unencoded characters 
+    // and thus avoid the locale trick (2.2.3)
+
+    if (0 == wcscmp(cfg.log, W("-"))) {
+      child_log_fd = fileno(stdout);
+      logging = true;
+    }
+    else {
+      char * log = path_win_w_to_posix(cfg.log);
+#ifdef debug_logfilename
+      printf("<%ls> -> <%s>\n", cfg.log, log);
+#endif
+      char * format = strchr(log, '%');
+      if (format && * ++ format == 'd' && !strchr(format, '%')) {
+        char * logf = newn(char, strlen(log) + 20);
+        sprintf(logf, log, getpid());
+        free(log);
+        log = logf;
+      }
+      else if (format) {
+        struct timeval now;
+        gettimeofday(& now, 0);
+        char * logf = newn(char, MAX_PATH + 1);
+        strftime(logf, MAX_PATH, log, localtime (& now.tv_sec));
+        free(log);
+        log = logf;
+      }
+
+      child_log_fd = open(log, O_WRONLY | O_CREAT | O_EXCL, 0600);
+      if (child_log_fd < 0) {
+        // report message and filename:
+        wchar * wpath = path_posix_to_win_w(log);
+        char * upath = cs__wcstoutf(wpath);
+#ifdef debug_logfilename
+        printf(" -> <%ls> -> <%s>\n", wpath, upath);
+#endif
+        char * msg = _("Error: Could not open log file");
+        if (toggling) {
+          char * err = strerror(errno);
+          char * errmsg = newn(char, strlen(msg) + strlen(err) + strlen(upath) + 4);
+          sprintf(errmsg, "%s: %s\n%s", msg, err, upath);
+          win_show_warning(errmsg);
+          free(errmsg);
+        }
+        else {
+          childerror(win_active_terminal(), msg, false, errno, 0);
+          childerror(win_active_terminal(), upath, false, 0, 0);
+        }
+        free(upath);
+        free(wpath);
+      }
+      else
+        logging = true;
+
+      free(log);
+    }
+  }
+}
+
+void
+toggle_logging()
+{
+  if (logging)
+    logging = false;
+  else if (child_log_fd >= 0)
+    logging = true;
+  else
+    open_logfile(true);
 }
 
 void
@@ -309,6 +387,12 @@ child_resize(struct child* child, struct winsize *winp)
 {
   if (child->pty_fd >= 0)
     ioctl(child->pty_fd, TIOCSWINSZ, winp);
+}
+
+int
+foreground_pid(struct child* child)
+{
+  return (child->pty_fd >= 0) ? tcgetpgrp(child->pty_fd) : 0;
 }
 
 wstring

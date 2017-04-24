@@ -47,18 +47,9 @@ void child_init() {
     child_win_fd = open("/dev/windows", O_RDONLY);
 
     // Open log file if any
-    if (*cfg.log) {
-        if (!wcscmp(cfg.log, L"-"))
-            child_log_fd = 1;
-        else {
-            int len = wcslen(cfg.log) + 1;
-            char *log = (char *)malloc(len);
-            cs_wcstombs(log, cfg.log, len);
-            child_log_fd = open(log, O_WRONLY | O_CREAT | O_TRUNC, 0600);
-            free(log);
-            if (child_log_fd < 0)
-                fputs("Opening log file failed\n", stderr);
-        }
+    if (cfg.logging) {
+      // option Logging=yes => initially open log file if configured
+      open_logfile(false);
     }
 }
 
