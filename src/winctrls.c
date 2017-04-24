@@ -19,16 +19,6 @@
  * winctrls.c: routines to self-manage the controls in a dialog box.
  */
 
-/*
- * Possible TODO in new cross-platform config box stuff:
- *
- *  - When lining up two controls alongside each other, I wonder if
- *    we could conveniently arrange to centre them vertically?
- *    Particularly ugly in the current setup is the `Add new
- *    forwarded port:' static next to the rather taller `Remove'
- *    button.
- */
-
 #define GAPBETWEEN 3
 #define GAPWITHIN 1
 #define GAPXBOX 7
@@ -858,14 +848,32 @@ winctrl_set_focus(control *ctrl, int has_focus)
     dlg.focused = null;
 }
 
-static HWND font_sample = 0;
 
 /*
    adapted from messageboxmanager.zip
    @ https://www.codeproject.com/articles/18399/localizing-system-messagebox
  */
+static HHOOK windows_hook = 0;
+static bool hooked_window_activated = false;
+
+static void
+hook_windows(HOOKPROC hookproc)
+{
+  windows_hook = SetWindowsHookExW(WH_CBT, hookproc, 0, GetCurrentThreadId());
+}
+
+static void
+unhook_windows()
+{
+  UnhookWindowsHookEx(windows_hook);
+  hooked_window_activated = false;
+}
+
+static HWND font_sample = 0;
+
 static LRESULT CALLBACK
-set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
+set_labels(int nCode, WPARAM wParam, LPARAM lParam)
+{
   bool localize = *cfg.lang;
 
 #define dont_debug_dialog_hook
@@ -877,7 +885,7 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
     if (!button) button = GetDlgItem((HWND)wParam, id);
     wchar buf [99];
     GetWindowTextW(button, buf, 99);
-    printf("%d <%ls> -> <%ls>\n", id, buf, label);
+    printf("%d [%8p] <%ls> -> <%ls>\n", id, button, buf, label);
   }
 #endif
 
@@ -907,14 +915,110 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
   char * sCode = "?";
   if (nCode >= 0 && nCode < (int)lengthof(hcbt))
     sCode = hcbt[nCode];
-  printf("hook %lld: %d %s\n", wParam, nCode, sCode);
+  bool from_mouse = false;
+  if (nCode == HCBT_ACTIVATE)
+    from_mouse = ((CBTACTIVATESTRUCT *)lParam)->fMouse;
+  printf("hook %d %s (%d %d mou %d)\n", nCode, sCode, (unsigned)wParam, (unsigned)lParam, from_mouse);
 #endif
 
-  // we could adjust window size if (nCode == HCBT_CREATEWND)
-  // but then the translations below would not work anymore, 
-  // because SetWindowPos would cause HCBT_ACTIVATE to be invoked 
-  // when the dialog is not yet populated with the other dialog items
-  if (nCode == HCBT_ACTIVATE) {
+  static int adjust_sample = 0;  /* pre-adjust (here) vs post-adjust (below)
+                                    0b01: post-adjust "Sample" frame
+                                    0b02: post-adjust sample text
+                                 */
+  static bool adjust_sample_plus = false;
+  static int fc_item_grp = 0;
+  static int fc_item_idx = 0;
+  static int fc_item_left = 11;
+  static int fc_item_right = 415;
+  static int fc_item_gap = 7;
+  static int fc_button_width = 68;
+  static int fc_sample_gap = 12;
+  static int fc_sample_bottom = 228;
+
+  if (nCode == HCBT_CREATEWND && !new_cfg.old_fontmenu) {
+    // calculations to adjust size of the font sample dialog item
+    static int fc_width = 437;
+    static int fc_item1_right = 158;
+    static int fc_item2_left = 165;
+    static int fc_sample_left = 165;
+
+    // we could also adjust the font chooser dialog window size here
+    // but then the localization transformations below would not work anymore,
+    // because SetWindowPos would cause HCBT_ACTIVATE to be invoked
+    // when the dialog is not yet populated with the other dialog items
+
+    CREATESTRUCTW * cs = ((CBT_CREATEWNDW *)lParam)->lpcs;
+#ifdef debug_dialog_hook
+    printf("  CBT_CREATEWND x %3d y %3d w %3d h %3d (%08X %07X) <%ls>\n", cs->x, cs->y, cs->cx, cs->cy, cs->style, cs->dwExStyle, cs->lpszName);
+#endif
+    // check for style property combinations to identify sets of dialog items;
+    // count within group to identify actual font chooser dialog item;
+    // note: we cannot identify by geometry which may differ between systems
+    // 0x80000000L WS_POPUP
+    // 0x40000000L WS_CHILD
+    // 0x10000000L WS_VISIBLE
+    // 0x00020000L WS_GROUP
+    // 0x00010000L WS_TABSTOP
+    if (!(cs->style & WS_CHILD)) {
+      // font chooser popup dialog
+      fc_width = cs->cx;
+      fc_item_left = 12;
+      fc_item_right = fc_width - 2 * fc_item_left;
+      fc_item_grp = 0;
+    }
+    else if ((cs->style & WS_CHILD) && !(cs->style & WS_VISIBLE)) {
+      // font sample text (default "AaBbYyZz")
+      fc_sample_gap = cs->x - fc_sample_left;
+      if (!(adjust_sample & 2)) {
+        cs->x = fc_item_left + fc_sample_gap;
+        cs->cx = fc_item_right - fc_item_left - 2 * fc_sample_gap;
+        if (adjust_sample_plus)
+          cs->cx += fc_item_gap + fc_button_width;  // not yet known
+      }
+    }
+    else if ((cs->style & WS_CHILD) && (cs->style & WS_GROUP) && (cs->style & WS_TABSTOP)) {
+      // buttons (OK, Cancel, Apply)
+      fc_button_width = cs->cx;
+      fc_item_right = cs->x + cs->cx;  // only useful for post-adjustment
+    }
+    else if ((cs->style & WS_CHILD) && (cs->style & WS_GROUP)) {
+      fc_item_grp ++;
+      fc_item_idx = 0;
+      if (fc_item_grp == 1) { // "Font:"
+        fc_item_left = cs->x;
+      } else if (fc_item_grp == 2) { // "Font style:"
+        fc_item2_left = cs->x;  // to identify "Sample" frame
+        fc_item_gap = cs->x - fc_item1_right;
+      } else if (fc_item_grp == 3) { // "Size:"
+        fc_item_right = cs->x + cs->cx;
+      } else if (fc_item_grp == 6 || (fc_item_grp < 6 && cs->x == fc_item2_left)) {
+        // "Sample" frame
+        fc_sample_left = cs->x;
+        fc_sample_bottom = cs->y + cs->cy;
+        if (!(adjust_sample & 1)) {
+          cs->x = fc_item_left;
+          cs->cx = fc_item_right - fc_item_left;
+          if (adjust_sample_plus)
+            cs->cx += fc_item_gap + fc_button_width;  // not yet known
+        }
+      }
+    }
+    else if ((cs->style & WS_CHILD) && !(cs->style & WS_GROUP)) {
+      fc_item_idx ++;
+      if (fc_item_grp == 1 && fc_item_idx == 1) { // font list
+        fc_item_left = cs->x;
+        fc_item1_right = cs->x + cs->cx;
+      }
+      else if (fc_item_grp == 3 && fc_item_idx == 1) { // size list
+        fc_item_right = cs->x + cs->cx;
+      }
+    }
+  }
+  else if (nCode == HCBT_ACTIVATE) {
+#ifdef debug_dialog_hook
+    bool from_mouse = ((CBTACTIVATESTRUCT *)lParam)->fMouse;
+    printf("  CBT_ACTIVATE (mou %d)\n", from_mouse);
+#endif
     setlabel(IDOK, _W("OK"));
     setlabel(IDCANCEL, _W("Cancel"));
 
@@ -931,22 +1035,23 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
     setlabel(1090, _W("&Size:"));
     //__ Font chooser:
     setlabel(1073, _W("Sample"));
-    //__ Font chooser: text sample ("AaBbYyZz" by default)
-    setlabel(1092, _W("Ferqœm’4€"));
+
     font_sample = GetDlgItem((HWND)wParam, 1092);
+    //__ Font chooser: text sample ("AaBbYyZz" by default)
+    SetWindowTextW(font_sample, *new_cfg.font_sample ? new_cfg.font_sample : _W("Ferqœm’4€"));
     // if we manage to get the field longer, 
     // sample text could be picked from http://clagnut.com/blog/2380/,
     // e.g. "Cwm fjord bank glyphs vext quiz"
 
-    HWND weg = 0;
+    HWND away = 0;
     if (!new_cfg.old_fontmenu) {
-      // remove "Script:" junk:
-      weg = GetDlgItem((HWND)wParam, 1094);
-      if (weg)
-        DestroyWindow(weg);
-      weg = GetDlgItem((HWND)wParam, 1140);
-      if (weg)
-        DestroyWindow(weg);
+      // Font chooser: remove "Script:" junk:
+      away = GetDlgItem((HWND)wParam, 1094);
+      if (away)
+        DestroyWindow(away);
+      away = GetDlgItem((HWND)wParam, 1140);
+      if (away)
+        DestroyWindow(away);
     }
     else {
       //__ Font chooser: this field is only shown with OldFontMenu=true
@@ -961,19 +1066,39 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
     // tricky way to adjust "Basic colors:" and "Custom colors:" labels 
     // which insanely have the same dialog item ID, see
     // http://www.xtremevbtalk.com/api/181863-changing-custom-color-label-choosecolor-dialog-comdlg32-dll.html
-    HWND custom_colors = GetDlgItem((HWND)wParam, 65535);
-    if (custom_colors) {
+    HWND basic_colors = GetDlgItem((HWND)wParam, 65535);
+    //static HWND custom_colors = 0;  // previously seen "Custom colors:" item
+    if (basic_colors && !hooked_window_activated) {
+      // alternatives to distinguish re-focussing from initial activation:
+      // if (basic_colors && basic_colors != custom_colors)
+      //   but that could fail in rare cases
+      // if (!((CBTACTIVATESTRUCT *)lParam)->fMouse)
+      //   but that fails if re-focussing is done without mouse (e.g. Alt+TAB)
 #ifdef debug_dialog_hook
-      trace_label(65535, custom_colors, _W("B&asic colours:"));
+      trace_label(65535, basic_colors, _W("B&asic colours:"));
 #endif
-      LRESULT fnt = SendMessage(custom_colors, WM_GETFONT, 0, 0);
-      DestroyWindow(custom_colors);
+      wchar * lbl = null;
+      if (!localize) {
+        int size = GetWindowTextLengthW(basic_colors) + 1;
+        lbl = newn(wchar, size);
+        GetWindowTextW(basic_colors, lbl, size);
+      }
+
+      LRESULT fnt = SendMessage(basic_colors, WM_GETFONT, 0, 0);
+      DestroyWindow(basic_colors);
       //__ Colour chooser:
-      custom_colors = CreateWindowExW(4, W("Static"), _W("B&asic colours:"), 0x50020000, 6, 7, 210, 15, (HWND)wParam, 0, inst, 0);
-                      //shortkey disambiguated from original "&Basic colors:"
-      SendMessage(custom_colors, WM_SETFONT, fnt, MAKELPARAM(true, 0));
+      basic_colors = CreateWindowExW(4, W("Static"), lbl ?: _W("B&asic colours:"), 0x50020000, 6, 7, 210, 15, (HWND)wParam, 0, inst, 0);
+                         //shortkey disambiguated from original "&Basic colors:"
+      SendMessage(basic_colors, WM_SETFONT, fnt, MAKELPARAM(true, 0));
+      if (lbl)
+        free(lbl);
+      //custom_colors = GetDlgItem((HWND)wParam, 65535);
       //__ Colour chooser:
       setlabel(65535, _W("&Custom colours:"));
+      // drop disabled "Define Custom Colours >>"
+      away = GetDlgItem((HWND)wParam, 719);
+      if (away)
+        DestroyWindow(away);
     }
     //__ Colour chooser:
     setlabel(719, _W("De&fine Custom Colours >>"));
@@ -1007,65 +1132,77 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam) {
         wchar buf [99];
         RECT r;
         GetWindowRect(dlg, &r);
-        printf("dlgitem %d: %4d %4d %4d %4d / ", id, r.left, r.top, r.right, r.bottom);
+        printf("dlgitem %d: %4d %4d %4d %4d / ", id, (int)r.left, (int)r.top, (int)r.right, (int)r.bottom);
         GetClientRect(dlg, &r);
-        printf("%d %d %3d %3d ", r.left, r.top, r.right, r.bottom);
+        printf("%d %d %3d %3d ", (int)r.left, (int)r.top, (int)r.right, (int)r.bottom);
         GetWindowTextW(dlg, buf, 99);
         printf("<%ls>\n", buf);
       }
     }
 #endif
 
-#define dont_adjust_text_sample
-
-#ifdef adjust_text_sample
+#ifdef post_adjust_sample
     // resize frame around sample, try to resize text sample (failed)
-    HWND sample = GetDlgItem((HWND)wParam, 1073);
-    if (!new_cfg.old_fontmenu && weg && sample) {
-#define delta 154
-      // adjust label "Sample" and frame
-      RECT wr;
-      GetWindowRect(sample, &wr);
-      RECT cr;
-      GetClientRect(sample, &cr);
+    if (adjust_sample && !new_cfg.old_fontmenu) {
+      HWND sample = GetDlgItem((HWND)wParam, 1073);  // "Sample" frame
+      if ((adjust_sample & 1) && sample) {
+        // adjust frame and label "Sample"
+        RECT wr;
+        GetWindowRect(sample, &wr);
+        POINT wp;
+        wp.x = wr.left;
+        wp.y = wr.top;
+        ScreenToClient((HWND)wParam, &wp);
 #ifdef debug_dialog_hook
-      printf(" Sample: %4d %4d %4d %4d / %d %d %3d %3d\n", wr.left, wr.top, wr.right, wr.bottom, cr.left, cr.top, cr.right, cr.bottom);
+        printf(" Sample: %4d/%3d %4d/%3d %4d %4d\n", wr.left, wp.x, wr.top, wp.y, wr.right, wr.bottom);
 #endif
-      SetWindowPos(sample, null, 168 - delta, 158, 171 + delta, 70,
-                   SWP_NOACTIVATE | SWP_NOZORDER);
+        SetWindowPos(sample, null, fc_item_left, wp.y,
+                     fc_item_right - fc_item_left, wr.bottom - wr.top,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+      }
 
-      // try to adjust sample text;
-      // we can move/resize the labelled frame,
-      // so why can't we adjust the sample text?
-      sample = GetDlgItem((HWND)wParam, 1092);
-
-      GetWindowRect(sample, &wr);
-      GetClientRect(sample, &cr);
+      sample = GetDlgItem((HWND)wParam, 1092);  // sample text
+      if ((adjust_sample & 2) && sample) {
+        // try to adjust sample text;
+        // we can move/resize the labelled frame,
+        // so why can't we adjust the sample text?
+        RECT wr;
+        GetWindowRect(sample, &wr);
+        POINT wp;
+        wp.x = wr.left;
+        wp.y = wr.top;
+        ScreenToClient((HWND)wParam, &wp);
 #ifdef debug_dialog_hook
-      printf(" sample: %4d %4d %4d %4d / %d %d %3d %3d\n", wr.left, wr.top, wr.right, wr.bottom, cr.left, cr.top, cr.right, cr.bottom);
+        printf(" sample: %4d/%3d %4d/%3d %4d %4d\n", wr.left, wp.x, wr.top, wp.y, wr.right, wr.bottom);
 #endif
-      SetWindowPos(sample, null, 12, 185, 171 + delta, 37,
-                   SWP_NOACTIVATE | SWP_NOZORDER);
+        SetWindowPos(sample, null, fc_item_left, wr.top,
+                     fc_item_right - fc_item_left - 2 * fc_sample_gap, wr.bottom - wr.top,
+                     SWP_NOACTIVATE | SWP_NOZORDER);
+      }
     }
 #endif
 
     // crop dialog size after removing useless stuff
-    if (!new_cfg.old_fontmenu && weg && GetDlgItem((HWND)wParam, 1092)) {
+    if (!new_cfg.old_fontmenu && away && GetDlgItem((HWND)wParam, 1092)) {
       RECT wr;
       GetWindowRect((HWND)wParam, &wr);
-#ifdef debug_dialog_hook
       RECT cr;
       GetClientRect((HWND)wParam, &cr);
-      printf("Chooser: %4d %4d %4d %4d / %d %d %3d %3d\n", wr.left, wr.top, wr.right, wr.bottom, cr.left, cr.top, cr.right, cr.bottom);
+      int vborder = (wr.bottom - wr.top) - (cr.bottom - cr.top);
+#ifdef debug_dialog_hook
+      printf("Chooser: %4d %4d %4d %4d / %d %d %3d %3d\n", (int)wr.left, (int)wr.top, (int)wr.right, (int)wr.bottom, (int)cr.left, (int)cr.top, (int)cr.right, (int)cr.bottom);
 #endif
       SetWindowPos((HWND)wParam, null, 0, 0,
-                   wr.right - wr.left, wr.bottom - wr.top - 74,
+                   wr.right - wr.left, fc_sample_bottom + fc_sample_gap + vborder,
                    SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
     }
+
+    hooked_window_activated = true;
   }
 
   return CallNextHookEx(0, nCode, wParam, lParam);
 }
+
 
 #ifndef CF_INACTIVEFONTS
 # ifdef __MSABI_LONG
@@ -1125,7 +1262,7 @@ fonthook(HWND hdlg, UINT msg, WPARAM wParam, LPARAM lParam)
     if (disp->CtlID == 1137 && (disp->itemAction == ODA_SELECT))
       // or any of CtlID=1137 (font style)/itemID=0...
       // or CtlID=1138 (font size)/itemID=2... will do
-      SetWindowTextW(font_sample, _W("Ferqœm’4€"));
+      SetWindowTextW(font_sample, *new_cfg.font_sample ? new_cfg.font_sample : _W("Ferqœm’4€"));
   }
 
   //winctrl * c = (winctrl *)lParam;  // does not work
@@ -1224,9 +1361,9 @@ select_font(winctrl *c)
       CF_SCREENFONTS | CF_NOSCRIPTSEL;
 
   // open font selection menu
-  HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, 0, GetCurrentThreadId());
+  hook_windows(set_labels);
   bool ok = ChooseFontW(&cf);
-  UnhookWindowsHookEx(hook);
+  unhook_windows();
   if (ok) {
     // font selection menu closed with OK
     wstrset(&fs.name, lf.lfFaceName);
@@ -1419,9 +1556,9 @@ winctrl_handle_command(UINT msg, WPARAM wParam, LPARAM lParam)
     cc.lpCustColors = custom;
     cc.rgbResult = dlg.coloursel_result;
     cc.Flags = CC_FULLOPEN | CC_RGBINIT;
-    HHOOK hook = SetWindowsHookEx(WH_CBT, set_labels, 0, GetCurrentThreadId());
+    hook_windows(set_labels);
     dlg.coloursel_ok = ChooseColor(&cc);
-    UnhookWindowsHookEx(hook);
+    unhook_windows();
     dlg.coloursel_result = cc.rgbResult;
     ctrl->handler(ctrl, EVENT_CALLBACK);
   }

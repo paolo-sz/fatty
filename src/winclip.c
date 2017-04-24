@@ -30,12 +30,17 @@ shell_exec_thread(void *data)
   if ((INT_PTR)ShellExecuteW(wnd, 0, wpath, 0, 0, SW_SHOWNORMAL) <= 32) {
     uint error = GetLastError();
     if (error != ERROR_CANCELLED) {
-      wchar msg[1024];
+      int msglen = 1024;
+      wchar * msg = newn(wchar, msglen);
       FormatMessageW(
         FORMAT_MESSAGE_FROM_SYSTEM | 64,
-        0, error, 0, msg, lengthof(msg), 0
+        0, error, 0, msg, msglen, 0
       );
-      message_box_w(0, msg, 0, MB_ICONERROR, null);
+      wchar sep[] = W("\n");
+      msg = renewn(msg, wcslen(msg) + wcslen(sep) + wcslen(wpath) + 1);
+      wcscat(msg, sep);
+      wcscat(msg, wpath);
+      message_box_w(0, msg, null, MB_ICONERROR, null);
     }
   }
   free(wpath);
@@ -46,6 +51,51 @@ static void
 shell_exec(wstring wpath)
 {
   CreateThread(0, 0, shell_exec_thread, (void *)wpath, 0, 0);
+}
+
+#define dont_debug_wsl
+
+static struct {
+  string p;
+  wstring w;
+} lxss_mounts [] = {
+  {"cache", W("cache")},
+  {"data", W("data")},
+  {"home", W("home")},
+  {"mnt", W("mnt")},
+  {"root", W("root")},
+};
+
+static bool
+ispathprefix(string pref, string path)
+{
+  if (*pref == '/')
+    pref++;
+  if (*path == '/')
+    path++;
+  int len = strlen(pref);
+  if (0 == strncmp(pref, path, len)) {
+    path += len;
+    if (!*path || *path == '/')
+      return true;
+  }
+  return false;
+}
+
+static bool
+ispathprefixw(wstring pref, wstring path)
+{
+  if (*pref == '/')
+    pref++;
+  if (*path == '/')
+    path++;
+  int len = wcslen(pref);
+  if (0 == wcsncmp(pref, path, len)) {
+    path += len;
+    if (!*path || *path == '/')
+      return true;
+  }
+  return false;
 }
 
 void
@@ -59,19 +109,55 @@ win_open(wstring wpath)
   }
   else {
     // Need to convert POSIX path to Windows first
-    if (support_wsl && wcsncmp(wpath, W("/mnt/"), 5) == 0) {
-      wchar * unwsl = newn(wchar, wcslen(wpath) + 6);
-      wcscpy(unwsl, W("/cygdrive"));
-      wcscat(unwsl, wpath + 4);
-      delete(wpath);
-      wpath = unwsl;
+    if (support_wsl) {
+#ifdef debug_wsl
+      printf("open <%ls>\n", wpath);
+#endif
+      if (wcsncmp(wpath, W("/mnt/"), 5) == 0) {
+        wchar * unwsl = newn(wchar, wcslen(wpath) + 6);
+        wcscpy(unwsl, W("/cygdrive"));
+        wcscat(unwsl, wpath + 4);
+        delete(wpath);
+        wpath = unwsl;
+      }
+      else if (*wpath == '/') {  // prepend %LOCALAPPDATA%\lxss[\rootfs]
+        char * appd = getenv("LOCALAPPDATA");
+        if (appd) {
+          wchar * wappd = cs__mbstowcs(appd);
+          appd = path_win_w_to_posix(wappd);
+          free(wappd);
+          wappd = cs__mbstowcs(appd);
+          free(appd);
+
+          bool rootfs_mount = true;
+          for (uint i = 0; i < lengthof(lxss_mounts); i++) {
+            if (ispathprefixw(lxss_mounts[i].w, wpath)) {
+              rootfs_mount = false;
+              break;
+            }
+          }
+
+          wchar * unwsl = newn(wchar, wcslen(wappd) + wcslen(wpath) + 13);
+          wcscpy(unwsl, wappd);
+          free(wappd);
+          wcscat(unwsl, W("/lxss"));
+          if (rootfs_mount)
+            wcscat(unwsl, W("/rootfs"));
+          wcscat(unwsl, wpath);
+          delete(wpath);
+          wpath = unwsl;
+        }
+      }
     }
     wstring conv_wpath = child_conv_path(win_active_terminal()->child, wpath);
+#ifdef debug_wsl
+    printf("open <%ls> <%ls>\n", wpath, conv_wpath);
+#endif
     delete(wpath);
     if (conv_wpath)
       shell_exec(conv_wpath);
     else
-      message_box(0, strerror(errno), 0, MB_ICONERROR, null);
+      message_box(0, strerror(errno), null, MB_ICONERROR, null);
   }
 }
 
@@ -477,9 +563,57 @@ paste_hdrop(HDROP drop)
     else if (*fn == '~')
       buf_add('\\');
     char *p = fn;
-    if (support_wsl && strncmp(p, "/cygdrive/", 10) == 0) {
-      p += 5;
-      strncpy(p, "/mnt", 4);
+    if (support_wsl) {
+#ifdef debug_wsl
+      printf("paste <%s>\n", p);
+#endif
+      // check for prefix %LOCALAPPDATA%\lxss
+      char * appd = getenv("LOCALAPPDATA");
+      if (appd) {
+        wchar * wappd = cs__mbstowcs(appd);
+        appd = path_win_w_to_posix(wappd);
+        free(wappd);
+      }
+
+      char * mount_point(char * path, char * appd) {
+        if (!appd)
+          return null;
+        int lapp = strlen(appd);
+        if (strncmp(path, appd, lapp) != 0)
+          return null;
+        // "$USERPROFILE/AppData/Local/xxx/yyy"
+        path += strlen(appd);
+        // "/xxx/yyy/zzz"
+        if (!ispathprefix("lxss", path))
+          return null;
+        // "/lxss/yyy/zzz"
+        path += 5;
+        // "/yyy/zzz"
+        for (uint i = 0; i < lengthof(lxss_mounts); i++) {
+          if (ispathprefix(lxss_mounts[i].p, path)) {
+            // "/home/zzz"
+            return path;
+          }
+        }
+        if (ispathprefix("rootfs", path)) {
+          // "/rootfs/zzz"
+          path += 7;
+          // "/zzz"
+          if (*path)
+            return path;
+          else
+            return "/";
+        }
+        return null;
+      }
+
+      char * mp = mount_point(p, appd);
+      if (mp)
+        p = mp;
+      else if (strncmp(p, "/cygdrive/", 10) == 0) {
+        p += 5;
+        strncpy(p, "/mnt", 4);
+      }
     }
     for (; *p; p++) {
       uchar c = *p;

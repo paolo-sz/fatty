@@ -516,7 +516,11 @@ win_set_pos(int x, int y)
 void
 win_set_zorder(bool top)
 {
-  SetWindowPos(wnd, top ? HWND_TOP : HWND_BOTTOM, 0, 0, 0, 0,
+  // ensure window to pop up:
+  SetWindowPos(wnd, top ? HWND_TOPMOST : HWND_BOTTOM, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE);
+  // but do not stick it to the top:
+  SetWindowPos(wnd, top ? HWND_NOTOPMOST : HWND_BOTTOM, 0, 0, 0, 0,
                SWP_NOMOVE | SWP_NOSIZE);
 }
 
@@ -812,8 +816,10 @@ win_bell(struct term* term, config * conf)
       free(bell_name);
   }
 
-  if (conf->bell_taskbar && !win_active_terminal()->has_focus)
+  if (term->bell_taskbar && !win_active_terminal()->has_focus)
     flash_taskbar(true);
+  if (term->bell_popup)
+    win_set_zorder(true);
   if (!term->has_focus)
     win_tab_attention(term);
 }

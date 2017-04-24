@@ -15,6 +15,8 @@
 #include "charset.h"
 #include "win.h"
 
+#include <windows.h>  // registry handling
+
 #include <termios.h>
 #include <sys/cygwin.h>
 
@@ -51,6 +53,7 @@ const config default_cfg = {
   .cursor_blinks = true,
   // Text
   .font = {.name = W("Lucida Console"), .size = 9, .weight = 400, .isbold = false},
+  .font_sample = W(""),
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
   .font_render = FR_TEXTOUT,
@@ -106,8 +109,9 @@ const config default_cfg = {
   .bell_file = W(""),
   .bell_freq = 0,
   .bell_len = 400,
-  .bell_flash = false,
-  .bell_taskbar = true,
+  .bell_flash = false,  // xterm: visualBell
+  .bell_taskbar = true, // xterm: bellIsUrgent
+  .bell_popup = false,  // xterm: popOnBell
   .printer = W(""),
   .confirm_exit = true,
   .allow_set_selection = false,
@@ -204,6 +208,7 @@ options[] = {
 
   // Text
   {"Font", OPT_WSTRING, offcfg(font.name)},
+  {"FontSample", OPT_WSTRING, offcfg(font_sample)},
   {"FontSize", OPT_INT | OPT_LEGACY, offcfg(font.size)},
   {"FontHeight", OPT_INT, offcfg(font.size)},
   {"FontWeight", OPT_INT, offcfg(font.weight)},
@@ -271,6 +276,7 @@ options[] = {
   {"BellLen", OPT_INT, offcfg(bell_len)},
   {"BellFlash", OPT_BOOL, offcfg(bell_flash)},
   {"BellTaskbar", OPT_BOOL, offcfg(bell_taskbar)},
+  {"BellPopup", OPT_BOOL, offcfg(bell_popup)},
   {"Printer", OPT_WSTRING, offcfg(printer)},
   {"ConfirmExit", OPT_BOOL, offcfg(confirm_exit)},
   {"AllowSetSelection", OPT_BOOL, offcfg(allow_set_selection)},
@@ -1296,6 +1302,108 @@ apply_config(bool save)
     win_reset_colours();
 }
 
+
+// Registry handling (for retrieving localized sound labels)
+
+static HKEY
+regopen(HKEY key, char * subkey)
+{
+  HKEY hk = 0;
+  RegOpenKeyA(key, subkey, &hk);
+  return hk;
+}
+
+static HKEY
+getmuicache()
+{
+  HKEY hk = regopen(HKEY_CURRENT_USER, "Software\\Classes\\Local Settings\\MuiCache");
+  if (!hk)
+    return 0;
+
+  char sk[256];
+  if (RegEnumKeyA(hk, 0, sk, 256) != ERROR_SUCCESS)
+    return 0;
+
+  HKEY hk1 = regopen(hk, sk);
+  RegCloseKey(hk);
+  if (!hk1)
+    return 0;
+
+  if (RegEnumKeyA(hk1, 0, sk, 256) != ERROR_SUCCESS)
+    return 0;
+
+  hk = regopen(hk1, sk);
+  RegCloseKey(hk1);
+  if (!hk)
+    return 0;
+
+  return hk;
+}
+
+static HKEY muicache = 0;
+static HKEY evlabels = 0;
+
+static void
+retrievemuicache()
+{
+  muicache = getmuicache();
+  if (muicache) {
+    evlabels = regopen(HKEY_CURRENT_USER, "AppEvents\\EventLabels");
+    if (!evlabels) {
+      RegCloseKey(muicache);
+      muicache = 0;
+    }
+  }
+}
+
+static void
+closemuicache()
+{
+  if (muicache) {
+    RegCloseKey(evlabels);
+    RegCloseKey(muicache);
+  }
+}
+
+static wchar *
+getreg(HKEY key, wchar * subkey, wchar * attribute) {
+#if CYGWIN_VERSION_API_MINOR < 74
+  (void)key;
+  (void)subkey;
+  (void)attribute;
+  return 0;
+#else
+  DWORD blen;
+  int res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, 0, &blen);
+  if (res)
+    return 0;
+  wchar * val = malloc(blen);
+  res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, val, &blen);
+  if (res) {
+    free(val);
+    return 0;
+  }
+  return val;
+#endif
+}
+
+static wchar *
+muieventlabel(wchar * event) {
+  // HKEY_CURRENT_USER\AppEvents\EventLabels\SystemAsterisk
+  // DispFileName -> "@mmres.dll,-5843"
+  wchar * rsr = getreg(evlabels, event, W("DispFileName"));
+  if (!rsr)
+    return 0;
+  // HKEY_CURRENT_USER\Software\Classes\Local Settings\MuiCache\N\M
+  // "@mmres.dll,-5843" -> "Sternchen"
+  wchar * lbl = getreg(muicache, 0, rsr);
+  free(rsr);
+  return lbl;
+}
+
+
+// Options dialog handlers
+
 static void
 ok_handler(control *unused(ctrl), int event)
 {
@@ -1561,14 +1669,17 @@ term_handler(control *ctrl, int event)
 //  4 -> 0x00000030 MB_ICONEXCLAMATION Exclamation
 //  5 -> 0x00000040 MB_ICONASTERISK    Asterisk
 // -1 -> 0xFFFFFFFF                    Simple Beep
-static string beeps[] = {
-  __("simple beep"),
-  __("no beep"),
-  __("Default Beep"),
-  __("Critical Stop"),
-  __("Question"),
-  __("Exclamation"),
-  __("Asterisk"),
+static struct {
+  string name;
+  wchar * event;
+} beeps[] = {
+  {__("simple beep"), null},
+  {__("no beep"), null},
+  {__("Default Beep"),	W(".Default")},
+  {__("Critical Stop"),	W("SystemHand")},
+  {__("Question"),	W("SystemQuestion")},
+  {__("Exclamation"),	W("SystemExclamation")},
+  {__("Asterisk"),	W("SystemAsterisk")},
 };
 
 static void
@@ -1577,14 +1688,29 @@ bell_handler(control *ctrl, int event)
   switch (event) {
     when EVENT_REFRESH:
       dlg_listbox_clear(ctrl);
-      int sel = -1;
+      retrievemuicache();
       for (uint i = 0; i < lengthof(beeps); i++) {
-        dlg_listbox_add(ctrl, _(beeps[i]));
-        if ((int)i == new_cfg.bell_type + 1)
-          sel = i;
+        char * beepname = _(beeps[i].name);
+        if (beepname == beeps[i].name) {
+          // no localization entry, try to retrieve system localization
+          if (muicache && beeps[i].event) {
+            wchar * lbl = muieventlabel(beeps[i].event);
+            if (lbl) {
+              dlg_listbox_add_w(ctrl, lbl);
+              if ((int)i == new_cfg.bell_type + 1)
+                dlg_editbox_set_w(ctrl, lbl);
+              beepname = null;
+              free(lbl);
+            }
+          }
+        }
+        if (beepname) {
+          dlg_listbox_add(ctrl, beepname);
+          if ((int)i == new_cfg.bell_type + 1)
+            dlg_editbox_set(ctrl, beepname);
+        }
       }
-      if (sel >= 0)
-        dlg_editbox_set(ctrl, beeps[sel]);
+      closemuicache();
     when EVENT_VALCHANGE or EVENT_SELCHANGE: {
       new_cfg.bell_type = dlg_listbox_getcur(ctrl) - 1;
 
@@ -2302,40 +2428,70 @@ setup_config_box(controlbox * b)
 
   s = ctrl_new_set(b, _("Terminal"), null, 
   //__ Options - Terminal: section title
-                      _("Bell (sound overridden by Wave/BellFile or BellFreq)"));
-  ctrl_columns(s, 3, 36, 19, 45);
+                      _("Bell"));
+  ctrl_columns(s, 2, 73, 27);
   ctrl_combobox(
     s, null, 100, bell_handler, 0
   )->column = 0;
-  ctrl_checkbox(
-    //__ Options - Terminal: bell
-    s, _("&Flash"), dlg_stdcheckbox_handler, &new_cfg.bell_flash
-  )->column = 1;
-  ctrl_checkbox(
-    //__ Options - Terminal: bell
-    s, _("&Highlight in taskbar"), dlg_stdcheckbox_handler, &new_cfg.bell_taskbar
-  )->column = 2;
-  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
-  ctrl_columns(s, 2, 82, 18);
-#ifdef use_belleditbox
-  ctrl_editbox(
-    s, _("&Wave"), 83, dlg_stdstringbox_handler, &new_cfg.bell_file
-  )->column = 0;
-#else
-  ctrl_combobox(
-    //__ Options - Terminal: bell
-    s, _("&Wave"), 83, bellfile_handler, &new_cfg.bell_file
-  )->column = 0;
-#endif
   ctrl_pushbutton(
     //__ Options - Terminal: bell
     s, _("► &Play"), bell_tester, 0
   )->column = 1;
+  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+  ctrl_columns(s, 2, 100, 0);
+  ctrl_combobox(
+    //__ Options - Terminal: bell
+    s, _("&Wave"), 83, bellfile_handler, &new_cfg.bell_file
+  )->column = 0;
+  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+  // balance column widths of the following 3 fields 
+  // to accomodate different length of localized labels
+  int strwidth(string s0) {
+    int len = 0;
+    unsigned char * sp = (unsigned char *)s0;
+    while (*sp) {
+      if ((*sp >= 0xE3 && *sp <= 0xED) || 
+          (*sp == 0xF0 && *(sp + 1) >= 0xA0 && *(sp + 1) <= 0xBF))
+        // approx. CJK range
+        len += 4;
+      else if (strchr(" il.,'()!:;[]|", *sp))
+        len ++;
+      else if (*sp != '&' && (*sp & 0xC0) != 0x80)
+        len += 2;
+      sp++;
+    }
+    return len;
+  }
+  //__ Options - Terminal: bell
+  string lbl_flash = _("&Flash");
+  //__ Options - Terminal: bell
+  string lbl_highl = _("&Highlight in taskbar");
+  //__ Options - Terminal: bell
+  string lbl_popup = _("&Popup");
+  int len = strwidth(lbl_flash) + strwidth(lbl_highl) + strwidth(lbl_popup);
+# define cbw 14
+  int l00_flash = (100 - 3 * cbw) * strwidth(lbl_flash) / len + cbw;
+  int l00_highl = (100 - 3 * cbw) * strwidth(lbl_highl) / len + cbw;
+  int l00_popup = (100 - 3 * cbw) * strwidth(lbl_popup) / len + cbw;
+  ctrl_columns(s, 3, l00_flash, l00_highl, l00_popup);
+  ctrl_checkbox(
+    //__ Options - Terminal: bell
+    s, _("&Flash"), dlg_stdcheckbox_handler, &new_cfg.bell_flash
+  )->column = 0;
+  ctrl_checkbox(
+    //__ Options - Terminal: bell
+    s, _("&Highlight in taskbar"), dlg_stdcheckbox_handler, &new_cfg.bell_taskbar
+  )->column = 1;
+  ctrl_checkbox(
+    //__ Options - Terminal: bell
+    s, _("&Popup"), dlg_stdcheckbox_handler, &new_cfg.bell_popup
+  )->column = 2;
 
   s = ctrl_new_set(b, _("Terminal"), null, 
   //__ Options - Terminal: section title
                       _("Printer"));
 #ifdef use_multi_listbox_for_printers
+#warning left in here just to demonstrate the usage of ctrl_listbox
   ctrl_listbox(
     s, null, 4, 100, printer_handler, 0
   );

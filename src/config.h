@@ -57,6 +57,7 @@ typedef struct {
   bool cursor_blinks;
   // Text
   font_spec font;
+  wstring font_sample;
   bool show_hidden_fonts;
   char font_smoothing;
   char font_render;
@@ -111,8 +112,9 @@ typedef struct {
   wstring bell_file;
   int bell_freq;
   int bell_len;
-  bool bell_flash;
-  bool bell_taskbar;
+  bool bell_flash;   // xterm: visualBell
+  bool bell_taskbar; // xterm: bellIsUrgent
+  bool bell_popup;   // xterm: popOnBell
   wstring printer;
   bool confirm_exit;
   bool allow_set_selection;
