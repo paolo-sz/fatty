@@ -12,14 +12,11 @@
 #include "res.h"
 #include "appinfo.h"
 
-#define Unicode_TreeView_does_not_work
-
 #include "charset.h"  // nonascii, cs__utftowcs
+extern void setup_config_box(controlbox *);
 
 #include <commctrl.h>
 
-
-void setup_config_box(controlbox *);
 
 /*
  * windlg.c - Dialogs, including the configuration dialog.
@@ -63,11 +60,6 @@ treeview_insert(treeview_faff * faff, int level, char *text, char *path)
   HTREEITEM newitem;
 
   if (nonascii(path)) {
-#ifdef Unicode_TreeView
-    // Using this variant for Unicode TreeView entries should enable 
-    // their proper display in the treeview, but it does not work,
-    // the label is handled as ANSI string anyway
-#endif
     wchar * utext = cs__utftowcs(text);
     TVINSERTSTRUCTW ins;
     ins.hParent = (level > 0 ? faff->lastat[level - 1] : TVI_ROOT);
@@ -76,7 +68,8 @@ treeview_insert(treeview_faff * faff, int level, char *text, char *path)
     ins.item.pszText = utext;
     //ins.item.cchTextMax = wcslen(utext) + 1;  // ignored when setting
     ins.item.lParam = (LPARAM) path;
-    newitem = (HTREEITEM)SendMessageW(faff->treeview, TVM_INSERTITEM, 0, (LPARAM)&ins);
+    // It is essential to also use TVM_INSERTITEMW here!
+    newitem = (HTREEITEM)SendMessageW(faff->treeview, TVM_INSERTITEMW, 0, (LPARAM)&ins);
     //TreeView_SetUnicodeFormat((HWND)newitem, TRUE);  // does not work
     free(utext);
   }
@@ -157,6 +150,22 @@ determine_geometry(HWND wnd)
 
 #define dont_debug_messages
 
+static char * debug = "none";
+
+static void
+sigsegv(int sig)
+{
+  printf("catch %d: %s\n", sig, debug);
+  signal(sig, SIG_DFL);
+}
+
+inline static void
+crashtest()
+{
+  char * x0 = 0;
+  *x0 = 'x';
+}
+
 /*
  * This function is the configuration box.
  * (Being a dialog procedure, in general it returns 0 if the default
@@ -172,13 +181,19 @@ static struct {
 } wm_names[] = {
 #include "_wm.t"
 };
-  char * wm_name = "WM_?";
-  for (uint i = 0; i < lengthof(wm_names); i++)
-    if (msg == wm_names[i].wm_) {
-      wm_name = wm_names[i].wm_name;
-      break;
-    }
-  printf("[%d] dialog_proc %04X %s (%04X %08X)\n", (int)time(0), msg, wm_name, (unsigned)wParam, (unsigned)lParam);
+  if (msg != WM_SETCURSOR && msg != WM_NCHITTEST && msg != WM_MOUSEFIRST
+      && msg != WM_ERASEBKGND && msg != WM_CTLCOLORDLG && msg != WM_PRINTCLIENT && msg != WM_CTLCOLORBTN
+
+      && (msg != WM_NOTIFY || (LOWORD(wParam) == IDCX_TREEVIEW && ((LPNMHDR) lParam)->code == TVN_SELCHANGED))
+     ) {
+    char * wm_name = "WM_?";
+    for (uint i = 0; i < lengthof(wm_names); i++)
+      if (msg == wm_names[i].wm_) {
+        wm_name = wm_names[i].wm_name;
+        break;
+      }
+    printf("[%d] dialog_proc %04X %s (%04X %08X)\n", (int)time(0), msg, wm_name, (unsigned)wParam, (unsigned)lParam);
+  }
 #endif
   switch (msg) {
     when WM_INITDIALOG: {
@@ -214,21 +229,11 @@ static struct {
       MapDialogRect(wnd, &r);
       HWND treeview =
         CreateWindowEx(WS_EX_CLIENTEDGE, WC_TREEVIEW, "",
-#ifdef Unicode_TreeView
-                       // this doesn't have any effect
-                       SS_OWNERDRAW |
-#endif
                        WS_CHILD | WS_VISIBLE | WS_TABSTOP | TVS_HASLINES |
                        TVS_DISABLEDRAGDROP | TVS_HASBUTTONS | TVS_LINESATROOT
                        | TVS_SHOWSELALWAYS, r.left, r.top, r.right - r.left,
                        r.bottom - r.top, wnd, (HMENU) IDCX_TREEVIEW, inst,
                        null);
-#ifdef Unicode_TreeView
-      // the impact of this property is hardly described;
-      // it does not fix the treeview Unicode display failure
-      // but it prevents the panels from being selected
-      //TreeView_SetUnicodeFormat(treeview, TRUE);
-#endif
       WPARAM font = SendMessage(wnd, WM_GETFONT, 0, 0);
       SendMessage(treeview, WM_SETFONT, font, MAKELPARAM(true, 0));
       treeview_faff tvfaff;
@@ -281,12 +286,6 @@ static struct {
         TreeView_SelectItem(treeview, hfirst);
       }
 
-#ifdef Unicode_TreeView
-      // with TreeView_SetUnicodeFormat(treeview, TRUE):
-      // the loop below is empty
-      // WM_NOTIFY is not triggered
-#endif
-
      /*
       * Set focus into the first available control.
       */
@@ -304,16 +303,23 @@ static struct {
       ctrl_free_box(ctrlbox);
       config_wnd = 0;
 
+      signal(SIGSEGV, SIG_DFL);
+
+    when WM_CLOSE:
+      DestroyWindow(wnd);
+
     when WM_NOTIFY: {
       if (LOWORD(wParam) == IDCX_TREEVIEW &&
           ((LPNMHDR) lParam)->code == TVN_SELCHANGED) {
+debug = "WM_NOTIFY";
         HTREEITEM i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
+debug = "WM_NOTIFY: GetSelection";
 
         TVITEM item;
         char buffer[64];
         item.hItem = i;
         item.pszText = buffer;
-        item.cchTextMax = sizeof (buffer);
+        item.cchTextMax = lengthof(buffer);
         item.mask = TVIF_TEXT | TVIF_PARAM;
         TreeView_GetItem(((LPNMHDR) lParam)->hwndFrom, &item);
 
@@ -325,25 +331,30 @@ static struct {
               DestroyWindow(item);
           }
         }
+debug = "WM_NOTIFY: Destroy";
         winctrl_cleanup(&ctrls_panel);
+debug = "WM_NOTIFY: cleanup";
 
         // here we need the correct DIALOG_HEIGHT already
         create_controls(wnd, (char *) item.lParam);
+debug = "WM_NOTIFY: create";
         dlg_refresh(null); /* set up control values */
+debug = "WM_NOTIFY: refresh";
       }
     }
 
-    when WM_CLOSE:
-      DestroyWindow(wnd);
-
     when WM_COMMAND or WM_DRAWITEM: {
+debug = "WM_COMMAND";
       int ret = winctrl_handle_command(msg, wParam, lParam);
+debug = "WM_COMMAND: handle";
       if (dlg.ended)
         DestroyWindow(wnd);
+debug = "WM_COMMAND: Destroy";
       return ret;
     }
 
     when WM_USER: {
+debug = "WM_USER";
       HWND target = (HWND)wParam;
       // could delegate this to winctrls.c, like winctrl_handle_command;
       // but then we'd have to fiddle with the location of dragndrop
@@ -365,11 +376,13 @@ static struct {
             }
         }
       }
+debug = "WM_USER: lookup";
       if (ctrl) {
         //dlg_editbox_set_w(ctrl, L"Test");  // may hit unrelated items...
         // drop the drag-and-drop contents here
         dragndrop = (wstring)lParam;
         ctrl->handler(ctrl, EVENT_DROP);
+debug = "WM_USER: handler";
       }
     }
   }
@@ -383,6 +396,8 @@ win_open_config(void)
 {
   if (config_wnd)
     return;
+
+  signal(SIGSEGV, sigsegv);
 
   set_dpi_auto_scaling(true);
 
@@ -399,7 +414,7 @@ win_open_config(void)
       .hCursor = LoadCursor(null, IDC_ARROW),
       .hbrBackground = (HBRUSH)(COLOR_BACKGROUND + 1),
       .lpszMenuName = null,
-      .lpszClassName = "ConfigBox"
+      .lpszClassName = DIALOG_CLASS
     });
     initialised = true;
   }
