@@ -11,7 +11,7 @@ RC = windres
 
 CXXFLAGS ?= -Wall -Wextra -std=gnu++11
 CFLAGS ?= -std=gnu99 -include std.h -Wall -Wextra -Wundef -Werror
-LDFLAGS := -static-libgcc -mwindows -lcomctl32 -limm32 -lwinspool -lole32 -luuid -ld2d1 -lwinmm -lusp10
+LDFLAGS := -static-libgcc -mwindows -lcomctl32 -limm32 -lwinspool -lole32 -luuid -ld2d1 -lwinmm -lusp10 -lurlmon
 
 TARGET := $(shell $(CC) -dumpmachine)
 CPPFLAGS := -DTARGET=$(TARGET)
@@ -51,17 +51,16 @@ winprint.c:
 
 prepare_build = mkdir -pv $(dir $@)
 
-compileflags = -c $< -o $@ -MMD -MT $@
-$(BUILD_DIR)%.o: %.cc Makefile $(BUILD_DIR)%.d
+depflags = -MMD -MT $@ 
+$(BUILD_DIR)%.o: %.cc Makefile $(debug_t) rgb.t
 	@$(prepare_build)
-	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.c Makefile $(BUILD_DIR)%.d
+	$(CXX) -c $(depflags) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< 
+$(BUILD_DIR)%.o: %.c Makefile $(debug_t) rgb.t
 	@$(prepare_build)
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.rc $(BUILD_DIR)%.d
+	$(CC) -c $(depflags) $(CPPFLAGS) $(CFLAGS) -o $@ $< 
+$(BUILD_DIR)%.o: %.rc Makefile $(debug_t) rgb.t
 	@$(prepare_build)
-	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED -MMD -MT $@ $(CPPFLAGS)' $< $*.o
-	@mv -v res.o res.d $(BUILD_DIR)
+	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED $(depflags) $(CPPFLAGS)' $< $@
 
 -include $(depfiles)
 

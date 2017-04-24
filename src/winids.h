@@ -28,6 +28,7 @@
 #define IDM_SEARCH          0x00F0
 #define IDM_TOGLOG          0x01F0
 #define IDM_TOGCHARINFO     0x02F0
+#define IDM_USERCOMMAND     0x0300
 #define IDM_NEWTAB          0x0100
 #define IDM_KILLTAB         0x0110
 

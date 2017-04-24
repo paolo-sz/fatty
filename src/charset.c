@@ -275,6 +275,8 @@ update_mode(void)
 
   // Clear output conversion state.
   cs_mb1towc(0, 0);
+
+//  child_update_charset();
 }
 
 void

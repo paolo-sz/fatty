@@ -1,13 +1,14 @@
 // child.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on mintty code by Andy Koppe
+// Based on mintty code by Andy Koppe, Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include "child.h"
 
-#include "win.h"
 #include "term.h"
 #include "charset.h"
+
+#include "winpriv.h"  /* win_prefix_title */
 
 #include <pwd.h>
 #include <fcntl.h>
@@ -158,6 +159,24 @@ toggle_logging()
 }
 
 void
+child_update_charset(struct child * child)
+{
+#ifdef IUTF8
+  if (child->pty_fd >= 0) {
+    // Terminal line settings
+    struct termios attr;
+    tcgetattr(child->pty_fd, &attr);
+    bool utf8 = strcmp(nl_langinfo(CODESET), "UTF-8") == 0;
+    if (utf8)
+      attr.c_iflag |= IUTF8;
+    else
+      attr.c_iflag &= ~IUTF8;
+    tcsetattr(child->pty_fd, TCSANOW, &attr);
+  }
+#endif
+}
+
+void
 child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path)
 {
@@ -277,6 +296,8 @@ child_create(struct child* child, struct term* term,
 
     fcntl(child->pty_fd, F_SETFL, O_NONBLOCK);
     
+    child_update_charset(child);
+
     if (cfg.create_utmp) {
       char *dev = ptsname(child->pty_fd);
       if (dev) {
@@ -396,10 +417,87 @@ child_resize(struct child* child, struct winsize *winp)
     ioctl(child->pty_fd, TIOCSWINSZ, winp);
 }
 
-int
+static int
 foreground_pid(struct child* child)
 {
   return (child->pty_fd >= 0) ? tcgetpgrp(child->pty_fd) : 0;
+}
+
+static char *
+foreground_cwd(struct child* child)
+{
+  int fg_pid = foreground_pid(child);
+  if (fg_pid > 0) {
+    char proc_cwd[32];
+    sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
+    return realpath(proc_cwd, 0);
+  }
+  return 0;
+}
+
+char *
+foreground_prog(struct child* child)
+{
+  int fg_pid = foreground_pid(child);
+  if (fg_pid > 0) {
+    char exename[32];
+    sprintf(exename, "/proc/%u/exename", fg_pid);
+    FILE * enf = fopen(exename, "r");
+    if (enf) {
+      char exepath[MAX_PATH + 1];
+      fgets(exepath, sizeof exepath, enf);
+      fclose(enf);
+      // get basename of program path
+      char * exebase = strrchr(exepath, '/');
+      if (exebase)
+        exebase++;
+      else
+        exebase = exepath;
+      return strdup(exebase);
+    }
+  }
+  return 0;
+}
+
+void
+user_command(struct child* child, int n)
+{
+  if (*cfg.user_commands) {
+    char * cmds = cs__wcstombs(cfg.user_commands);
+    char * cmdp = cmds;
+    char sepch = ';';
+    if ((uchar)*cmdp <= (uchar)' ')
+      sepch = *cmdp++;
+
+    char * progp;
+    while (n >= 0 && (progp = strchr(cmdp, ':'))) {
+      progp++;
+      char * sepp = strchr(progp, sepch);
+      if (sepp)
+        *sepp = '\0';
+
+      if (n == 0) {
+        char * fgp = foreground_prog(child);
+        if (fgp) {
+          setenv("MINTTY_PROG", fgp, true);
+          free(fgp);
+        }
+        char * fgd = foreground_cwd(child);
+        if (fgd) {
+          setenv("MINTTY_CWD", fgd, true);
+          free(fgd);
+        }
+        return term_cmd(child->term, progp, true);
+      }
+      n--;
+
+      if (sepp)
+        cmdp = sepp + 1;
+      else
+        break;
+    }
+    free(cmds);
+  }
 }
 
 wstring
@@ -445,15 +543,10 @@ child_conv_path(struct child* child, wstring wpath)
     if (fg_pid <= 0)
       fg_pid = child->pid;
 
-    char *cwd = 0;
-    if (fg_pid > 0) {
-      char proc_cwd[32];
-      sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
-      cwd = realpath(proc_cwd, 0);
-    }
-
+    char *cwd = foreground_cwd(child);
     exp_path = asform("%s/%s", cwd ?: child->home, path);
-    free(cwd);
+    if (cwd)
+      free(cwd);
 #else
     // If we're lucky, the path is relative to the home directory.
     exp_path = asform("%s/%s", child->home, path);

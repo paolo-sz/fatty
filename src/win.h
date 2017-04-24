@@ -28,6 +28,7 @@ extern void win_set_title(struct term* term, char *);
 extern void win_save_title(void);
 extern void win_restore_title(void);
 extern void win_copy_title(void);
+extern char * win_get_title(void);
 extern void win_copy_text(const char *s);
 
 extern colour win_get_colour(colour_i);

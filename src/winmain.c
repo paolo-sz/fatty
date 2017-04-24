@@ -256,7 +256,17 @@ win_copy_title(void)
   win_copy(title, 0, len + 1);
 }
 
-void win_copy_text(const char *s)
+char *
+win_get_title(void)
+{
+  int len = GetWindowTextLengthW(wnd);
+  wchar title[len + 1];
+  GetWindowTextW(wnd, title, len + 1);
+  return cs__wcstombs(title);
+}
+
+void
+win_copy_text(const char *s)
 {
   unsigned int size;
   wchar *text = cs__mbstowcs(s);
@@ -1277,6 +1287,9 @@ static struct {
         }
       printf("                           %04X %s\n", (int)wp, idm_name);
 # endif
+      if ((wp & ~0xF) >= IDM_USERCOMMAND)
+        user_command(term->child, wp - IDM_USERCOMMAND);
+      else
       switch (wp & ~0xF) {  /* low 4 bits reserved to Windows */
         when IDM_OPEN: term_open(term);
         when IDM_COPY: term_copy(term);
@@ -1326,6 +1339,9 @@ static struct {
         when IDM_MOVERIGHT: win_tab_move(+1);
       }
     }
+
+    when WM_APP:
+      update_available_version();
 
     when WM_VSCROLL:
       switch (LOWORD(wp)) {

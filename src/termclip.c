@@ -231,3 +231,78 @@ term_select_all(struct term* term)
   if (cfg.copy_on_select)
     term_copy(term);
 }
+
+static wchar *
+term_get_sel_or_all(struct term* term, bool all, bool screen)
+{
+  if (screen) {
+    term->sel_start = (pos){term->disptop, 0};
+    term->sel_end = (pos){term_last_nonempty_line(term), term->cols};
+  }
+  else if (!term->selected) {
+    if (all) {
+      term->sel_start = (pos){-sblines(term), 0};
+      term->sel_end = (pos){term_last_nonempty_line(term), term->cols};
+    }
+    else
+      return wcsdup(W(""));
+  }
+
+  clip_workbuf buf;
+  get_selection(term, &buf);
+  wchar * tbuf = buf.textbuf;
+  free(buf.attrbuf);
+  return tbuf;
+}
+
+void
+term_cmd(struct term * term, char * cmdpat, bool all)
+{
+  // provide scrollback buffer
+  wchar * wsel = term_get_sel_or_all(term, all, false);
+  char * sel = cs__wcstombs(wsel);
+  free(wsel);
+  setenv("MINTTY_SELECTION", sel, true);
+  free(sel);
+  // provide current screen
+  wsel = term_get_sel_or_all(term, false, true);
+  sel = cs__wcstombs(wsel);
+  free(wsel);
+  setenv("MINTTY_SCREEN", sel, true);
+  free(sel);
+  // provide window title
+  char * ttl = win_get_title();
+  setenv("MINTTY_TITLE", ttl, true);
+  free(ttl);
+
+#ifdef use_placeholders
+  sel = 0;
+  if (strstr(cmdpat, "%s") || strstr(cmdpat, "%1$s")) {
+    wchar * wsel = term_get_sel_or_all(all);
+    sel = cs__wcstombs(wsel);
+    free(wsel);
+  }
+
+  int len = strlen(cmdpat) + (sel ? strlen(sel) : 0) + 1;
+  char * cmd = newn(char, len);
+  sprintf(cmd, cmdpat, sel ?: "");
+  if (sel)
+    free(sel);
+#else
+  char * cmd = cmdpat;
+#endif
+
+  FILE * cmdf = popen(cmd, "r");
+  if (cmdf) {
+    if (term->bracketed_paste)
+      child_write(term->child, "\e[200~", 6);
+    char line[222];
+    while (fgets(line, sizeof line, cmdf)) {
+      child_send(term->child, line, strlen(line));
+    }
+    pclose(cmdf);
+    if (term->bracketed_paste)
+      child_write(term->child, "\e[201~", 6);
+  }
+}
+

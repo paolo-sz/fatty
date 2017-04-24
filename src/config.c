@@ -134,6 +134,7 @@ const config default_cfg = {
   .app_name = W(""),
   .app_launch_cmd = W(""),
   .drop_commands = W(""),
+  .user_commands = W(""),
   .col_spacing = 0,
   .row_spacing = 0,
   .padding = 1,
@@ -307,6 +308,7 @@ options[] = {
   {"AppName", OPT_WSTRING, offcfg(app_name)},
   {"AppLaunchCmd", OPT_WSTRING, offcfg(app_launch_cmd)},
   {"DropCommands", OPT_WSTRING, offcfg(drop_commands)},
+  {"UserCommands", OPT_WSTRING, offcfg(user_commands)},
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"Padding", OPT_INT, offcfg(padding)},
@@ -1092,24 +1094,39 @@ load_config(string filename, bool to_save)
 
   if (file) {
     while (fgets(linebuf, sizeof linebuf, file)) {
-      //linebuf[strcspn(linebuf, "\r\n")] = 0;  /* trim newline */
+      char * lbuf = linebuf;
+      while (!strchr(lbuf, '\n')) {
+        if (lbuf == linebuf) {
+          // make lbuf dynamic
+          lbuf = strdup(lbuf);
+        }
+        // append to lbuf
+        int len = strlen(lbuf);
+        lbuf = renewn(lbuf, len + sizeof linebuf);
+        if (!fgets(&lbuf[len], sizeof linebuf, file))
+          break;
+      }
+
+      //lbuf[strcspn(lbuf, "\r\n")] = 0;  /* trim newline */
       // trim newline but allow embedded CR (esp. for DropCommands)
-      linebuf[strcspn(linebuf, "\n")] = 0;
+      lbuf[strcspn(lbuf, "\n")] = 0;
       // preserve comment lines and empty lines
-      if (linebuf[0] == '#' || linebuf[0] == '\0') {
+      if (lbuf[0] == '#' || lbuf[0] == '\0') {
         if (to_save)
-          remember_file_comment(linebuf);
+          remember_file_comment(lbuf);
       }
       else {
-        int i = parse_option(linebuf, true);
+        int i = parse_option(lbuf, true);
         if (to_save) {
           if (i >= 0)
             remember_file_option("load", i);
           else
             // preserve unknown options as comment lines
-            remember_file_comment(linebuf);
+            remember_file_comment(lbuf);
         }
       }
+      if (lbuf != linebuf)
+        free(lbuf);
     }
     fclose(file);
   }

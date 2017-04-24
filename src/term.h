@@ -494,6 +494,7 @@ extern void term_copy(struct term* term);
 extern void term_paste(struct term* term, wchar *, uint len);
 extern void term_send_paste(struct term* term);
 extern void term_cancel_paste(struct term* term);
+extern void term_cmd(struct term* term, char * cmdpat, bool all);
 extern void term_reconfig(struct term* term);
 extern void term_flip_screen(struct term* term);
 extern void term_reset_screen(struct term* term);
