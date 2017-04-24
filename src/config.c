@@ -129,8 +129,6 @@ const config default_cfg = {
   .row_spacing = 0,
   .padding = 1,
   .handle_dpichanged = true,
-  .wide_indic = false,
-  .wide_extra = false,
   .word_chars = "",
   .word_chars_excl = "",
   .use_system_colours = false,
@@ -297,8 +295,6 @@ options[] = {
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"Padding", OPT_INT, offcfg(padding)},
   {"HandleDPI", OPT_BOOL, offcfg(handle_dpichanged)},
-  {"WideIndic", OPT_BOOL, offcfg(wide_indic)},
-  {"WideExtra", OPT_BOOL, offcfg(wide_extra)},
   {"WordChars", OPT_STRING, offcfg(word_chars)},
   {"WordCharsExcl", OPT_STRING, offcfg(word_chars_excl)},
   {"IMECursorColour", OPT_COLOUR, offcfg(ime_cursor_colour)},
@@ -432,7 +428,7 @@ find_option(bool from_file, string name)
     if (!strcasecmp(name, options[i].name))
       return i;
   }
-  //_ %s: unknown option name
+  //__ %s: unknown option name
   opterror(_("Ignoring unknown option '%s'"), from_file, name, 0);
   return -1;
 }
@@ -623,7 +619,7 @@ set_option(string name, string val_str, bool from_file)
       }
     }
   }
-  //_ %2$s: option name, %1$s: invalid value
+  //__ %2$s: option name, %1$s: invalid value
   opterror(_("Ignoring invalid value '%s' for option '%s'"), 
            from_file, val_str, name);
   return -1;
@@ -634,7 +630,7 @@ parse_option(string option, bool from_file)
 {
   const char *eq = strchr(option, '=');
   if (!eq) {
-    //_ %s: option name
+    //__ %s: option name
     opterror(_("Ignoring option '%s' with missing value"), 
              from_file, option, 0);
     return -1;
@@ -1151,7 +1147,7 @@ save_config(void)
   if (!file) {
     char *msg;
     char * up = cs__wcstoutf(rc_filename);
-    //_ %1$s: config file name, %2$s: error message
+    //__ %1$s: config file name, %2$s: error message
     int len = asprintf(&msg, _("Could not save options to '%s':\n%s."),
                        up, strerror(errno));
     free(up);
@@ -1875,7 +1871,7 @@ setup_config_box(controlbox * b)
     dlg_stdradiobutton_handler, &new_cfg.transparency,
     _("&Off"), TR_OFF,
     _("&Low"), TR_LOW,
-    //_ short form of radio button label "Medium"
+    //__ short form of radio button label "Medium"
     with_glass ? _("&Med.")
                : _("&Medium"), TR_MEDIUM,
     _("&High"), TR_HIGH,

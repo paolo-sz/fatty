@@ -56,7 +56,7 @@
   __("There is no warranty, to the extent permitted by law.")
 
 // needed for Options... - About...
-//_ %s: WEBSITE (URL)
+//__ %s: WEBSITE (URL)
 #define ABOUT_TEXT \
   "Thanks to creators of mintty and PuTTY for creating working\n"\
   "terminal emulator for windows. This software is largely based\n"\

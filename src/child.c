@@ -174,7 +174,7 @@ child_create(struct child* child, struct term* term,
     // If we get here, exec failed.
     fprintf(stderr, "\033]701;C.UTF-8\007");
     fprintf(stderr, "\033[30;41m\033[K");
-    //_ %1$s: client command (e.g. shell) to be run; %2$s: error message
+    //__ %1$s: client command (e.g. shell) to be run; %2$s: error message
     fprintf(stderr, _("Failed to run '%s': %s"), child->cmd, strerror(errno));
     fprintf(stderr, "\r\n");
     fflush(stderr);
