@@ -123,6 +123,11 @@ term_cursor_reset(term_cursor *curs)
 void
 term_reset(struct term* term)
 {
+  if (term->cmd_buf == NULL) {
+    term->cmd_buf = newn(char, 128);
+    term->cmd_buf_cap = 128;
+  }
+
   term->state = NORMAL;
 
   term_cursor_reset(&term->curs);

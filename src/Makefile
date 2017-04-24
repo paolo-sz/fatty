@@ -47,37 +47,21 @@ rgb.t:	# /usr/share/X11/rgb.txt # X11 color names
 #		{255, 250, 250, "snow"},
 	sed -e 's,	, ,g' -e 's/ *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([^ ].*[^ ]\) */	{\1, \2, \3, "\4"},/' /usr/share/X11/rgb.txt > rgb.t
 
-combined.t:	etc/UnicodeData.txt
-	sh ./mkcombinedt > combined.t
-
-bidiclasses.t:	etc/UnicodeData.txt
-	sh ./mkbidiclasses > bidiclasses.t
-
-unicode:	etc/UnicodeData.txt
-
-etc/UnicodeData.txt:
-	mkdir -p etc
-	cd etc; $(WGET) http://unicode.org/Public/UNIDATA/UnicodeData.txt
-
 #############################################################################
 
-$(BUILD_DIR)config.o: rgb.t
-$(BUILD_DIR)wininput.o: _vk.t combined.t
-$(BUILD_DIR)winmain.o: _wm.t _winidm.t
-$(BUILD_DIR)minibidi.o: bidiclasses.t
 winprint.c:
 	ln -s ../attic/winprint.c .
 
 prepare_build = mkdir -pv $(dir $@)
 
 compileflags = -c $< -o $@ -MMD -MT $@
-$(BUILD_DIR)%.o: %.cc Makefile
+$(BUILD_DIR)%.o: %.cc Makefile $(debug_t) rgb.t
 	@$(prepare_build)
 	$(CXX) $(CPPFLAGS) $(CXXFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.c Makefile
+$(BUILD_DIR)%.o: %.c Makefile $(debug_t) rgb.t
 	@$(prepare_build)
 	$(CC) $(CPPFLAGS) $(CFLAGS) $(compileflags)
-$(BUILD_DIR)%.o: %.rc
+$(BUILD_DIR)%.o: %.rc $(debug_t) rgb.t
 	@$(prepare_build)
 	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED -MMD -MT $@ $(CPPFLAGS)' $< $*.o
 	@mv -v res.o res.d $(BUILD_DIR)
@@ -86,17 +70,21 @@ $(BUILD_DIR)%.o: %.rc
 
 .PHONY: clean
 clean:
-	-rm -rf build $(BIN) *.t
+	-rm -rf build $(BIN) $(debug_t) rgb.t
 
 #############################################################################
 # development and debug targets
+
+debug_t = _wm.t _vk.t _winidm.t
 
 _wm.t:	# Windows Message names, only for debugging
 #	#define WM_NULL 0x0000
 #	->
 #		{0x0000, "WM_NULL"},
-	sed -e 's/^#define \(WM_[^ ]*\) \(0x[0-9A-Fa-f]*\)$$/	{\2, "\1"},/' -e t -e d /usr/include/w32api/winuser.h > _wm.t
-	echo '	{0x02E0, "WM_DPICHANGED"},' >> _wm.t
+	sed -e 's/^#define \(WM_[^ ]*\) *\(0x[0-9A-Fa-f]*\)$$/  {\2, "\1"},/' -e t -e d /usr/include/w32api/winuser.h | tr 'abcdef' 'ABCDEF' > _wm.t
+	echo '  {0x02E0, "WM_DPICHANGED"},' >> _wm.t
+	# or, with include file copied from Windows SDK:
+	#sed -e 's/^#define \(WM_[^ ]*\) *\(0x[0-9A-Fa-f]*\)$$/  {\2, "\1"},/' -e t -e d etc/WinUser.h | tr 'abcdef' 'ABCDEF' > _wm.t
 
 _vk.t:	# Windows Virtual Key Code names, only for debugging
 #	#define VK_TAB 0x09

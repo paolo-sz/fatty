@@ -17,6 +17,9 @@
 
 #include <sys/termios.h>
 
+#define TERM_CMD_BUF_INC_STEP 128
+#define TERM_CMD_BUF_MAX_SIZE (1024 * 1024)
+
 /* This combines two characters into one value, for the purpose of pairing
  * any modifier byte and the final byte in escape sequences.
  */
@@ -25,6 +28,32 @@
 static string primary_da1 = "\e[?1;2c";
 static string primary_da2 = "\e[?62;1;2;4;6;22c";
 static string primary_da3 = "\e[?63;1;2;4;6;22c";
+
+
+static bool term_push_cmd(struct term* term, char c)
+{
+  uint new_size;
+
+  /* Need 1 more for null byte */
+  if (term->cmd_len + 1 < term->cmd_buf_cap) {
+    term->cmd_buf[term->cmd_len++] = c;
+    return true;
+  }
+
+  if (term->cmd_buf_cap >= TERM_CMD_BUF_MAX_SIZE) {
+    /* Server sends too many cmd characters */
+    return false;
+  }
+  new_size = term->cmd_buf_cap + TERM_CMD_BUF_INC_STEP;
+  if (new_size >= TERM_CMD_BUF_MAX_SIZE) {
+    // cosmetic limitation (relevant limitation above)
+    new_size = TERM_CMD_BUF_MAX_SIZE;
+  }
+  term->cmd_buf = renewn(term->cmd_buf, new_size);
+  term->cmd_buf_cap = new_size;
+  term->cmd_buf[term->cmd_len++] = c;
+  return true;
+}
 
 /*
  * Move the cursor to a given position, clipping at boundaries. We
@@ -1237,7 +1266,7 @@ static void do_clipboard(struct term* term)
   }
   s += 1;
   if (*s == '?') {
-    /* Read from clipboard is unspported */
+    /* Reading from clipboard is unsupported */
     return;
   }
   len = strlen(s);
@@ -1615,7 +1644,7 @@ term_write(struct term* term, const char *buf, uint len)
         if (isxdigit(c)) {
           // The dodgy Linux palette sequence: keep going until we have
           // seven hexadecimal digits.
-          term->cmd_buf[term->cmd_len++] = c;
+          term_push_cmd(term, c);
           if (term->cmd_len == 7) {
             uint n, r, g, b;
             sscanf(term->cmd_buf, "%1x%2x%2x%2x", &n, &r, &g, &b);
@@ -1642,8 +1671,7 @@ term_write(struct term* term, const char *buf, uint len)
           when '\e':
             term->state = CMD_ESCAPE;
           otherwise:
-            if (term->cmd_len < lengthof(term->cmd_buf) - 1)
-              term->cmd_buf[term->cmd_len++] = c;
+            term_push_cmd(term, c);
         }
       when IGNORE_STRING:
         switch (c) {
@@ -1720,9 +1748,7 @@ term_write(struct term* term, const char *buf, uint len)
             term->state = DCS_ESCAPE;
             term->esc_mod = 0;
           otherwise:
-            if (term->cmd_len < lengthof(term->cmd_buf) - 1) {
-              term->cmd_buf[term->cmd_len++] = c;
-            } else {
+            if (!term_push_cmd(term, c)) {
               do_dcs(term);
               term->cmd_buf[0] = c;
               term->cmd_len = 1;
