@@ -705,10 +705,17 @@ win_paint(void)
 static void do_update(void);
 static void do_update_cb(void* _) { (void)_; do_update(); }
 
+#define dont_debug_cursor 1
+
 static void
 do_update(void)
 {
+#if defined(debug_cursor) && debug_cursor > 1
+  printf("do_update cursor_on %d @%d,%d\n", term.cursor_on, term.curs.y, term.curs.x);
+#endif
+
   struct term* term = win_active_terminal();
+
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
     return;
@@ -922,6 +929,16 @@ termattrs_equal_fg(cattr * a, cattr * b)
   return true;
 }
 
+
+static int
+char1ulen(wchar * text)
+{
+  if ((text[0] & 0xFC00) == 0xD800 && (text[1] & 0xFC00) == 0xDC00)
+    return 2;
+  else
+    return 1;
+}
+
 /*
  * Draw a line of text in the window, at given character
  * coordinates, in given attributes.
@@ -1077,6 +1094,9 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int la
       if (too_close && colour_dist(cursor_colour, fg) < mindist)
         fg = bg;
       bg = cursor_colour;
+#ifdef debug_cursor
+      printf("set cursor (colour %06X) @(row %d col %d) cursor_on %d\n", bg, (y - PADDING) / cell_height, (x - PADDING) / char_width, term.cursor_on);
+#endif
     }
   }
 
@@ -1159,7 +1179,13 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int la
   for (int i = 0; i < len; i++)
     dxs[i] = dx;
 
-  int width = char_width * (combining ? 1 : len);
+  int ulen = 0;
+  for (int i = 0; i < len; i++) {
+    ulen++;
+    if (char1ulen(&text[i]) == 2)
+      i++;  // skip low surrogate;
+  }
+  int width = char_width * (combining ? 1 : ulen);
   RECT box = {
     .top = y, .bottom = y + cell_height,
     .left = x, .right = min(x + width, cell_width * win_active_terminal()->cols + PADDING)
@@ -1224,15 +1250,6 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int la
     if (lattr != LATTR_NORM) {
       xwidth = 3; // 4?
     }
-  }
-
-  int
-  char1ulen(wchar * text)
-  {
-    if ((text[0] & 0xFC00) == 0xD800 && (text[1] & 0xFC00) == 0xDC00)
-      return 2;
-    else
-      return 1;
   }
 
  /* Finally, draw the text */
@@ -1477,6 +1494,9 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int la
   }
 
   if (has_cursor) {
+#if defined(debug_cursor) && debug_cursor > 1
+    printf("painting cursor_type '%c' cursor_on %d\n", "?b_l"[term_cursor_type()+1], term.cursor_on);
+#endif
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, cursor_colour));
     switch (term_cursor_type(win_active_terminal())) {
       when CUR_BLOCK:

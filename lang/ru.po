@@ -7,17 +7,14 @@ msgid ""
 msgstr ""
 "Project-Id-Version: mintty\n"
 "Report-Msgid-Bugs-To: \n"
-"POT-Creation-Date: 2016-12-15 16:19+0100\n"
-"PO-Revision-Date: 2016-12-12 04:18+0500\n"
+"POT-Creation-Date: 2016-12-22 14:38+0100\n"
+"PO-Revision-Date: 2016-12-19 04:18+0500\n"
 "Last-Translator: \n"
 "Language-Team: \n"
 "Language: ru\n"
 "MIME-Version: 1.0\n"
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
-"X-Generator: Poedit 1.8.11\n"
-"Plural-Forms: nplurals=3; plural=(n%10==1 && n%100!=11 ? 0 : n%10>=2 && n"
-"%10<=4 && (n%100<10 || n%100>=20) ? 1 : 2);\n"
 
 #: charset.c:211 charset.c:222
 msgid "(Default)"
@@ -189,7 +186,7 @@ msgid "Save"
 msgstr "Сохранить"
 
 #. __ Dialog button - cancel
-#: config.c:1882 winctrls.c:919 windialog.c:525
+#: config.c:1882 winctrls.c:919 windialog.c:526
 msgid "Cancel"
 msgstr "Отмена"
 
@@ -199,14 +196,14 @@ msgid "Apply"
 msgstr "Применить"
 
 #. __ Dialog button - take notice
-#: config.c:1890 windialog.c:522
+#: config.c:1890 windialog.c:523
 msgid "I see"
-msgstr "Понятно"
+msgstr "Хорошо"
 
 #. __ Dialog button - confirm action
-#: config.c:1892 winctrls.c:918 windialog.c:524
+#: config.c:1892 winctrls.c:918 windialog.c:525
 msgid "OK"
-msgstr "OK"
+msgstr ""
 
 #. __ Options - Looks: treeview label
 #: config.c:1899 config.c:1930 config.c:1971
@@ -423,7 +420,7 @@ msgstr "Клавиши быстрого доступа"
 #. __ Options - Keys:
 #: config.c:2074
 msgid "Cop&y and Paste (Ctrl/Shift+Ins)"
-msgstr "Копировать и Вставить (Ctrl/Shift + Ins)"
+msgstr "Копировать и Вставить (Ctrl/Shift+Ins)"
 
 #. __ Options - Keys:
 #: config.c:2079
@@ -443,12 +440,12 @@ msgstr "Масштаб (Ctrl+plus/minus/zero)"
 #. __ Options - Keys:
 #: config.c:2094
 msgid "&Alt+Fn shortcuts"
-msgstr "&Alt+F(n) сочетание"
+msgstr "&Alt+F(n) сочетания"
 
 #. __ Options - Keys:
 #: config.c:2099
 msgid "&Ctrl+Shift+letter shortcuts"
-msgstr "&Ctrl+Shift+(n) сочетание"
+msgstr "&Ctrl+Shift+(n) сочетания"
 
 #. __ Options - Keys: section title
 #: config.c:2105
@@ -519,7 +516,7 @@ msgstr "Вставка"
 #. __ Options - Mouse:
 #: config.c:2154 config.c:2168
 msgid "E&xtend"
-msgstr "Выбор"
+msgstr "Выбрать"
 
 #. __ Options - Mouse:
 #: config.c:2156
@@ -539,7 +536,7 @@ msgstr "Средняя кнопка мыши"
 #. __ Options - Mouse:
 #: config.c:2170
 msgid "&Nothing"
-msgstr "Ничего"
+msgstr "Нет"
 
 #. __ Options - Mouse: section title
 #: config.c:2178
@@ -738,7 +735,7 @@ msgstr "Набор символов:"
 #. __ Font chooser: this field is only shown with OldFontMenu=true
 #: winctrls.c:955
 msgid "<A>Show more fonts</A>"
-msgstr "<A>Показать больше шрифтов</A>"
+msgstr "<A>Показать дополнительные шрифты</A>"
 
 #. __ Colour chooser: title bar label
 #: winctrls.c:960
@@ -806,21 +803,21 @@ msgid "A&dd to Custom Colours"
 msgstr "Добавить в набор"
 
 #. __ Options: dialog title
-#: windialog.c:489
+#: windialog.c:490
 msgid "Options"
 msgstr "Настройки"
 
 #: wininput.c:119 wininput.c:125
 msgid "Ctrl+"
-msgstr "Ctrl+"
+msgstr ""
 
 #: wininput.c:120 wininput.c:126
 msgid "Alt+"
-msgstr "Alt+"
+msgstr ""
 
 #: wininput.c:121 wininput.c:127
 msgid "Shift+"
-msgstr "Shift+"
+msgstr ""
 
 #. __ System menu:
 #: wininput.c:152
@@ -924,7 +921,7 @@ msgstr "Закрыть все равно?"
 
 #: winmain.c:1762
 msgid "Try '--help' for more information"
-msgstr "Попробуйте '--help' для получения дополнительной информации"
+msgstr "Используйте '--help' для получения дополнительной информации"
 
 #: winmain.c:1770
 msgid "Could not load icon"
@@ -1065,7 +1062,7 @@ msgstr "Шрифт не поддерживает язык системы"
 
 #: appinfo.h:56
 msgid "There is no warranty, to the extent permitted by law."
-msgstr "Нет никакой гарантии, в пределах, допускаемых законом."
+msgstr "Нет никаких гарантий, в пределах допускаемых законом."
 
 #. __ %s: WEBSITE (URL)
 #: appinfo.h:61
