@@ -114,6 +114,8 @@ static void invalidate_tabs() {
 }
 
 term* win_active_terminal() {
+    if (active_tab >= tabs.size())
+      return NULL;
     return tabs.at(active_tab).terminal.get();
 }
 

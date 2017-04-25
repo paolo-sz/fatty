@@ -13,6 +13,8 @@
 
 extern bool icon_is_from_shortcut;
 
+extern void exit_fatty(int exit_val);
+extern void report_pos(void);
 extern void win_reconfig(void);
 
 extern void win_update(void);

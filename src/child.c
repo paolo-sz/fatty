@@ -289,7 +289,7 @@ child_create(struct child* child, struct term* term,
     usleep(200000);
 #endif
 
-    exit(255);
+    exit_fatty(255);
   }
   else { // Parent process.
     child->pid = pid;
@@ -613,10 +613,10 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
 
     clone = fork();
     if (clone < 0) {
-      exit(255);
+      exit_fatty(255);
     }
     if (clone > 0) {  // new parent / previous child
-      exit(0);  // exit and make the grandchild a daemon
+      exit_fatty(0);  // exit and make the grandchild a daemon
     }
   }
 
@@ -693,7 +693,7 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
     }
     execvp(path, argv);
 #endif
-    exit(255);
+    exit_fatty(255);
   }
   reset_fork_mode();
 }

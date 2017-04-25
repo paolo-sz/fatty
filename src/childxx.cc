@@ -19,6 +19,7 @@ int child_log_fd = -1;
 
 extern "C" {
 #include "child.h"
+extern void exit_fatty(int exit_val);
 
 extern int cs_wcstombs(char *s, const wchar *ws, size_t len);
 
@@ -132,7 +133,7 @@ void child_kill() {
         // We are still here even after half a second?
         // Really, lets just die. It would be really annoying not to...
         kill_all_tabs(true);
-        exit(1);
+        exit_fatty(1);
     });
 }
 

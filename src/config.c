@@ -57,7 +57,7 @@ const config default_cfg = {
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
   .font_render = FR_UNISCRIBE,
-  .bold_as_font = -1,  // -1 means "the opposite of bold_as_colour"
+  .bold_as_font = false,
   .bold_as_colour = true,
   .allow_blinking = false,
   .locale = "",
@@ -503,7 +503,7 @@ remember_file_option(char * tag, uint i)
   trace_theme(("[%s] remember_file_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (file_opts_num >= lengthof(file_opts)) {
     opterror(_("Internal error: too many options"), true, 0, 0);
-    exit(1);
+    exit_fatty(1);
   }
 
   if (!seen_file_option(i)) {
@@ -519,7 +519,7 @@ remember_file_comment(char * comment)
   trace_theme(("[] remember_file_comment <%s>\n", comment));
   if (file_opts_num >= lengthof(file_opts)) {
     opterror(_("Internal error: too many options/comments"), true, 0, 0);
-    exit(1);
+    exit_fatty(1);
   }
 
   file_opts[file_opts_num++].comment = strdup(comment);
@@ -532,7 +532,7 @@ remember_arg_option(char * tag, uint i)
   trace_theme(("[%s] remember_arg_option (file %d arg %d) %d %s\n", tag, seen_file_option(i), seen_arg_option(i), i, options[i].name));
   if (arg_opts_num >= lengthof(arg_opts)) {
     opterror(_("Internal error: too many options"), false, 0, 0);
-    exit(1);
+    exit_fatty(1);
   }
 
   if (!seen_arg_option(i))
@@ -1202,12 +1202,6 @@ finish_config(void)
   // Ignore charset setting if we haven't got a locale.
   if (!*cfg.locale)
     strset(&cfg.charset, "");
-
-  // bold_as_font used to be implied by !bold_as_colour.
-  if (cfg.bold_as_font == -1) {
-    cfg.bold_as_font = !cfg.bold_as_colour;
-    remember_file_option("finish", find_option(true, "BoldAsFont"));
-  }
 
   if (0 < cfg.transparency && cfg.transparency <= 3)
     cfg.transparency *= 16;

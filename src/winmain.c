@@ -70,6 +70,8 @@ static bool default_size_token = false;
 
 // Options
 static string border_style = 0;
+static string report_geom = 0;
+static bool report_moni = false;
 static int monitor = 0;
 static bool center = false;
 static bool right = false;
@@ -1760,7 +1762,7 @@ option_error(char * msg, char * option)
   char * optmsg = opterror_msg(_(msg), false, option, null);
   char * fullmsg = asform("%s\n%s", optmsg, _("Try '--help' for more information"));
   show_message(fullmsg, MB_ICONWARNING);
-  exit(1);
+  exit_fatty(1);
 }
 
 static void
@@ -1786,6 +1788,46 @@ show_iconwarn(wchar * winmsg)
   else
     show_message(msg, MB_ICONWARNING);
 }
+
+void
+report_pos(void)
+{
+  if (report_geom && !wnd && !win_active_terminal()) {
+    int x, y;
+    //win_get_pos(&x, &y);  // would not consider maximised/minimised
+    WINDOWPLACEMENT placement;
+    placement.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(wnd, &placement);
+    x = placement.rcNormalPosition.left;
+    y = placement.rcNormalPosition.top;
+    int cols = win_active_terminal()->cols;
+    int rows = win_active_terminal()->rows;
+    cols = (placement.rcNormalPosition.right - placement.rcNormalPosition.left - norm_extra_width - 2 * PADDING) / cell_width;
+    rows = (placement.rcNormalPosition.bottom - placement.rcNormalPosition.top - norm_extra_height - 2 * PADDING) / cell_height;
+
+    printf("%s", main_argv[0]);
+    printf(*report_geom == 'o' ? " -o Columns=%d -o Rows=%d" : " -s %d,%d", cols, rows);
+    printf(*report_geom == 'o' ? " -o X=%d -o Y=%d" : " -p %d,%d", x, y);
+    char * winstate = 0;
+    if (win_is_fullscreen)
+      winstate = "full";
+    else if (IsZoomed(wnd))
+      winstate = "max";
+    else if (IsIconic(wnd))
+      winstate = "min";
+    if (winstate)
+      printf(*report_geom == 'o' ? " -o Window=%s" : " -w %s", winstate);
+    printf("\n");
+  }
+}
+
+void
+exit_fatty(int exit_val)
+{
+  report_pos();
+  exit(exit_val);
+}
+
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
 
@@ -2058,6 +2100,7 @@ static char help[] =
   "      --nobidi|--nortl  Disable bidi (right-to-left support)\n"
   "  -o, --option OPT=VAL  Set/Override config file option with given value\n"
   "  -B, --Border frame|void  Use thin/no window border\n"
+  "  -R, --Report s|o      Report window position (short/long) after exit\n"
   "      --nopin           Make this instance not pinnable to taskbar\n"
   "  -D, --daemon          Start new instance with Windows shortcut key\n"
   "      --class CLASS     Set window class name (default: " APPNAME ")\n"
@@ -2084,6 +2127,8 @@ opts[] = {
   {"title",      required_argument, 0, 't'},
   {"Title",      required_argument, 0, 'T'},
   {"Border",     required_argument, 0, 'B'},
+  {"Report",     required_argument, 0, 'R'},
+  {"Reportpos",  required_argument, 0, 'R'},  // compatibility variant
   {"window",     required_argument, 0, 'w'},
   {"class",      required_argument, 0, ''},  // short option not enabled
   {"dir",        required_argument, 0, ''},  // short option not enabled
@@ -2242,6 +2287,16 @@ main(int argc, char *argv[])
         cfg.title_settable = false;
       when 'B':
         border_style = strdup(optarg);
+      when 'R':
+        switch (*optarg) {
+          when 's' or 'o':
+            report_geom = strdup(optarg);
+          when 'm':
+            report_moni = true;
+          when 'f':
+            list_fonts(true);
+            exit_fatty(0);
+        }
       when 'u': cfg.create_utmp = true;
       when '':
         prevent_pinning = true;
@@ -2337,7 +2392,7 @@ main(int argc, char *argv[])
     if (pid < 0)
       print_error(_("Fatty could not detach from caller, starting anyway"));
     if (pid > 0)
-      exit(0);  // exit parent process
+      exit_fatty(0);  // exit parent process
 
     setsid();  // detach child process
   }
@@ -2713,6 +2768,18 @@ main(int argc, char *argv[])
   win_init_drop_target();
   win_init_menus();
   win_update_transparency(cfg.opaque_when_focused);
+
+#ifdef debug_display_monitors_mockup
+#define report_moni true
+#endif
+  if (report_moni) {
+    int x, y;
+    int n = search_monitors(&x, &y, 0, false, 0);
+    printf("%d monitors,      smallest width,height %4d,%4d\n", n, x, y);
+#ifndef debug_display_monitors_mockup
+    exit_fatty(0);
+#endif
+  }
 
   // Finally show the window!
   go_fullscr_on_max = (cfg.window == -1);
