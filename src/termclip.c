@@ -367,9 +367,10 @@ term_cmd(struct term * term, char * cmdpat)
 
   FILE * cmdf = popen(cmd, "r");
   unsetenv("FATTY_TITLE");
-  unsetenv("FATTY_COMMAND");
+  unsetenv("FATTY_OUTPUT");
   unsetenv("FATTY_SCREEN");
-  unsetenv("FATTY_SELECTION");
+  unsetenv("FATTY_SELECT");
+  unsetenv("FATTY_BUFFER");
   unsetenv("FATTY_CWD");
   unsetenv("FATTY_PROG");
   if (cmdf) {

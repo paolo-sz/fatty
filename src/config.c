@@ -1815,7 +1815,7 @@ download_scheme(char * url)
   pURLDownloadToFile = load_library_func("urlmon.dll", "URLDownloadToFileA");
   bool ok = false;
   char sfn[44];
-  sprintf(sfn, "/tmp/.mintty-scheme.%d", getpid());
+  sprintf(sfn, "/tmp/.fatty-scheme.%d", getpid());
   if (pURLDownloadToFile) {
 #ifdef __CYGWIN__
     /* Need to sync the Windows environment */

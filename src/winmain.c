@@ -9,7 +9,7 @@
 FILE * mtlog = 0;
 #endif
 
-char * mintty_debug;
+char * fatty_debug;
 
 #define dont_debug_resize
 
@@ -2107,7 +2107,7 @@ main(int argc, char *argv[])
 
   main_argv = argv;
   main_argc = argc;
-  mintty_debug = getenv("FATTY_DEBUG") ?: "";
+  fatty_debug = getenv("FATTY_DEBUG") ?: "";
 #ifdef debuglog
   mtlog = fopen("/tmp/mtlog", "a");
   {
