@@ -72,14 +72,14 @@ get_selection(struct term* term, clip_workbuf *buf, pos start, pos end, bool rec
     * because in normal selection mode this means we need a
     * newline at the end)...
     */
-    if (!(line->attr & LATTR_WRAPPED)) {
+    if (!(line->lattr & LATTR_WRAPPED)) {
       while (nlpos.x && line->chars[nlpos.x - 1].chr == ' ' &&
              !line->chars[nlpos.x - 1].cc_next && poslt(start, nlpos))
         decpos(nlpos);
       if (poslt(nlpos, end))
         nl = true;
     }
-    else if (line->attr & LATTR_WRAPPED2) {
+    else if (line->lattr & LATTR_WRAPPED2) {
      /* Ignore the last char on the line in a WRAPPED2 line. */
       decpos(nlpos);
     }
@@ -251,12 +251,12 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
     }
     else {
       termline * line = fetch_line(term, y);
-      if (line->attr & LATTR_MARKED) {
+      if (line->lattr & LATTR_MARKED) {
         if (y > sbtop) {
           y--;
           end = (pos){y, term->cols};
           termline * line = fetch_line(term, y);
-          if (line->attr & LATTR_MARKED)
+          if (line->lattr & LATTR_MARKED)
             y++;
         }
         else {
@@ -264,11 +264,11 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
         }
       }
       else {
-        skipprompt = line->attr & LATTR_UNMARKED;
+        skipprompt = line->lattr & LATTR_UNMARKED;
         end = (pos){y, term->cols};
       }
 
-      if (fetch_line(term, y)->attr & LATTR_UNMARKED)
+      if (fetch_line(term, y)->lattr & LATTR_UNMARKED)
         end = (pos){y, 0};
     }
 
@@ -276,13 +276,13 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
     while (y-- > sbtop) {
       termline * line = fetch_line(term, y);
 #ifdef debug_user_cmd_clip
-      printf("y %d skip %d marked %X\n", y, skipprompt, line->attr & (LATTR_UNMARKED | LATTR_MARKED));
+      printf("y %d skip %d marked %X\n", y, skipprompt, line->lattr & (LATTR_UNMARKED | LATTR_MARKED));
 #endif
-      if (skipprompt && (line->attr & LATTR_UNMARKED))
+      if (skipprompt && (line->lattr & LATTR_UNMARKED))
         end = (pos){y, 0};
       else
         skipprompt = false;
-      if (line->attr & LATTR_MARKED) {
+      if (line->lattr & LATTR_MARKED) {
         break;
       }
       yok = y;

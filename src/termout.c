@@ -194,7 +194,7 @@ write_tab(struct term* term)
     curs->x++;
   while (curs->x < term->cols - 1 && !term->tabs[curs->x]);
 
-  if ((term->lines[curs->y]->attr & LATTR_MODE) != LATTR_NORM) {
+  if ((term->lines[curs->y]->lattr & LATTR_MODE) != LATTR_NORM) {
     if (curs->x >= term->cols / 2)
       curs->x = term->cols / 2 - 1;
   }
@@ -258,7 +258,7 @@ write_char(struct term* term, wchar c, int width)
   }
 
   if (curs->wrapnext && curs->autowrap && width > 0) {
-    line->attr |= LATTR_WRAPPED;
+    line->lattr |= LATTR_WRAPPED;
     if (curs->y == term->marg_bot)
       term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
     else if (curs->y < term->rows - 1)
@@ -294,7 +294,7 @@ write_char(struct term* term, wchar c, int width)
       term_check_boundary(term, curs->x + width, curs->y);
       if (curs->x == term->cols - 1) {
         line->chars[curs->x] = term->erase_char;
-        line->attr |= LATTR_WRAPPED | LATTR_WRAPPED2;
+        line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
         if (curs->y == term->marg_bot)
           term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
         else if (curs->y < term->rows - 1)
@@ -456,17 +456,17 @@ do_esc(struct term* term, uchar c)
           line->chars[j] =
             (termchar) {.cc_next = 0, .chr = 'E', .attr = CATTR_DEFAULT};
         }
-        line->attr = LATTR_NORM;
+        line->lattr = LATTR_NORM;
       }
       term->disptop = 0;
     when CPAIR('#', '3'):  /* DECDHL: 2*height, top */
-      term->lines[curs->y]->attr = LATTR_TOP;
+      term->lines[curs->y]->lattr = LATTR_TOP;
     when CPAIR('#', '4'):  /* DECDHL: 2*height, bottom */
-      term->lines[curs->y]->attr = LATTR_BOT;
+      term->lines[curs->y]->lattr = LATTR_BOT;
     when CPAIR('#', '5'):  /* DECSWL: normal */
-      term->lines[curs->y]->attr = LATTR_NORM;
+      term->lines[curs->y]->lattr = LATTR_NORM;
     when CPAIR('#', '6'):  /* DECDWL: 2*width */
-      term->lines[curs->y]->attr = LATTR_WIDE;
+      term->lines[curs->y]->lattr = LATTR_WIDE;
     when CPAIR('(', 'A') or CPAIR('(', 'B') or CPAIR('(', '0'):
      /* GZD4: G0 designate 94-set */
       curs->csets[0] = c;
@@ -692,9 +692,9 @@ set_modes(struct term* term, bool state)
           term->report_ambig_width = state;
         when 7711:       /* Scroll marker in current line */
           if (state)
-            term->lines[term->curs.y]->attr |= LATTR_MARKED;
+            term->lines[term->curs.y]->lattr |= LATTR_MARKED;
           else
-            term->lines[term->curs.y]->attr |= LATTR_UNMARKED;
+            term->lines[term->curs.y]->lattr |= LATTR_UNMARKED;
         when 7727:       /* Application escape key mode */
           term->app_escape_key = state;
         when 7728:       /* Escape sends FS (instead of ESC) */
@@ -717,6 +717,13 @@ set_modes(struct term* term, bool state)
           term->wheel_reporting = state;
         when 7787:       /* 'W': Application mousewheel mode */
           term->app_wheel = state;
+        when 7796:       /* Bidi disable in current line */
+          if (state)
+            term->lines[term->curs.y]->lattr |= LATTR_NOBIDI;
+          else
+            term->lines[term->curs.y]->lattr &= ~LATTR_NOBIDI;
+        when 77096:      /* Bidi disable */
+          term->disable_bidi = state;
         when 8452:       /* Sixel scrolling end position right */
           /* on: sixel scrolling leaves cursor to right of graphic
              off(default): position after sixel depends on sixel_scrolls_left */
@@ -1277,7 +1284,6 @@ do_colour_osc(struct term* term, bool has_index_arg, uint i, bool reset)
  */
 static void do_clipboard(struct term* term)
 {
-
   char *s = term->cmd_buf;
   char *output;
   int len;
@@ -1528,7 +1534,7 @@ term_write(struct term* term, const char *buf, uint len)
           if (hwc) {
 #if HAS_LOCALES
 # ifdef __midipix__
-            int width = mcwidth(combine_surrogates(hwc, wc));
+            int width = wcwidth(combine_surrogates(hwc, wc));
 # else
             int width = wcswidth((wchar[]){hwc, wc}, 2);
 # endif
@@ -1575,6 +1581,12 @@ term_write(struct term* term, const char *buf, uint len)
         else
 #if HAS_LOCALES
           width = wcwidth(wc);
+#ifdef hide_isolate_marks
+          // force bidi isolate marks to be zero-width;
+          // however, this is inconsistent with locale width
+          if (wc >= 0x2066 && wc <= 0x2069)
+            width = 0;  // bidi isolate marks
+#endif
 #else
           width = xcwidth(wc);
 #endif
@@ -1824,8 +1836,15 @@ term_write(struct term* term, const char *buf, uint len)
         }
     }
   }
-  term_schedule_search_partial_update(term);
+
+  // Update search match highlighting
+  //term_schedule_search_partial_update();
+  term_schedule_search_update(term);
+
+  // Update screen
   win_schedule_update();
+
+  // Print
   if (term->printing) {
     printer_write(term->printbuf, term->printbuf_pos);
     term->printbuf_pos = 0;

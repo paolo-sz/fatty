@@ -5,7 +5,8 @@
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include "termpriv.h"
-#include "winpriv.h"  // disable_bidi
+#include "win.h"  // cfg.bidi
+
 
 termline *
 newline(int cols, termchar erase_char)
@@ -15,7 +16,7 @@ newline(int cols, termchar erase_char)
   for (int j = 0; j < cols; j++)
     line->chars[j] = erase_char;
   line->cols = line->size = cols;
-  line->attr = LATTR_NORM;
+  line->lattr = LATTR_NORM;
   line->temporary = false;
   line->cc_free = 0;
   return line;
@@ -541,7 +542,7 @@ compressline(termline *line)
   * Next store the line attributes; same principle.
   */
   {
-    int n = line->attr;
+    int n = line->lattr;
     while (n >= 128) {
       add(b, (uchar) ((n & 0x7F) | 0x80));
       n >>= 7;
@@ -651,10 +652,10 @@ decompressline(uchar *data, int *bytes_used)
  /*
   * Now read in the line attributes.
   */
-  line->attr = shift = 0;
+  line->lattr = shift = 0;
   do {
     byte = get(b);
-    line->attr |= (byte & 0x7F) << shift;
+    line->lattr |= (byte & 0x7F) << shift;
     shift += 7;
   } while (byte & 0x80);
 
@@ -678,7 +679,7 @@ decompressline(uchar *data, int *bytes_used)
 void
 clearline(termline *line, termchar erase_char)
 {
-  line->attr = LATTR_NORM;
+  line->lattr = LATTR_NORM;
   for (int j = 0; j < line->cols; j++)
     line->chars[j] = erase_char;
   if (line->size > line->cols) {
@@ -807,12 +808,12 @@ term_bidi_cache_hit(struct term* term, int line, termchar *lbefore, int width)
     if (!termchars_equal(term->pre_bidi_cache[line].chars + i, lbefore + i))
       return false;     /* line doesn't match cache */
 
-  return true;  /* it didn't match. */
+  return true;  /* all termchars matched */
 }
 
 static void
 term_bidi_cache_store(struct term* term, int line, termchar *lbefore, termchar *lafter,
-                      bidi_char *wcTo, int width, int size)
+                      bidi_char *wcTo, int width, int size, int bidisize)
 {
   int i;
 
@@ -847,14 +848,22 @@ term_bidi_cache_store(struct term* term, int line, termchar *lbefore, termchar *
   memset(term->post_bidi_cache[line].forward, 0, width * sizeof(int));
   memset(term->post_bidi_cache[line].backward, 0, width * sizeof(int));
 
+  int ib = 0;
   for (i = 0; i < width; i++) {
-    int p = wcTo[i].index;
+    while (wcTo[ib].index == -1)
+      ib++;
+
+    int p = wcTo[ib].index;
 
     assert(0 <= p && p < width);
 
     term->post_bidi_cache[line].backward[i] = p;
     term->post_bidi_cache[line].forward[p] = i;
+
+    ib++;
   }
+  (void)bidisize;
+  assert(ib == bidisize);
 }
 
 #ifdef debug_bidi
@@ -880,11 +889,13 @@ void trace_bidi(char * tag, bidi_char * wc)
 termchar *
 term_bidi_line(struct term* term, termline *line, int scr_y)
 {
-  if (disable_bidi)
+  if ((line->lattr & LATTR_NOBIDI) || term->disable_bidi
+      || !cfg.bidi || (cfg.bidi == 1 && term->on_alt_screen)
+     )
     return null;
 
   termchar *lchars;
-  int it;
+  int it, ib;
 
  /* Do Arabic shaping and bidi. */
 
@@ -896,6 +907,7 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
       term->wcTo = renewn(term->wcTo, term->wcFromTo_size);
     }
 
+    ib = 0;
     for (it = 0; it < term->cols; it++) {
       ucschar c = line->chars[it].chr;
 
@@ -909,14 +921,39 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
         }
       }
 
-      term->wcFrom[it].origwc = term->wcFrom[it].wc = c;
-      term->wcFrom[it].index = it;
+      if (it) {
+        termchar * bp = &line->chars[it - 1];
+        // Unfold directional formatting characters which are handled 
+        // like combining characters in the mintty structures 
+        // (and would thus stay hidden from minibidi), and need to be 
+        // exposed as separate characters for the minibidi algorithm
+        while (bp->cc_next) {
+          bp += bp->cc_next;
+          if (bp->chr == 0x200E || bp->chr == 0x200F
+              || (bp->chr >= 0x202A && bp->chr <= 0x202E)
+              || (bp->chr >= 0x2066 && bp->chr <= 0x2069)
+             )
+          {
+            term->wcFromTo_size++;
+            term->wcFrom = renewn(term->wcFrom, term->wcFromTo_size);
+            term->wcTo = renewn(term->wcTo, term->wcFromTo_size);
+            term->wcFrom[ib].origwc = term->wcFrom[ib].wc = bp->chr;
+            term->wcFrom[ib].index = -1;
+            ib++;
+          }
+        }
+      }
+
+      term->wcFrom[ib].origwc = term->wcFrom[ib].wc = c;
+      term->wcFrom[ib].index = it;
+
+      ib++;
     }
 
     trace_bidi("=", term->wcFrom);
-    do_bidi(term->wcFrom, term->cols);
+    do_bidi(term->wcFrom, ib);
     trace_bidi(":", term->wcFrom);
-    do_shape(term->wcFrom, term->wcTo, term->cols);
+    do_shape(term->wcFrom, term->wcTo, ib);
     trace_bidi("~", term->wcTo);
 
     if (term->ltemp_size < line->size) {
@@ -926,16 +963,22 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
 
     memcpy(term->ltemp, line->chars, line->size * sizeof(termchar));
 
+    ib = 0;
     for (it = 0; it < term->cols; it++) {
-      term->ltemp[it] = line->chars[term->wcTo[it].index];
-      if (term->ltemp[it].cc_next)
-        term->ltemp[it].cc_next -= it - term->wcTo[it].index;
+      while (term->wcTo[ib].index == -1)
+        ib++;
 
-      if (term->wcTo[it].origwc != term->wcTo[it].wc)
-        term->ltemp[it].chr = term->wcTo[it].wc;
+      term->ltemp[it] = line->chars[term->wcTo[ib].index];
+      if (term->ltemp[it].cc_next)
+        term->ltemp[it].cc_next -= it - term->wcTo[ib].index;
+
+      if (term->wcTo[ib].origwc != term->wcTo[ib].wc)
+        term->ltemp[it].chr = term->wcTo[ib].wc;
+
+      ib++;
     }
     term_bidi_cache_store(term, scr_y, line->chars, term->ltemp, term->wcTo,
-                          term->cols, line->size);
+                          term->cols, line->size, ib);
 
     lchars = term->ltemp;
   }

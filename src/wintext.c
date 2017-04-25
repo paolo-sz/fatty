@@ -9,7 +9,6 @@
 #include "winsearch.h"
 #include "charset.h"  // wcscpy, combiningdouble
 
-#include "minibidi.h"
 #include "winimg.h"
 
 #include <winnls.h>
@@ -714,7 +713,7 @@ win_paint(void)
   EndPaint(wnd, &p);
 }
 
-static void do_update(void);
+void do_update(void);
 static void do_update_cb(void* _) { (void)_; do_update(); }
 
 #define dont_debug_cursor 1
@@ -915,7 +914,7 @@ show_curchar_info(char tag)
 }
 
 
-static void
+void
 do_update(void)
 {
 #if defined(debug_cursor) && debug_cursor > 1
@@ -1161,7 +1160,7 @@ char1ulen(wchar * text)
  * We are allowed to fiddle with the contents of `text'.
  */
 void
-win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int lattr, bool has_rtl)
+win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
 {
   bool clearpad = lattr & LATTR_CLEARPAD;
   trace_line("win_text:", text, len);
@@ -1423,6 +1422,14 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, int la
 
  /* Uniscribe handling */
   bool use_uniscribe = cfg.font_render == FR_UNISCRIBE && !has_rtl;
+  if (use_uniscribe) {
+    use_uniscribe = false;
+    for (int i = 0; i < len; i++)
+      if (text[i] >= 0x80) {
+        use_uniscribe = true;
+        break;
+      }
+  }
   SCRIPT_STRING_ANALYSIS ssa;
 
   void

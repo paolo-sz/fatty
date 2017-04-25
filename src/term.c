@@ -163,6 +163,7 @@ term_reset(struct term* term)
   term->show_scrollbar = true;
   term->wide_indic = false;
   term->wide_extra = false;
+  term->disable_bidi = false;
 
   term->virtuallines = 0;
   term->altvirtuallines = 0;
@@ -929,7 +930,7 @@ term_check_boundary(struct term* term, int x, int y)
 
   termline *line = term->lines[y];
   if (x == term->cols)
-    line->attr &= ~LATTR_WRAPPED2;
+    line->lattr &= ~LATTR_WRAPPED2;
   else if (line->chars[x].chr == UCSWIDE) {
     clear_cc(line, x - 1);
     clear_cc(line, x);
@@ -1082,9 +1083,9 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
       int cols = min(line->cols, line->size);
       if (start.x == cols) {
         if (line_only)
-          line->attr &= ~(LATTR_WRAPPED | LATTR_WRAPPED2);
+          line->lattr &= ~(LATTR_WRAPPED | LATTR_WRAPPED2);
         else
-          line->attr = LATTR_NORM;
+          line->lattr = LATTR_NORM;
       }
       else if (!selective || !(line->chars[start.x].attr.attr & ATTR_PROTECTED))
         line->chars[start.x] = term->erase_char;
@@ -1155,7 +1156,7 @@ term_paint(struct term* term)
       } else {
         tattr.attr &= ~TATTR_RESULT;
       }
-      if (term->markpos_valid && (displine->attr & (LATTR_MARKED | LATTR_UNMARKED))) {
+      if (term->markpos_valid && (displine->lattr & (LATTR_MARKED | LATTR_UNMARKED))) {
         tattr.attr |= TATTR_MARKED;
         if (scrpos.y == term->markpos)
           tattr.attr |= TATTR_CURMARKED;
@@ -1313,7 +1314,7 @@ term_paint(struct term* term)
     }
     if (prevdirtyitalic) {
       // clear italic overhang into right padding border
-      win_text(term->cols, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->attr | LATTR_CLEARPAD, false);
+      win_text(term->cols, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr | LATTR_CLEARPAD, false);
     }
 
    /*
@@ -1327,12 +1328,12 @@ term_paint(struct term* term)
     uchar bc = 0;
     bool combdouble_pending = false;
     bool was_combdouble_pending = false;
-    bool dirty_run = (line->attr != displine->attr);
+    bool dirty_run = (line->lattr != displine->lattr);
     bool dirty_line = dirty_run;
     cattr attr = CATTR_DEFAULT;
     int start = 0;
 
-    displine->attr = line->attr;
+    displine->lattr = line->lattr;
 
     static struct italic_chunk {
       int x;
@@ -1446,7 +1447,7 @@ term_paint(struct term* term)
           if (attr.attr & ATTR_ITALIC)
             push_text(start, text, textlen, attr, textattr, has_rtl);
           else
-            win_text(start, i, text, textlen, attr, textattr, line->attr, has_rtl);
+            win_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
         }
         start = j;
         textlen = 0;
@@ -1512,7 +1513,12 @@ term_paint(struct term* term)
           }
           else {
             textattr[textlen] = dd->attr;
-            text[textlen++] = dd->chr;
+            // hide bidi isolate mark glyphs (if handled zero-width)
+            if (dd->chr >= 0x2066 && dd->chr <= 0x2069)
+              text[textlen++] = 0x200B;  // zero width space
+            else
+              text[textlen++] = dd->chr;
+            // mark combining unless pseudo-combining surrogates
             if ((dd->chr & 0xFC00) != 0xDC00)
               attr.attr |= TATTR_COMBINING;
 #ifdef debug_surrogates
@@ -1549,7 +1555,7 @@ term_paint(struct term* term)
       }
     }
     if (dirty_run && textlen)
-      win_text(start, i, text, textlen, attr, textattr, line->attr, has_rtl);
+      win_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
 
     for (int j = italic_chunks - 1; j >= 0; j--) {
       struct italic_chunk * icp = &italic_stack[j];
@@ -1574,9 +1580,9 @@ term_paint(struct term* term)
         bgspaces = icp->len;
       }
       // background: non-italic
-      win_text(icp->x, i, bgspace, icp->len, attr, icp->textattr, line->attr, icp->has_rtl);
+      win_text(icp->x, i, bgspace, icp->len, attr, icp->textattr, line->lattr, icp->has_rtl);
       // foreground: transparent and with extended clipping box
-      win_text(icp->x, i, icp->text, icp->len, icp->attr, icp->textattr, line->attr, icp->has_rtl);
+      win_text(icp->x, i, icp->text, icp->len, icp->attr, icp->textattr, line->lattr, icp->has_rtl);
       free(icp->text);
       free(icp->textattr);
     }
@@ -1601,7 +1607,7 @@ term_invalidate(struct term* term, int left, int top, int right, int bottom)
     bottom = term->rows - 1;
 
   for (int i = top; i <= bottom && i < term->rows; i++) {
-    if ((term->displines[i]->attr & LATTR_MODE) == LATTR_NORM)
+    if ((term->displines[i]->lattr & LATTR_MODE) == LATTR_NORM)
       for (int j = left; j <= right && j < term->cols; j++)
         term->displines[i]->chars[j].attr.attr |= ATTR_INVALID;
     else
@@ -1634,7 +1640,7 @@ term_scroll(struct term* term, int rel, int where)
     int y = term->markpos;
     while ((rel == SB_PRIOR) ? y-- > sbtop : y++ < sbbot) {
       termline * line = fetch_line(term, y);
-      if (line->attr & LATTR_MARKED) {
+      if (line->lattr & LATTR_MARKED) {
         term->markpos = y;
         term->disptop = y;
         break;
@@ -1650,8 +1656,11 @@ term_scroll(struct term* term, int rel, int where)
   if (term->disptop > 0)
     term->disptop = 0;
   win_update_term(term);
-  if (do_schedule_update)
+
+  if (do_schedule_update) {
     win_schedule_update();
+    do_update();
+  }
 }
 
 void
