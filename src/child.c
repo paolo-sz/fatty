@@ -479,12 +479,12 @@ user_command(struct child* child, int n)
       if (n == 0) {
         char * fgp = foreground_prog(child);
         if (fgp) {
-          setenv("MINTTY_PROG", fgp, true);
+          setenv("FATTY_PROG", fgp, true);
           free(fgp);
         }
         char * fgd = foreground_cwd(child);
         if (fgd) {
-          setenv("MINTTY_CWD", fgd, true);
+          setenv("FATTY_CWD", fgd, true);
           free(fgd);
         }
         return term_cmd(child->term, progp, true);

@@ -195,7 +195,7 @@ static void
 debug(char *tag)
 {
   if (!debugopt) {
-    debugopt = getenv("MINTTY_DEBUG");
+    debugopt = getenv("FATTY_DEBUG");
     if (!debugopt)
       debugopt = "";
   }
@@ -223,7 +223,7 @@ display_update(char * new)
 
   //__ Options: dialog title
   char * opt = _("Options");
-  //__ Options: dialog title
+  //__ Options: dialog title: "fatty <release> available (for download)"
   char * avl = _("available");
   char * pat = "%s            ▶ %s %s %s ◀";
   int len = strlen(opt) + strlen(APPNAME) + strlen(new) + strlen(avl) + strlen(pat) - 7;
@@ -238,7 +238,7 @@ display_update(char * new)
   free(wmsg);
 }
 
-static char * vfn = "/tmp/.mintty-version";
+static char * vfn = "/tmp/.fatty-version";
 
 void
 update_available_version()
@@ -284,6 +284,7 @@ update_available_version()
   version_retrieving = false;
 }
 
+/*
 static void
 deliver_available_version()
 {
@@ -297,13 +298,13 @@ deliver_available_version()
   // proceed asynchronously, in child process
 
   // determine available version
-  char * mtv = "https://raw.githubusercontent.com/mintty/mintty/master/VERSION";
+  char * mtv = "https://raw.githubusercontent.com/fatty/fatty/master/VERSION";
   char * wfn = path_posix_to_win_a(vfn);
 #ifdef debug_version_check
   printf("deliver_available_version downloading to <%s>...\n", wfn);
 #endif
 #ifdef use_powershell
-#warning on Windows 7, this hangs the mintty parent process!!!
+#warning on Windows 7, this hangs the fatty parent process!!!
   char * cmdpat = "powershell.exe -command '(new-object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")'";
   char * cmd = newn(char, strlen(cmdpat) + strlen(mtv) + strlen(wfn) - 3);
   sprintf(cmd, cmdpat, mtv, wfn);
@@ -319,6 +320,7 @@ deliver_available_version()
   SendMessageA(wnd, WM_APP, 0, 0);  // notify parent
   exit(0);
 }
+*/
 
 #define dont_debug_messages
 
@@ -599,9 +601,11 @@ win_open_config(void)
   // Set title of Options dialog explicitly to facilitate I18N
   //__ Options: dialog title
   SendMessageW(config_wnd, WM_SETTEXT, 0, (LPARAM)_W("Options"));
+/*
   if (version_available && strcmp(VERSION, version_available))
     display_update(version_available);
   deliver_available_version();
+*/
 
   ShowWindow(config_wnd, SW_SHOW);
 

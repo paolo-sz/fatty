@@ -233,9 +233,42 @@ term_select_all(struct term* term)
 }
 
 static wchar *
-term_get_sel_or_all(struct term* term, bool all, bool screen)
+term_get_sel_or_all(struct term* term, bool all, bool screen, bool command)
 {
-  if (screen) {
+  if (command) {
+    int sbtop = -sblines(term);
+    int y = term_last_nonempty_line(term);
+
+    termline * line = fetch_line(term, y);
+    if (line->attr & LATTR_MARKED) {
+      if (y > sbtop) {
+        y--;
+        term->sel_end = (pos){y, term->cols};
+        termline * line = fetch_line(term, y);
+        if (line->attr & LATTR_MARKED)
+          y++;
+      }
+      else {
+        term->sel_end = (pos){y, 0};
+      }
+    }
+    else
+      term->sel_end = (pos){y, term->cols};
+
+    int yok = y;
+    while (y-- > sbtop) {
+      termline * line = fetch_line(term, y);
+      if (line->attr & LATTR_MARKED) {
+        break;
+      }
+      yok = y;
+    }
+    term->sel_start = (pos){yok, 0};
+#ifdef debug_user_cmd_clip
+    printf("%d:%d...%d:%d\n", term->sel_start.y, term->sel_start.x, term->sel_end.y, term->sel_end.x);
+#endif
+  }
+  else if (screen) {
     term->sel_start = (pos){term->disptop, 0};
     term->sel_end = (pos){term_last_nonempty_line(term), term->cols};
   }
@@ -259,26 +292,32 @@ void
 term_cmd(struct term * term, char * cmdpat, bool all)
 {
   // provide scrollback buffer
-  wchar * wsel = term_get_sel_or_all(term, all, false);
+  wchar * wsel = term_get_sel_or_all(term, all, false, false);
   char * sel = cs__wcstombs(wsel);
   free(wsel);
-  setenv("MINTTY_SELECTION", sel, true);
+  setenv("FATTY_SELECTION", sel, true);
   free(sel);
   // provide current screen
-  wsel = term_get_sel_or_all(term, false, true);
+  wsel = term_get_sel_or_all(term, false, true, false);
   sel = cs__wcstombs(wsel);
   free(wsel);
-  setenv("MINTTY_SCREEN", sel, true);
+  setenv("FATTY_SCREEN", sel, true);
+  free(sel);
+  // provide last command output
+  wsel = term_get_sel_or_all(term, false, false, true);
+  sel = cs__wcstombs(wsel);
+  free(wsel);
+  setenv("FATTY_COMMAND", sel, true);
   free(sel);
   // provide window title
   char * ttl = win_get_title();
-  setenv("MINTTY_TITLE", ttl, true);
+  setenv("FATTY_TITLE", ttl, true);
   free(ttl);
 
 #ifdef use_placeholders
   sel = 0;
   if (strstr(cmdpat, "%s") || strstr(cmdpat, "%1$s")) {
-    wchar * wsel = term_get_sel_or_all(all);
+    wchar * wsel = term_get_sel_or_all(all, false, false);
     sel = cs__wcstombs(wsel);
     free(wsel);
   }
@@ -293,6 +332,12 @@ term_cmd(struct term * term, char * cmdpat, bool all)
 #endif
 
   FILE * cmdf = popen(cmd, "r");
+  unsetenv("FATTY_TITLE");
+  unsetenv("FATTY_COMMAND");
+  unsetenv("FATTY_SCREEN");
+  unsetenv("FATTY_SELECTION");
+  unsetenv("FATTY_CWD");
+  unsetenv("FATTY_PROG");
   if (cmdf) {
     if (term->bracketed_paste)
       child_write(term->child, "\e[200~", 6);

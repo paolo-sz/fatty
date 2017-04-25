@@ -1,4 +1,4 @@
-// sixel.c (part of mintty)
+// sixel.c (part of fatty)
 // this function is derived from a part of graphics.c
 // in Xterm pl#310 originally written by Ross Combs.
 //

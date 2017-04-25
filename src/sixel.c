@@ -1,4 +1,4 @@
-// sixel.c (part of mintty)
+// sixel.c (part of fatty)
 // originally written by kmiya@cluti (https://github.com/saitoha/sixel/blob/master/fromsixel.c)
 // Licensed under the terms of the GNU General Public License v3 or later.
 

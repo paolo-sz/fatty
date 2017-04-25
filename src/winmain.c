@@ -1351,6 +1351,8 @@ static struct {
         when SB_LINEUP:   term_scroll(term, 0, -1);
         when SB_PAGEDOWN: term_scroll(term, 0, +max(1, term->rows - 1));
         when SB_PAGEUP:   term_scroll(term, 0, -max(1, term->rows - 1));
+        when SB_PRIOR:    term_scroll(term, SB_PRIOR, 0);
+        when SB_NEXT:     term_scroll(term, SB_NEXT, 0);
         when SB_THUMBPOSITION or SB_THUMBTRACK: {
           SCROLLINFO info;
           info.cbSize = sizeof(SCROLLINFO);

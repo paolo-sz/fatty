@@ -56,7 +56,6 @@ typedef enum {
   // assert (TRUE_COLOUR % 4) == 0 so that checking x >= TRUE_COLOUR
   // is resistant to previous |= 1 or ^= 2 (win_text)
   TRUE_COLOUR = 0x180
-
 } colour_i;
 
 
@@ -116,8 +115,10 @@ enum {
   TATTR_COMBDOUBL = 0x800000000000u, /* combining double characters */
   TATTR_ZOOMFULL  = 0x400000000000u, /* to be zoomed to full cell size */
 
-  TATTR_RESULT    = 0x100000000000u, /* search result */
-  TATTR_CURRESULT = 0x200000000000u, /* current search result */
+  TATTR_RESULT    = 0x00100000000000u, /* search result */
+  TATTR_CURRESULT = 0x00200000000000u, /* current search result */
+  TATTR_MARKED    = 0x01000000000000u, /* scroll marker */
+  TATTR_CURMARKED = 0x02000000000000u, /* current scroll marker */
 
   DATTR_STARTRUN  = 0x080000000000u, /* start of redraw run */
   DATTR_MASK      = 0x0F0000000000u,
@@ -135,6 +136,7 @@ enum {
   LATTR_WRAPPED2  = 0x00000020u, /* with WRAPPED: CJK wide character
                                   * wrapped to next line, so last
                                   * single-width cell is empty */
+  LATTR_MARKED    = 0x00000100u, /* scroll marker */
 };
 
 enum {
@@ -172,7 +174,6 @@ typedef struct {
   */
   wchar chr;
   cattr attr;
-
 } termchar;
 
 /*const*/ extern termchar basic_erase_char;
@@ -473,6 +474,9 @@ struct term {
 
   bool searched;
   bool search_window_visible;
+
+  int markpos;
+  bool markpos_valid;
 
   struct child* child;
 };

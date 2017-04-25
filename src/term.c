@@ -9,7 +9,7 @@
 
 #include "termpriv.h"
 
-#include "win.h"
+#include "winpriv.h"
 #include "charset.h"
 #include "child.h"
 #include "winsearch.h"
@@ -845,6 +845,7 @@ term_check_boundary(struct term* term, int x, int y)
 void
 term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
 {
+  term->markpos_valid = false;
   assert(botline >= topline && lines != 0);
 
   bool down = lines < 0; // Scrolling downwards?
@@ -1052,6 +1053,13 @@ term_paint(struct term* term)
         }
       } else {
         tattr.attr &= ~TATTR_RESULT;
+      }
+      if (term->markpos_valid && (displine->attr & LATTR_MARKED)) {
+        tattr.attr |= TATTR_MARKED;
+        if (scrpos.y == term->markpos)
+          tattr.attr |= TATTR_CURMARKED;
+      } else {
+        tattr.attr &= ~TATTR_MARKED;
       }
 
      /* 'Real' blinking ? */
@@ -1376,17 +1384,42 @@ term_invalidate(struct term* term, int left, int top, int right, int bottom)
  * this position is relative to the beginning of the scrollback, -1
  * to denote it is relative to the end, and 0 to denote that it is
  * relative to the current position.
+ * The first parameter may also be SB_PRIOR or SB_NEXT, to scroll to 
+ * the prior or next distinguished/marked position (to be searched).
  */
 void
 term_scroll(struct term* term, int rel, int where)
 {
   int sbtop = -sblines(term);
-  term->disptop = (rel < 0 ? 0 : rel > 0 ? sbtop : term->disptop) + where;
+  int sbbot = term_last_nonempty_line(term);
+  bool do_schedule_update = false;
+
+  if (rel == SB_PRIOR || rel == SB_NEXT) {
+    if (!term->markpos_valid) {
+      term->markpos = sbbot;
+      term->markpos_valid = true;
+    }
+    int y = term->markpos;
+    while ((rel == SB_PRIOR) ? y-- > sbtop : y++ < sbbot) {
+      termline * line = fetch_line(term, y);
+      if (line->attr & LATTR_MARKED) {
+        term->markpos = y;
+        term->disptop = y;
+        break;
+      }
+    }
+    do_schedule_update = true;
+  }
+  else
+    term->disptop = (rel < 0 ? 0 : rel > 0 ? sbtop : term->disptop) + where;
+
   if (term->disptop < sbtop)
     term->disptop = sbtop;
   if (term->disptop > 0)
     term->disptop = 0;
   win_update_term(term);
+  if (do_schedule_update)
+    win_schedule_update();
 }
 
 void

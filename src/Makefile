@@ -61,6 +61,7 @@ $(BUILD_DIR)%.o: %.c Makefile $(debug_t) rgb.t
 $(BUILD_DIR)%.o: %.rc Makefile $(debug_t) rgb.t
 	@$(prepare_build)
 	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED $(depflags) $(CPPFLAGS)' $< $@
+	@mv res.d $(BUILD_DIR)
 
 -include $(depfiles)
 
