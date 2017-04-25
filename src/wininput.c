@@ -267,10 +267,10 @@ win_init_ctxmenu(bool extended_menu)
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEWTAB, _W("New tab\tCtrl+Shift+T"));
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tShift+<-"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tShift+->"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move to left\tCtrl+Shift+<-"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Next to right\tCtrl+Shift+->"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tCtrl+PgUp"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tCtrl+PgDn"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move to left\tCtrl+Shift+PgUp"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Next to right\tCtrl+Shift+PgDn"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_COPY, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_PASTE, 0);
@@ -1409,26 +1409,26 @@ win_key_down(WPARAM wp, LPARAM lp)
       }
     when VK_INSERT: edit_key(2, '0');
     when VK_DELETE: edit_key(3, '.');
-    when VK_PRIOR:  edit_key(5, '9');
-    when VK_NEXT:   edit_key(6, '3');
+    when VK_PRIOR:
+      if (shift && ctrl)
+        win_tab_move(-1);
+      else if (ctrl)
+        win_tab_change(-1);
+      else
+        edit_key(5, '9');
+    when VK_NEXT:
+      if (shift && ctrl)
+        win_tab_move(1);
+      else if (ctrl)
+        win_tab_change(1);
+      else
+        edit_key(6, '3');
     when VK_HOME:   active_term->vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
     when VK_END:    active_term->vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
     when VK_UP:     cursor_key('A', '8');
     when VK_DOWN:   cursor_key('B', '2');
-    when VK_LEFT:
-      if (shift && ctrl)
-        win_tab_move(-1);
-      else if (shift)
-        win_tab_change(-1);
-      else
-        cursor_key('D', '4');
-    when VK_RIGHT:
-      if (shift && ctrl)
-        win_tab_move(1);
-      else if (shift)
-        win_tab_change(1);
-      else
-        cursor_key('C', '6');
+    when VK_LEFT:   cursor_key('D', '4');
+    when VK_RIGHT:  cursor_key('C', '6');
     when VK_CLEAR:  cursor_key('E', '5');
     when VK_MULTIPLY ... VK_DIVIDE:
       if (key == VK_ADD && old_alt_state == ALT_ALONE)

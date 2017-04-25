@@ -487,7 +487,8 @@ user_command(struct child* child, int n)
           setenv("FATTY_CWD", fgd, true);
           free(fgd);
         }
-        return term_cmd(child->term, progp, true);
+        term_cmd(child->term, progp);
+        break;
       }
       n--;
 
