@@ -24,6 +24,7 @@ extern void setup_config_box(controlbox *);
 #endif
 
 #include <sys/cygwin.h>  // cygwin_internal
+#include <sys/stat.h>  // chmod
 
 
 /*
@@ -298,8 +299,16 @@ update_available_version(bool ok)
 //static void
 //deliver_available_version()
 //{
-//  if (version_retrieving)
+//  if (version_retrieving || !cfg.check_version_update)
 //    return;
+//
+//  static time_t version_retrieved = 0;
+//  struct timespec ts;
+//  clock_gettime(CLOCK_MONOTONIC, &ts);
+//  if (version_retrieved && ts.tv_sec - version_retrieved < cfg.check_version_update)
+//    return;
+//  version_retrieved = ts.tv_sec;
+//
 //  version_retrieving = true;
 //
 //  if (fork())
@@ -314,7 +323,7 @@ update_available_version(bool ok)
 //  printf("deliver_available_version downloading to <%s>...\n", wfn);
 //#endif
 //#ifdef use_powershell
-//#warning on Windows 7, this hangs the fatty parent process!!!
+//#warning on Windows 7, this hangs the mintty parent process!!!
 //  char * cmdpat = "powershell.exe -command '(new-object System.Net.WebClient).DownloadFile(\"%s\", \"%s\")'";
 //  char * cmd = newn(char, strlen(cmdpat) + strlen(mtv) + strlen(wfn) - 3);
 //  sprintf(cmd, cmdpat, mtv, wfn);
@@ -325,11 +334,12 @@ update_available_version(bool ok)
 //  pURLDownloadToFile = load_library_func("urlmon.dll", "URLDownloadToFileA");
 //  if (pURLDownloadToFile) {
 //#ifdef __CYGWIN__
-//      /* Need to sync the Windows environment */
-//      cygwin_internal(CW_SYNC_WINENV);
+//    /* Need to sync the Windows environment */
+//    cygwin_internal(CW_SYNC_WINENV);
 //#endif
 //    if (S_OK != pURLDownloadToFile(NULL, mtv, wfn, 0, NULL))
 //      ok = false;
+//    chmod(vfn, 0666);
 //  }
 //  else
 //    ok = false;
@@ -603,13 +613,13 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 HWND config_wnd;
 
 static LRESULT CALLBACK
-check_options(int nCode, WPARAM wParam, LPARAM lParam)
+scale_options(int nCode, WPARAM wParam, LPARAM lParam)
 {
   (void)wParam;
 
-#define dont_debug_check_options
+#define dont_debug_scale_options
 
-#ifdef debug_check_options
+#ifdef debug_scale_options
   char * hcbt[] = {
     "HCBT_MOVESIZE",
     "HCBT_MINMAX",
@@ -650,7 +660,7 @@ check_options(int nCode, WPARAM wParam, LPARAM lParam)
   }
 
   //return CallNextHookEx(0, nCode, wParam, lParam);
-  return 0;
+  return 0;  // 0: let default dialog box procedure process the message
 }
 
 void
@@ -683,7 +693,7 @@ win_open_config(void)
     initialised = true;
   }
 
-  hook_windows(check_options);
+  hook_windows(scale_options);
   config_wnd = CreateDialog(inst, MAKEINTRESOURCE(IDD_MAINBOX),
                             wnd, config_dialog_proc);
   unhook_windows();
@@ -770,7 +780,8 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam)
     hooked_window_activated = true;
   }
 
-  return CallNextHookEx(0, nCode, wParam, lParam);
+  //return CallNextHookEx(0, nCode, wParam, lParam);
+  return 0;  // 0: let default dialog box procedure process the message
 }
 
 int

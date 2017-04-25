@@ -143,6 +143,7 @@ typedef struct {
   int col_spacing, row_spacing;
   int padding;
   bool handle_dpichanged;
+  int check_version_update;
   string word_chars;
   string word_chars_excl;
   colour ime_cursor_colour;

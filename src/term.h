@@ -260,7 +260,8 @@ typedef struct {
 typedef struct {
   result * results;
   wchar * query;
-  int query_length;
+  uint * xquery;
+  int xquery_length;
   int capacity;
   int current;
   int length;

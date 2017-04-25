@@ -35,7 +35,7 @@ static HFONT fonts[FONT_MAXNO];
 static bool fontflag[FONT_MAXNO];
 static int fw_norm = FW_NORMAL;
 static int fw_bold = FW_BOLD;
-static int row_spacing;
+int row_spacing;
 
 enum {LDRAW_CHAR_NUM = 31, LDRAW_CHAR_TRIES = 4};
 
@@ -82,8 +82,8 @@ static const wchar linedraw_chars[LDRAW_CHAR_NUM][LDRAW_CHAR_TRIES] = {
   {0x00B7, '.'},                   // 0x7E '~' Centered dot
 };
 
-static enum {/*unused*/BOLD_NONE, BOLD_SHADOW, BOLD_FONT} bold_mode;
-static enum {UND_LINE, UND_FONT} und_mode;
+BOLD_MODE bold_mode;
+UND_MODE und_mode;
 static int descent;
 
 // Current font size (with any zooming)
@@ -1893,6 +1893,13 @@ win_set_colour(colour_i i, colour c)
       else
         colours[BOLD_FG_COLOUR_I] = brighten(colours[FG_COLOUR_I], colours[BG_COLOUR_I]);
     }
+    else if (i == FG_COLOUR_I)
+      colours[i] = cfg.fg_colour;
+    else if (i == BG_COLOUR_I)
+      colours[i] = cfg.bg_colour;
+    else if (i == CURSOR_COLOUR_I)
+      colours[i] = cfg.cursor_colour;
+
     return;
   }
   colours[i] = c;

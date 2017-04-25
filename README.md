@@ -13,8 +13,8 @@ using tabs.
 * Most features from mintty should work
 * To create new tab, press ctrl-shift-T
 * ctrl-shift-W closes the tab
-* To change active tab, click it with mouse or press shift-(left arrow|right arrow)
-* To move tab, press ctrl-shift-(arrow direction)
+* To change active tab, click it with mouse or press ctrl-(PagUp|PagDn)
+* To move tab, press ctrl-shift-(PagUp|PagDn)
 
 If you find bugs (there are probably many), you may report them on Github or
 send pull requests
