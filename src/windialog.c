@@ -302,12 +302,14 @@ update_available_version(bool ok)
 //  if (version_retrieving || !cfg.check_version_update)
 //    return;
 //
+//#if CYGWIN_VERSION_API_MINOR >= 74
 //  static time_t version_retrieved = 0;
 //  struct timespec ts;
 //  clock_gettime(CLOCK_MONOTONIC, &ts);
 //  if (version_retrieved && ts.tv_sec - version_retrieved < cfg.check_version_update)
 //    return;
 //  version_retrieved = ts.tv_sec;
+//#endif
 //
 //  version_retrieving = true;
 //
