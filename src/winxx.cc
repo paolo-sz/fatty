@@ -276,11 +276,11 @@ void win_tab_set_title(struct term* term, wchar_t* title) {
     if (tab.info.titles[tab.info.titles_i] != title) {
         tab.info.titles[tab.info.titles_i] = title;
         invalidate_tabs();
-        TCITEMW tie; 
-        tie.mask = TCIF_TEXT; 
-        tie.pszText = title;
-        SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
     }
+    TCITEMW tie; 
+    tie.mask = TCIF_TEXT; 
+    tie.pszText = title;
+    SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
 }
 
 wchar_t* win_tab_get_title(unsigned int idx) {
