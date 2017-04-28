@@ -634,10 +634,6 @@ set_modes(struct term* term, bool state)
           term->cursor_on = state;
         when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
           term->deccolm_allowed = state;
-        when 47: /* alternate screen */
-          term->selected = false;
-          term_switch_screen(term, state, false);
-          term->disptop = 0;
         when 67: /* DECBKM: backarrow key mode */
           term->backspace_sends_bs = state;
         when 80: /* DECSDM: SIXEL display mode */
@@ -665,23 +661,35 @@ set_modes(struct term* term, bool state)
           term->bell_taskbar = state;
         when 1043:
           term->bell_popup = state;
+        when 47: /* alternate screen */
+          if (!cfg.disable_alternate_screen) {
+            term->selected = false;
+            term_switch_screen(term, state, false);
+            term->disptop = 0;
+          }
         when 1047:       /* alternate screen */
-          term->selected = false;
-          term_switch_screen(term, state, true);
-          term->disptop = 0;
+          if (!cfg.disable_alternate_screen) {
+            term->selected = false;
+            term_switch_screen(term, state, true);
+            term->disptop = 0;
+          }
         when 1048:       /* save/restore cursor */
-          if (state)
-            save_cursor(term);
-          else
-            restore_cursor(term);
+          if (!cfg.disable_alternate_screen) {
+            if (state)
+              save_cursor(term);
+            else
+              restore_cursor(term);
+          }
         when 1049:       /* cursor & alternate screen */
-          if (state)
-            save_cursor(term);
-          term->selected = false;
-          term_switch_screen(term, state, true);
-          if (!state)
-            restore_cursor(term);
-          term->disptop = 0;
+          if (!cfg.disable_alternate_screen) {
+            if (state)
+              save_cursor(term);
+            term->selected = false;
+            term_switch_screen(term, state, true);
+            if (!state)
+              restore_cursor(term);
+            term->disptop = 0;
+          }
         when 1061:       /* VT220 keyboard emulation */
           term->vt220_keys = state;
         when 2004:       /* xterm bracketed paste mode */

@@ -339,6 +339,9 @@ wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp))
 void
 win_switch(bool back, bool alternate)
 {
+  // avoid being pushed behind other windows (#652)
+  SetWindowPos(wnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
   first_wnd = 0, last_wnd = 0;
   EnumWindows(wnd_enum_proc, 0);
   if (first_wnd) {
@@ -973,6 +976,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   if (sync_size_with_font && !win_is_fullscreen) {
     win_set_chars(term->rows, term->cols);
     //win_fix_position();
+
     win_invalidate_all();
     return;
   }
@@ -1678,6 +1682,7 @@ static struct {
 #endif
     }
   }
+
  /*
   * Any messages we don't process completely above are passed through to
   * DefWindowProc() for default processing.
