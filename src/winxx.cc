@@ -20,6 +20,7 @@ extern "C" {
 #include "winpriv.h"
 #include "winsearch.h"
 
+extern wchar * cs__mbstowcs(const char * s);
 }
 
 #define lengthof(array) (sizeof(array) / sizeof(*(array)))
@@ -90,23 +91,6 @@ void win_process_timer_message(WPARAM message) {
 
     // call the callback
     get<0>(callback)( get<1>(callback) );
-}
-
-void win_active_tab_title_push() {
-  Tab& tab = tabs.at(active_tab);
-  if (tab.info.titles_i == lengthof(tab.info.titles))
-    tab.info.titles_i = 0;
-  else
-    tab.info.titles_i++;
-}
-  
-wchar_t* win_active_tab_title_pop() {
-  Tab& tab = tabs.at(active_tab);
-  if (!tab.info.titles_i)
-    tab.info.titles_i = lengthof(tab.info.titles);
-  else
-    tab.info.titles_i--;
-  return win_tab_get_title(active_tab);
 }
 
 static void invalidate_tabs() {
@@ -204,13 +188,14 @@ static void newtab(
     TCITEM tie; 
     tie.mask = TCIF_TEXT; 
     if (title) {
-      win_set_title(tab.terminal.get(), title);
       tie.pszText = title;
     } else {
-      win_set_title(tab.terminal.get(), g_cmd);
       tie.pszText = g_cmd;
     }
     SendMessage(tab_wnd, TCM_INSERTITEM, tabs.size()-1, (LPARAM)&tie);
+    wchar *ws = cs__mbstowcs(tie.pszText);
+    win_tab_set_title(tab.terminal.get(), ws);
+    free(ws);
 }
 
 static void set_tab_bar_visibility(bool b);
@@ -279,12 +264,47 @@ void win_tab_set_title(struct term* term, wchar_t* title) {
     }
     TCITEMW tie; 
     tie.mask = TCIF_TEXT; 
-    tie.pszText = title;
+    tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
     SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
+    if (term == win_active_terminal()) {
+      win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
+    }
 }
 
 wchar_t* win_tab_get_title(unsigned int idx) {
     return (wchar_t *)tabs[idx].info.titles[tabs[idx].info.titles_i].c_str();
+}
+
+void win_tab_title_push(struct term* term) {
+  Tab& tab = tab_by_term(term);
+  if (tab.info.titles_i == lengthof(tab.info.titles))
+    tab.info.titles_i = 0;
+  else
+    tab.info.titles_i++;
+}
+  
+wchar_t* win_tab_title_pop(struct term* term) {
+  Tab& tab = tab_by_term(term);
+  if (!tab.info.titles_i)
+    tab.info.titles_i = lengthof(tab.info.titles);
+  else
+    tab.info.titles_i--;
+  return win_tab_get_title(active_tab);
+}
+
+/*
+ * Title stack (implemented as fixed-size circular buffer)
+ */
+void
+win_tab_save_title(struct term* term)
+{
+  win_tab_title_push(term);
+}
+
+void
+win_tab_restore_title(struct term* term)
+{
+  win_tab_set_title(term, win_tab_title_pop(term));
 }
 
 bool win_should_die() { return tabs.size() == 0; }

@@ -6,7 +6,7 @@
 
 #include "termpriv.h"
 
-#include "win.h"
+#include "winpriv.h"
 #include "appinfo.h"
 #include "charset.h"
 #include "child.h"
@@ -820,10 +820,10 @@ do_winop(struct term* term)
     }
     when 22:
       if (arg1 == 0 || arg1 == 2)
-        win_save_title();
+        win_tab_save_title(term);
     when 23:
       if (arg1 == 0 || arg1 == 2)
-        win_restore_title();
+        win_tab_restore_title(term);
   }
 }
 
@@ -1335,9 +1335,12 @@ do_cmd(struct term* term)
 {
   char *s = term->cmd_buf;
   s[term->cmd_len] = 0;
+  wchar *ws = cs__mbstowcs(s);
 
   switch (term->cmd_num) {
-    when 0 or 2: win_set_title(term, s);  // ignore icon title
+    when 0 or 2: 
+      win_tab_set_title(term, ws);  // ignore icon title
+      free(ws);
     when 4:   do_colour_osc(term, true, 4, false);
     when 5:   do_colour_osc(term, true, 5, false);
     when 104: do_colour_osc(term, true, 4, true);
