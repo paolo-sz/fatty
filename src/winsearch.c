@@ -69,12 +69,7 @@ next_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  if (term->searched) {
-    term->results.current = (term->results.current + 1) % term->results.length;
-  }
-  else {
-    term->searched = true;
-  }
+  term->results.current = (term->results.current + 1) % term->results.length;
   scroll_to_result(term);
 }
 
@@ -84,17 +79,7 @@ prev_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  if (term->searched) {
-    term->results.current = (term->results.current - 1) % term->results.length;
-    // Handle wrap arounds correctly.
-    if (term->results.current < 0) {
-      term->results.current += term->results.length;
-    }
-  }
-  else {
-    term->results.current = term->results.length - 1;
-    term->searched = true;
-  }
+  term->results.current = (term->results.current + term->results.length - 1) % term->results.length;
   scroll_to_result(term);
 }
 
@@ -183,9 +168,9 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     GetWindowTextW(search_edit_wnd, buf, len);
     term_set_search(term, buf);
     term_update_search(term);
-    term->searched = false;
     win_schedule_update();
-    return 0;
+    scroll_to_result(term);
+	return 0;
   }
 
   return CallWindowProc(DefWindowProc, hwnd, msg, wp, lp);
@@ -335,7 +320,6 @@ win_hide_search(void)
   win_toggle_search(false, false);
   term->search_window_visible = false;
   win_adapt_term_size(false, false);
-  term->searched = false;
 }
 
 void

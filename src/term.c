@@ -203,7 +203,6 @@ term_reset(struct term* term)
 
   win_reset_colours();
   
-  term->searched = false;
   term->search_window_visible = false;
 }
 
@@ -523,8 +522,10 @@ term_update_search(struct term* term)
     return;
   term->results.update_type = NO_UPDATE;
 
-  if (term->results.xquery_length == 0)
+  if (term->results.xquery_length == 0) {
+    term_clear_search(term);
     return;
+  }
 
   circbuf cb;
   // Allocate room for the circular buffer of termlines.

@@ -477,7 +477,6 @@ struct term {
 
   termimgs imgs;
 
-  bool searched;
   bool search_window_visible;
 
   int markpos;
