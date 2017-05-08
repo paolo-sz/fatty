@@ -2139,6 +2139,7 @@ static const struct option
 opts[] = {
   {"config",     required_argument, 0, 'c'},
   {"loadconfig", required_argument, 0, 'C'},
+  {"configdir",  required_argument, 0, ''},
   {"exec",       no_argument,       0, 'e'},
   {"hold",       required_argument, 0, 'h'},
   {"icon",       required_argument, 0, 'i'},
@@ -2233,7 +2234,7 @@ main(int argc, char *argv[])
   delete(rc_file);
   // try home config file
   rc_file = asform("%s/.fattyrc", home);
-  load_config(rc_file, true);
+  load_config(rc_file, 2);
   delete(rc_file);
 
   char *tablist[32];
@@ -2269,8 +2270,17 @@ main(int argc, char *argv[])
       break;
     char *longopt = argv[optind - 1], *shortopt = (char[]){'-', optopt, 0};
     switch (opt) {
-      when 'c': load_config(optarg, true);
+      when 'c': load_config(optarg, 3);
       when 'C': load_config(optarg, false);
+      when '':
+        if (config_dir)
+          option_error(__("Duplicate option 'configdir'"), "");
+        else {
+          config_dir = strdup(optarg);
+          string rc_file = asform("%s/config", config_dir);
+          load_config(rc_file, 3);
+          delete(rc_file);
+        }
       when 'h': set_arg_option("Hold", optarg);
       when 'i': set_arg_option("Icon", optarg);
       when 'l': set_arg_option("Log", optarg);

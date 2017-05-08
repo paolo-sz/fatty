@@ -40,14 +40,13 @@ win_get_search_edit_wnd(void)
   return search_edit_wnd;
 }
 
-void
-scroll_to_result(struct term* term)
+static int
+current_delta(struct term* term)
 {
   if (term->results.length == 0) {
-    return;
+    return 0;
   }
 
-  // If visible, don't do anything.
   result * res = term->results.results + term->results.current;
   int y = res->y - term->sblines;
   int delta = 0;
@@ -57,6 +56,18 @@ scroll_to_result(struct term* term)
   if (y >= term->disptop + term->rows) {
     delta = y - (term->disptop + term->rows - 1);
   }
+  return delta;
+}
+
+static void
+scroll_to_result(struct term* term)
+{
+  if (term->results.length == 0) {
+    return;
+  }
+
+  int delta = current_delta(term);
+
   // Scroll if we must!
   if (delta != 0) {
     term_scroll(term, 0, delta);
@@ -69,7 +80,8 @@ next_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  term->results.current = (term->results.current + 1) % term->results.length;
+  if (current_delta(term) == 0)
+    term->results.current = (term->results.current + 1) % term->results.length;
   scroll_to_result(term);
 }
 
@@ -79,7 +91,8 @@ prev_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  term->results.current = (term->results.current + term->results.length - 1) % term->results.length;
+  if (current_delta(term) == 0)
+    term->results.current = (term->results.current + term->results.length - 1) % term->results.length;
   scroll_to_result(term);
 }
 
@@ -169,7 +182,6 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     term_set_search(term, buf);
     term_update_search(term);
     win_schedule_update();
-    scroll_to_result(term);
 	return 0;
   }
 
