@@ -1239,6 +1239,10 @@ save_config(void)
   FILE *file = fopen(filename, "w");
 
   if (!file) {
+    // Should we report the failed Windows or POSIX path? (see mintty/wsltty#42)
+    // In either case, we must transform to Unicode.
+    // For WSL, it's probably not a good idea to report a POSIX path 
+    // because it would be mistaken for a WSL path.
     char *msg;
     char * up = cs__wcstoutf(rc_filename);
     //__ %1$s: config file name, %2$s: error message
@@ -1833,8 +1837,7 @@ download_scheme(char * url)
   HRESULT (WINAPI * pURLDownloadToFile)(void *, LPCSTR, LPCSTR, DWORD, void *) = 0;
   pURLDownloadToFile = load_library_func("urlmon.dll", "URLDownloadToFileA");
   bool ok = false;
-  char sfn[44];
-  sprintf(sfn, "/tmp/.fatty-scheme.%d", getpid());
+  char * sfn = asform("%s/.fatty-scheme.%d", tmpdir(), getpid());
   if (pURLDownloadToFile) {
 #ifdef __CYGWIN__
     /* Need to sync the Windows environment */
@@ -1899,6 +1902,7 @@ download_scheme(char * url)
   fclose(sf);
   remove(sfn);
 #endif
+  free(sfn);
 
   return sch;
 }

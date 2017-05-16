@@ -1,4 +1,4 @@
-// windialog.c (part of FaTTY)
+﻿// windialog.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
@@ -245,7 +245,13 @@ display_update(char * new)
   free(wmsg);
 }
 
-static char * vfn = "/tmp/.fatty-version";
+static char * vfn = 0;
+static void
+getvfn()
+{
+  if (!vfn)
+    vfn = asform("%s/.fatty-version", tmpdir());
+}
 
 void
 update_available_version(bool ok)
@@ -253,6 +259,7 @@ update_available_version(bool ok)
   version_retrieving = false;
   if (!ok)
     return;
+  getvfn();
 
   char vers[99];
   char * new = 0;
@@ -301,6 +308,7 @@ update_available_version(bool ok)
 //{
 //  if (version_retrieving || !cfg.check_version_update)
 //    return;
+//  getvfn();
 //
 //#if CYGWIN_VERSION_API_MINOR >= 74
 //  static time_t version_retrieved = 0;
@@ -355,6 +363,7 @@ update_available_version(bool ok)
 //#endif
 //  exit(0);
 //}
+
 
 /*
    adapted from messageboxmanager.zip
