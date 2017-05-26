@@ -26,8 +26,8 @@
 #define CPAIR(x, y) ((x) << 8 | (y))
 
 static string primary_da1 = "\e[?1;2c";
-static string primary_da2 = "\e[?62;1;2;4;6;22c";
-static string primary_da3 = "\e[?63;1;2;4;6;22c";
+static string primary_da2 = "\e[?62;1;2;4;6;15;22c";
+static string primary_da3 = "\e[?63;1;2;4;6;15;22c";
 
 
 static bool
@@ -467,14 +467,14 @@ do_esc(struct term* term, uchar c)
       term->lines[curs->y]->lattr = LATTR_NORM;
     when CPAIR('#', '6'):  /* DECDWL: 2*width */
       term->lines[curs->y]->lattr = LATTR_WIDE;
-    when CPAIR('(', 'A') or CPAIR('(', 'B') or CPAIR('(', '0'):
+    when CPAIR('(', 'A') or CPAIR('(', 'B') or CPAIR('(', '0') or CPAIR('(', '>'):
      /* GZD4: G0 designate 94-set */
       curs->csets[0] = c;
       term_update_cs(term);
     when CPAIR('(', 'U'):  /* G0: OEM character set */
       curs->csets[0] = CSET_OEM;
       term_update_cs(term);
-    when CPAIR(')', 'A') or CPAIR(')', 'B') or CPAIR(')', '0'):
+    when CPAIR(')', 'A') or CPAIR(')', 'B') or CPAIR(')', '0') or CPAIR(')', '>'):
      /* G1D4: G1-designate 94-set */
       curs->csets[1] = c;
       term_update_cs(term);
@@ -898,7 +898,7 @@ do_csi(struct term* term, uchar c)
       insert_char(term, -arg0_def1);
     when 'n':        /* DSR: cursor position query */
       if (arg0 == 6)
-        child_printf(term->child, "\e[%d;%dR", curs->y + 1, curs->x + 1);
+        child_printf(term->child, "\e[%d;%dR", curs->y + 1 - (curs->origin ? term->marg_top : 0), curs->x + 1);
       else if (arg0 == 5)
         child_write(term->child, "\e[0n", 4);
     when 'h' or CPAIR('?', 'h'):  /* SM: toggle modes to high */
@@ -1628,6 +1628,10 @@ term_write(struct term* term, const char *buf, uint len)
 #endif
               wc = dispwc;
             }
+          when CSET_TECH:
+            if (wc > ' ' && wc < 0x7F)
+              wc = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬␦␦╲╱␦␦␦␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
+                   [wc - ' ' - 1];
           when CSET_GBCHR:
             if (c == '#')
               wc = 0xA3; // pound sign

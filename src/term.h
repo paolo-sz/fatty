@@ -228,6 +228,7 @@ typedef enum {
   CSET_ASCII = 'B',   /* Normal ASCII charset */
   CSET_GBCHR = 'A',   /* UK variant */
   CSET_LINEDRW = '0', /* Line drawing charset */
+  CSET_TECH = '>',    /* DEC Technical */
   CSET_OEM = 'U'      /* OEM Codepage 437 */
 } term_cset;
 
