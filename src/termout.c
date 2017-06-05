@@ -898,6 +898,9 @@ do_csi(struct term* term, uchar c)
       move(term, (arg1 ?: 1) - 1,
            (curs->origin ? term->marg_top : 0) + arg0_def1 - 1,
            curs->origin ? 2 : 0);
+    when 'I':  /* CHT: move right N TABs */
+      for (int i = 0; i < arg0_def1; i++)
+       write_tab(term);
     when 'J' or CPAIR('?', 'J'): { /* ED/DECSED: (selective) erase in display */
       if (arg0 == 3 && !term->esc_mod) { /* Erase Saved Lines (xterm) */
         term_clear_scrollback(term);
