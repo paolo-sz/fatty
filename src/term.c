@@ -117,9 +117,12 @@ term_cursor_reset(term_cursor *curs)
 {
   curs->attr = CATTR_DEFAULT;
   curs->g0123 = 0;
+  curs->oem_acs = 0;
+  curs->utf = false;
   for (uint i = 0; i < lengthof(curs->csets); i++)
     curs->csets[i] = CSET_ASCII;
   curs->cset_single = CSET_ASCII;
+
   curs->autowrap = true;
   curs->rev_wrap = cfg.old_wrapmodes;
 }
@@ -137,6 +140,7 @@ term_reset(struct term* term)
   term_cursor_reset(&term->curs);
   term_cursor_reset(&term->saved_cursors[0]);
   term_cursor_reset(&term->saved_cursors[1]);
+  term_update_cs(term);
 
   term->backspace_sends_bs = cfg.backspace_sends_bs;
   term->delete_sends_del = cfg.delete_sends_del;

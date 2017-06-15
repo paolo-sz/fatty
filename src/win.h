@@ -82,7 +82,7 @@ extern int cursor_blink_ticks(void);
 extern int win_char_width(unsigned int);
 extern wchar win_combine_chars(wchar bc, wchar cc);
 
-extern wchar win_linedraw_chars[31];
+extern wchar win_linedraw_char(int i);
 
 extern struct term* win_active_terminal();
 
