@@ -528,6 +528,7 @@ do_sgr(struct term* term)
       when 3: attr.attr |= ATTR_ITALIC;
       when 4: attr.attr |= ATTR_UNDER;
       when 5: attr.attr |= ATTR_BLINK;
+      when 6: attr.attr |= ATTR_BLINK2;
       when 7: attr.attr |= ATTR_REVERSE;
       when 8: attr.attr |= ATTR_INVISIBLE;
       when 9: attr.attr |= ATTR_STRIKEOUT;
@@ -559,7 +560,7 @@ do_sgr(struct term* term)
       when 22: attr.attr &= ~(ATTR_BOLD | ATTR_DIM);
       when 23: attr.attr &= ~ATTR_ITALIC;
       when 24: attr.attr &= ~(ATTR_UNDER | ATTR_DOUBLYUND);
-      when 25: attr.attr &= ~ATTR_BLINK;
+      when 25: attr.attr &= ~(ATTR_BLINK | ATTR_BLINK2);
       when 27: attr.attr &= ~ATTR_REVERSE;
       when 28: attr.attr &= ~ATTR_INVISIBLE;
       when 29: attr.attr &= ~ATTR_STRIKEOUT;
@@ -1243,15 +1244,26 @@ do_dcs(struct term* term)
           p += sprintf(p, ";4");
         if (attr.attr & ATTR_BLINK)
           p += sprintf(p, ";5");
+        if (attr.attr & ATTR_BLINK2)
+          p += sprintf(p, ";6");
         if (attr.attr & ATTR_REVERSE)
           p += sprintf(p, ";7");
         if (attr.attr & ATTR_INVISIBLE)
           p += sprintf(p, ";8");
         if (attr.attr & ATTR_STRIKEOUT)
           p += sprintf(p, ";9");
+        if (attr.attr & ATTR_DOUBLYUND)
+          p += sprintf(p, ";21");
+        if (attr.attr & ATTR_OVERL)
+          p += sprintf(p, ";53");
 
         if (term->curs.oem_acs)
           p += sprintf(p, ";%u", 10 + term->curs.oem_acs);
+        else {
+          uint ff = (attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
+          if (ff)
+            p += sprintf(p, ";%u", 10 + ff);
+        }
 
         uint fg = (attr.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
         if (fg != FG_COLOUR_I) {
@@ -1680,7 +1692,7 @@ term_write(struct term* term, const char *buf, uint len)
               wc = dispwc;
             }
           when CSET_TECH:
-            if (c > ' ' && c < 0x7F)
+            if (c > ' ' && c < 0x7F) {
               // = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬␦␦╲╱␦␦␦␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
               wc = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬╶╶╲╱╴╴╳␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
                    [c - ' ' - 1];
@@ -1691,6 +1703,7 @@ term_write(struct term* term, const char *buf, uint len)
                 uchar dispcode = techdraw_code[c - 0x31];
                 term->curs.attr.attr |= ((unsigned long long)dispcode) << ATTR_GRAPH_SHIFT;
               }
+            }
           when CSET_GBCHR:
             if (c == '#')
               wc = 0xA3; // pound sign

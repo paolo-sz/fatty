@@ -21,7 +21,6 @@
 
 void term_print_finish(struct term* term);
 
-void term_schedule_tblink(struct term* term);
 void term_schedule_cblink(struct term* term);
 void term_schedule_vbell(struct term* term, int already_started, int startpoint);
 
