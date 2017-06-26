@@ -587,12 +587,9 @@ win_init_fontfamily(HDC dc, int findex)
   * down a single column of the bitmap, half way across.)
   */
   if (ff->und_mode == UND_FONT) {
-    HDC und_dc;
-    HBITMAP und_bm, und_oldbm;
-
-    und_dc = CreateCompatibleDC(dc);
-    und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
-    und_oldbm = SelectObject(und_dc, und_bm);
+    HDC und_dc = CreateCompatibleDC(dc);
+    HBITMAP und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
+    HBITMAP und_oldbm = SelectObject(und_dc, und_bm);
     SelectObject(und_dc, ff->fonts[FONT_UNDERLINE]);
     SetTextAlign(und_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
     SetTextColor(und_dc, RGB(255, 255, 255));
@@ -1890,11 +1887,15 @@ win_char_width(xchar c)
   int findex = (win_active_terminal()->curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   struct fontfam * ff = &fontfamilies[findex];
 
+#define measure_width
+
+#if ! defined(measure_width) && ! defined(debug_win_char_width)
  /* If the font max width is the same as the font average width
   * then this function is a no-op.
   */
-#ifndef debug_win_char_width
   if (!ff->font_dualwidth)
+    // this optimization ignores font fallback and should be dropped 
+    // if ever a more particular width checking is implemented (#615)
     return 1;
 #endif
 
@@ -1902,7 +1903,7 @@ win_char_width(xchar c)
 #ifdef debug_win_char_width
   if (c != 'A')
 #endif
-  if (c >= ' ' && c < '~')  // exclude 0x7E (overline in Shift_JIS X 0213)
+  if (c >= ' ' && c <= '~')  // don't width-check ASCII
     return 1;
 
   HDC dc = GetDC(wnd);
@@ -1915,7 +1916,7 @@ win_char_width(xchar c)
     win_char_width(0x5555);
   if (!ok0)
     printf("width %04X failed (dc %p)\n", c, dc);
-  else if (c >= '~' || c == 'A') {
+  else if (c > '~' || c == 'A') {
     int cw = 0;
     BOOL ok1 = GetCharWidth32W(dc, c, c, &cw);  // "not on TrueType"
     float cwf = 0.0;
@@ -1924,7 +1925,7 @@ win_char_width(xchar c)
     BOOL ok3 = GetCharABCWidthsW(dc, c, c, &abc);  // only on TrueType
     ABCFLOAT abcf; memset(&abcf, 0, sizeof abcf);
     BOOL ok4 = GetCharABCWidthsFloatW(dc, c, c, &abcf);
-    printf("w %04X [%d] (32 %d) %d (32a %d) %d (flt %d) %.3f (abc %d) %2d %2d %2d (abcf %d) %4.1f %4.1f %4.1f\n", 
+    printf("w %04X [cell %d] - 32 %d %d - flt %d %.3f - abc %d %d %d %d - abc flt %d %4.1f %4.1f %4.1f\n", 
            c, cell_width, ok1, cw, ok2, cwf, 
            ok3, abc.abcA, abc.abcB, abc.abcC, 
            ok4, abcf.abcfA, abcf.abcfB, abcf.abcfC);
@@ -1933,14 +1934,64 @@ win_char_width(xchar c)
 
   int ibuf = 0;
   bool ok = GetCharWidth32W(dc, c, c, &ibuf);
-  ReleaseDC(wnd, dc);
-  if (!ok)
+  if (!ok) {
+    ReleaseDC(wnd, dc);
     return 0;
+  }
 
-  // report char as wide if its width is more than 1½ cells
+  // report char as wide if its width is more than 1½ cells;
+  // this is unreliable if font fallback is involved (#615)
   ibuf += cell_width / 2 - 1;
   ibuf /= cell_width;
+  if (ibuf > 1) {
+    ReleaseDC(wnd, dc);
+    return ibuf;
+  }
 
+#ifdef measure_width
+  int act_char_width(wchar wc)
+  {
+    HDC wid_dc = CreateCompatibleDC(dc);
+    HBITMAP wid_bm = CreateCompatibleBitmap(dc, cell_width * 2, cell_height);
+    HBITMAP wid_oldbm = SelectObject(wid_dc, wid_bm);
+    SelectObject(wid_dc, ff->fonts[FONT_NORMAL]);
+    SetTextAlign(wid_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
+    SetTextColor(wid_dc, RGB(255, 255, 255));
+    SetBkColor(wid_dc, RGB(0, 0, 0));
+    SetBkMode(wid_dc, OPAQUE);
+    ExtTextOutW(wid_dc, 0, 0, ETO_OPAQUE, null, &wc, 1, null);
+
+    int wid = 0;
+    for (int x = cell_width * 2 - 1; !wid && x >= 0; x--)
+      for (int y = 0; y < cell_height; y++) {
+        COLORREF c = GetPixel(wid_dc, x, y);
+        if (c != RGB(0, 0, 0)) {
+          wid = x + 1;
+          break;
+        }
+      }
+    SelectObject(wid_dc, wid_oldbm);
+    DeleteObject(wid_bm);
+    DeleteDC(wid_dc);
+    return wid;
+  }
+
+  if (ambigwide(c)) {
+    int mbuf = act_char_width(c);
+# ifdef debug_win_char_width
+    if (c > '~' || c == 'A') {
+      printf("measured %04X %d /cell %d\n", mbuf, cell_width);
+    }
+# endif
+    // report char as wide if its measured width is more than 1½ cells
+    mbuf += cell_width / 2 - 1;
+    mbuf /= cell_width;
+    ReleaseDC(wnd, dc);
+    return mbuf;
+  }
+#endif
+
+  ReleaseDC(wnd, dc);
   return ibuf;
 }
 
