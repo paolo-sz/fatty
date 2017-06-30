@@ -101,6 +101,7 @@ typedef enum {UND_LINE, UND_FONT} UND_MODE;
 // font family properties
 struct fontfam {
   wstring name;
+  wstring name_reported;
   int weight;
   bool isbold;
   HFONT fonts[FONT_MAXNO];
@@ -266,20 +267,19 @@ row_padding(int i, int e)
 }
 
 static void
-show_font_warning(wstring name, char * msg)
+show_font_warning(struct fontfam * ff, char * msg)
 {
   // suppress multiple font error messages
-  static wchar * msgfont = null;
-  if (msgfont && wcscmp(msgfont, name) == 0) {
+  if (ff->name_reported && wcscmp(ff->name_reported, ff->name) == 0) {
     return;
   }
   else {
-    if (msgfont)
-      free(msgfont);
-    msgfont = wcsdup(name);
+    if (ff->name_reported)
+      delete(ff->name_reported);
+    ff->name_reported = wcsdup(ff->name);
   }
 
-  char * fn = cs__wcstoutf(name);
+  char * fn = cs__wcstoutf(ff->name);
   char * fullmsg;
   int len = asprintf(&fullmsg, "%s:\n%s", msg, fn);
   free(fn);
@@ -372,14 +372,14 @@ adjust_font_weights(struct fontfam * ff)
 
   // check if no font found
   if (!font_found) {
-    show_font_warning(ff->name, _("Font not found, using system substitute"));
+    show_font_warning(ff, _("Font not found, using system substitute"));
     ff->fw_norm = 400;
     ff->fw_bold = 700;
     trace_font(("//\n"));
     return;
   }
   if (!ansi_found && !cs_found) {
-    show_font_warning(ff->name, _("Font has limited support for character ranges"));
+    show_font_warning(ff, _("Font has limited support for character ranges"));
   }
 
   // find available widths closest to selected widths
@@ -478,7 +478,7 @@ win_init_fontfamily(HDC dc, int findex)
   GetTextMetrics(dc, &tm);
   if (!tm.tmHeight) {
     // corrupt font installation (e.g. deleted font file)
-    show_font_warning(ff->name, _("Font installation corrupt, using system substitute"));
+    show_font_warning(ff, _("Font installation corrupt, using system substitute"));
     wstrset(&ff->name, W(""));
     ff->fonts[FONT_NORMAL] = create_font(ff->name, ff->fw_norm, false);
     GetObject(ff->fonts[FONT_NORMAL], sizeof(LOGFONT), &logfont);
@@ -491,7 +491,7 @@ win_init_fontfamily(HDC dc, int findex)
 #ifdef check_charset_only_for_returned_font
   int default_charset = get_default_charset();
   if (tm.tmCharSet != default_charset && default_charset != DEFAULT_CHARSET) {
-    show_font_warning(ff->name, _("Font does not support system locale"));
+    show_font_warning(ff, _("Font does not support system locale"));
   }
 #endif
 
@@ -587,12 +587,9 @@ win_init_fontfamily(HDC dc, int findex)
   * down a single column of the bitmap, half way across.)
   */
   if (ff->und_mode == UND_FONT) {
-    HDC und_dc;
-    HBITMAP und_bm, und_oldbm;
-
-    und_dc = CreateCompatibleDC(dc);
-    und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
-    und_oldbm = SelectObject(und_dc, und_bm);
+    HDC und_dc = CreateCompatibleDC(dc);
+    HBITMAP und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
+    HBITMAP und_oldbm = SelectObject(und_dc, und_bm);
     SelectObject(und_dc, ff->fonts[FONT_UNDERLINE]);
     SetTextAlign(und_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
     SetTextColor(und_dc, RGB(255, 255, 255));
@@ -680,6 +677,7 @@ win_init_fonts(int size)
     font_height =
       font_size > 0 ? -MulDiv(font_size, GetDeviceCaps(dc, LOGPIXELSY), 72) : -font_size;
 
+  static bool initinit = true;
   for (uint fi = 0; fi < lengthof(fontfamilies); fi++) {
     if (!fi) {
       fontfamilies[fi].name = cfg.font.name;
@@ -691,8 +689,12 @@ win_init_fonts(int size)
       fontfamilies[fi].weight = cfg.fontfams[fi].weight;
       fontfamilies[fi].isbold = false;
     }
+    if (initinit)
+      fontfamilies[fi].name_reported = null;
+
     win_init_fontfamily(dc, fi);
   }
+  initinit = false;
 
   ReleaseDC(wnd, dc);
 }
@@ -1890,11 +1892,15 @@ win_char_width(xchar c)
   int findex = (win_active_terminal()->curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   struct fontfam * ff = &fontfamilies[findex];
 
+#define measure_width
+
+#if ! defined(measure_width) && ! defined(debug_win_char_width)
  /* If the font max width is the same as the font average width
   * then this function is a no-op.
   */
-#ifndef debug_win_char_width
   if (!ff->font_dualwidth)
+    // this optimization ignores font fallback and should be dropped 
+    // if ever a more particular width checking is implemented (#615)
     return 1;
 #endif
 
@@ -1902,7 +1908,7 @@ win_char_width(xchar c)
 #ifdef debug_win_char_width
   if (c != 'A')
 #endif
-  if (c >= ' ' && c < '~')  // exclude 0x7E (overline in Shift_JIS X 0213)
+  if (c >= ' ' && c <= '~')  // don't width-check ASCII
     return 1;
 
   HDC dc = GetDC(wnd);
@@ -1915,7 +1921,7 @@ win_char_width(xchar c)
     win_char_width(0x5555);
   if (!ok0)
     printf("width %04X failed (dc %p)\n", c, dc);
-  else if (c >= '~' || c == 'A') {
+  else if (c > '~' || c == 'A') {
     int cw = 0;
     BOOL ok1 = GetCharWidth32W(dc, c, c, &cw);  // "not on TrueType"
     float cwf = 0.0;
@@ -1924,7 +1930,7 @@ win_char_width(xchar c)
     BOOL ok3 = GetCharABCWidthsW(dc, c, c, &abc);  // only on TrueType
     ABCFLOAT abcf; memset(&abcf, 0, sizeof abcf);
     BOOL ok4 = GetCharABCWidthsFloatW(dc, c, c, &abcf);
-    printf("w %04X [%d] (32 %d) %d (32a %d) %d (flt %d) %.3f (abc %d) %2d %2d %2d (abcf %d) %4.1f %4.1f %4.1f\n", 
+    printf("w %04X [cell %d] - 32 %d %d - flt %d %.3f - abc %d %d %d %d - abc flt %d %4.1f %4.1f %4.1f\n", 
            c, cell_width, ok1, cw, ok2, cwf, 
            ok3, abc.abcA, abc.abcB, abc.abcC, 
            ok4, abcf.abcfA, abcf.abcfB, abcf.abcfC);
@@ -1933,14 +1939,64 @@ win_char_width(xchar c)
 
   int ibuf = 0;
   bool ok = GetCharWidth32W(dc, c, c, &ibuf);
-  ReleaseDC(wnd, dc);
-  if (!ok)
+  if (!ok) {
+    ReleaseDC(wnd, dc);
     return 0;
+  }
 
-  // report char as wide if its width is more than 1½ cells
+  // report char as wide if its width is more than 1½ cells;
+  // this is unreliable if font fallback is involved (#615)
   ibuf += cell_width / 2 - 1;
   ibuf /= cell_width;
+  if (ibuf > 1) {
+    ReleaseDC(wnd, dc);
+    return ibuf;
+  }
 
+#ifdef measure_width
+  int act_char_width(wchar wc)
+  {
+    HDC wid_dc = CreateCompatibleDC(dc);
+    HBITMAP wid_bm = CreateCompatibleBitmap(dc, cell_width * 2, cell_height);
+    HBITMAP wid_oldbm = SelectObject(wid_dc, wid_bm);
+    SelectObject(wid_dc, ff->fonts[FONT_NORMAL]);
+    SetTextAlign(wid_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
+    SetTextColor(wid_dc, RGB(255, 255, 255));
+    SetBkColor(wid_dc, RGB(0, 0, 0));
+    SetBkMode(wid_dc, OPAQUE);
+    ExtTextOutW(wid_dc, 0, 0, ETO_OPAQUE, null, &wc, 1, null);
+
+    int wid = 0;
+    for (int x = cell_width * 2 - 1; !wid && x >= 0; x--)
+      for (int y = 0; y < cell_height; y++) {
+        COLORREF c = GetPixel(wid_dc, x, y);
+        if (c != RGB(0, 0, 0)) {
+          wid = x + 1;
+          break;
+        }
+      }
+    SelectObject(wid_dc, wid_oldbm);
+    DeleteObject(wid_bm);
+    DeleteDC(wid_dc);
+    return wid;
+  }
+
+  if (ambigwide(c)) {
+    int mbuf = act_char_width(c);
+# ifdef debug_win_char_width
+    if (c > '~' || c == 'A') {
+      printf("measured %04X %d /cell %d\n", mbuf, cell_width);
+    }
+# endif
+    // report char as wide if its measured width is more than 1½ cells
+    mbuf += cell_width / 2 - 1;
+    mbuf /= cell_width;
+    ReleaseDC(wnd, dc);
+    return mbuf;
+  }
+#endif
+
+  ReleaseDC(wnd, dc);
   return ibuf;
 }
 

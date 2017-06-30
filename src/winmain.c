@@ -1477,6 +1477,12 @@ static struct {
       child_sendw(term->child, &(wchar){wp}, 1);
       return 0;
 
+    when WM_MENUCHAR:
+      // this is sent after leaving the system menu with ESC 
+      // and typing a key; insert the key and prevent the beep
+      child_sendw(term->child, &(wchar){wp}, 1);
+      return MNC_CLOSE << 16;
+
 #ifdef catch_lang_change
     // this is rubbish; only the initial change would be captured anyway;
     // if (Shift-)Control-digit is mapped as a keyboard switch shortcut 
