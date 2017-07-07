@@ -15,6 +15,9 @@ LDFLAGS := -static-libgcc -mwindows -lcomctl32 -limm32 -lwinspool -lole32 -luuid
 
 TARGET := $(shell $(CC) -dumpmachine)
 CPPFLAGS := -DTARGET=$(TARGET)
+ifdef VERSION_SUFFIX
+CPPFLAGS += -DVERSION_SUFFIX="$(VERSION_SUFFIX)"
+endif
 
 BUILD_DIR = build/
 
