@@ -1152,32 +1152,33 @@ combsubst(wchar comb)
   static const struct {
     wchar comb;
     wchar subst;
+    short pref;  // -1: suppress, +1: enforce
   } lookup[] = {
-    {0x0300, 0x0060},
-    {0x0301, 0x00B4},
-    {0x0302, 0x02C6},
-    {0x0303, 0x02DC},
-    {0x0304, 0x00AF},
-    {0x0305, 0x203E},
-    {0x0306, 0x02D8},
-    {0x0307, 0x02D9},
-    {0x0308, 0x00A8},
-    {0x030A, 0x02DA},
-    {0x030B, 0x02DD},
-    {0x030C, 0x02C7},
-    {0x0327, 0x00B8},
-    {0x0328, 0x02DB},
-    {0x0332, 0x005F},
-    {0x0333, 0x2017},
-    {0x033E, 0x2E2F},
-    {0x0342, 0x1FC0},
-    {0x0343, 0x1FBD},
-    {0x0344, 0x0385},
-    {0x0345, 0x037A},
-    {0x3099, 0x309B},
-    {0x309A, 0x309C},
-    {0xA67C, 0xA67E},
-    {0xA67D, 0xA67F},
+    {0x0300, 0x0060, 0},
+    {0x0301, 0x00B4, 0},
+    {0x0302, 0x02C6, 0},
+    {0x0303, 0x02DC, 0},
+    {0x0304, 0x00AF, 0},
+    {0x0305, 0x203E, 0},
+    {0x0306, 0x02D8, 0},
+    {0x0307, 0x02D9, 0},
+    {0x0308, 0x00A8, 0},
+    {0x030A, 0x02DA, 0},
+    {0x030B, 0x02DD, 0},
+    {0x030C, 0x02C7, 0},
+    {0x0327, 0x00B8, 0},
+    {0x0328, 0x02DB, 0},
+    {0x0332, 0x005F, 0},
+    {0x0333, 0x2017, 0},
+    {0x033E, 0x2E2F, -1},	// display broken if substituted
+    {0x0342, 0x1FC0, +1},	// display broken if not substituted
+    {0x0343, 0x1FBD, 0},
+    {0x0344, 0x0385, +1},	// display broken if not substituted
+    {0x0345, 0x037A, +1},	// display broken if not substituted
+    {0x3099, 0x309B, 0},
+    {0x309A, 0x309C, 0},
+    {0xA67C, 0xA67E, 0},
+    {0xA67D, 0xA67F, 0},
   };
 
   int i, j, k;
@@ -1191,8 +1192,20 @@ combsubst(wchar comb)
       j = k;
     else if (comb > lookup[k].comb)
       i = k;
-    else
-      return lookup[k].subst;
+    else {
+      // apply heuristic tweaking of the substitution:
+      if (lookup[k].pref == 1)
+        return lookup[k].subst;
+      else if (lookup[k].pref == -1)
+        return comb;
+
+      wchar chk = comb;
+      win_check_glyphs(&chk, 1);
+      if (chk)
+        return lookup[k].subst;
+      else
+        return comb;
+    }
   }
   return comb;
 }
@@ -1435,8 +1448,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
 
   bool combining = attr.attr & TATTR_COMBINING;
   bool combining_double = attr.attr & TATTR_COMBDOUBL;
+#ifdef rearrange_combining_double
+#warning this method causes artefacts when moving cursor over
   if (combining_double)
     combining = false;
+#endif
 
   bool let_windows_combine = false;
   if (combining) {
@@ -1483,13 +1499,20 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   if (clearpad)
     box.right += PADDING;
   RECT box2 = box;
-  if (combining_double) {
+  if (combining_double)
+#ifdef rearrange_combining_double
     box2.left -= char_width;
-  }
+#else
+    box2.right += char_width;
+#endif
 
 
  /* Uniscribe handling */
   bool use_uniscribe = cfg.font_render == FR_UNISCRIBE && !has_rtl;
+#ifndef rearrange_combining_double
+  if (combining_double)
+    use_uniscribe = false;
+#endif
   if (use_uniscribe) {
     use_uniscribe = false;
     for (int i = 0; i < len; i++)
@@ -1523,6 +1546,14 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   {
     if (cch == 0)
       return;
+#ifdef debug_text_out
+    if (*psz >= 0x80) {
+      printf("@%3d (%3d):", x, y);
+      for (int i = 0; i < cch; i++)
+        printf(" %04X", psz[i]);
+      printf("\n");
+    }
+#endif
 
     if (use_uniscribe)
       ScriptStringOut(ssa, x, y, fuOptions, prc, 0, 0, FALSE);
@@ -1605,7 +1636,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
 
         int xx = xt + xoff;
         if (combining_double && combiningdouble(text[i]))
+#ifdef rearrange_combining_double
           xx -= char_width / 2;
+#else
+          xx += char_width / 2;
+#endif
         if (!termattrs_equal_fg(&textattr[i], &textattr[i - 1])) {
           // determine colour to be used for combining characters;
           // simplified version of the algorithm above
