@@ -1,4 +1,4 @@
-// wininput.c (part of FaTTY)
+﻿// wininput.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
 // Licensed under the terms of the GNU General Public License v3 or later.
@@ -265,7 +265,7 @@ win_init_ctxmenu(bool extended_menu)
   //__ Context menu:
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_OPEN, _W("Ope&n"));
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEWTAB, _W("New tab\tCtrl+Shift+T"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab\tCtrl+Shift+W"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tCtrl+PgUp"));
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tCtrl+PgDn"));
