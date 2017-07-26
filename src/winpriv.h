@@ -29,6 +29,7 @@ extern char * fontpropinfo(void);
 
 extern int g_render_tab_height; // current tab height in pixels
 extern bool support_wsl;
+extern wchar * wsl_basepath;
 
 extern bool win_is_fullscreen;
 extern uint dpi;
