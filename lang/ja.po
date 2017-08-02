@@ -1066,7 +1066,7 @@ msgstr "オプション '%s' は引数が必要です"
 
 #: winmain.c:2547
 msgid "Fatty could not detach from caller, starting anyway"
-msgstr "fanttyは呼び出し元からデタッチできません、とにかく起動します"
+msgstr "fattyは呼び出し元からデタッチできません、とにかく起動します"
 
 #: winmain.c:2680
 msgid "Using default title due to invalid characters in program name"
