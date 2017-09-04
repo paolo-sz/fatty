@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: mintty\n"
+"Project-Id-Version: fatty\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2017-07-28 16:07+0200\n"
 "PO-Revision-Date: 2017-08-03 21:25+0200\n"
@@ -812,7 +812,7 @@ msgstr "Aña&dir color personal."
 msgid "Options"
 msgstr "Opciones"
 
-#. __ Options: dialog title: "mintty <release> available (for download)"
+#. __ Options: dialog title: "fatty <release> available (for download)"
 #: windialog.c:233
 msgid "available"
 msgstr "disponible"
@@ -1029,8 +1029,8 @@ msgid "Option '%s' requires an argument"
 msgstr "Opción '%s' requiere un parámetro"
 
 #: winmain.c:2547
-msgid "Mintty could not detach from caller, starting anyway"
-msgstr "Mintty no se pudo liberar, inciando de todas formas"
+msgid "Fatty could not detach from caller, starting anyway"
+msgstr "Fatty no se pudo liberar, inciando de todas formas"
 
 #: winmain.c:2680
 msgid "Using default title due to invalid characters in program name"
@@ -1080,7 +1080,7 @@ msgstr ""
 #: appinfo.h:66
 msgid ""
 "Please report bugs or request enhancements through the issue tracker on the "
-"mintty project page located at\n"
+"fatty project page located at\n"
 "%s.\n"
 "See also the Wiki there for further hints, thanks and credits."
 msgstr ""
