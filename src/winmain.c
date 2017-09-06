@@ -849,6 +849,19 @@ flash_taskbar(bool enable)
   }
 }
 
+static void
+flash_border()
+{
+  //FlashWindow(wnd, 1);
+  FlashWindowEx(&(FLASHWINFO){
+    .cbSize = sizeof(FLASHWINFO),
+    .hwnd = wnd,
+    .dwFlags = FLASHW_CAPTION,
+    .uCount = 1,
+    .dwTimeout = 0
+  });
+}
+
 /*
  * Bell.
  */
@@ -910,6 +923,8 @@ win_bell(struct term* term, config * conf)
       free(bell_name);
   }
 
+  if (cfg.bell_flash_style & FLASH_FRAME)
+    flash_border();
   if (term->bell_taskbar && !win_active_terminal()->has_focus)
     flash_taskbar(true);
   if (term->bell_popup)

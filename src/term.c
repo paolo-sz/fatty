@@ -110,7 +110,7 @@ void
 term_schedule_vbell(struct term* term, int already_started, int startpoint)
 {
   int ticks_gone = already_started ? get_tick_count() - startpoint : 0;
-  int ticks = 100 - ticks_gone;
+  int ticks = 141 - ticks_gone;
   if ((term->in_vbell = ticks > 0))
     win_set_timer(vbell_cb, term, ticks);
 }
@@ -1175,8 +1175,55 @@ term_paint(struct term* term)
           ? posPle(term->sel_start, scrpos) && posPlt(scrpos, term->sel_end)
           : posle(term->sel_start, scrpos) && poslt(scrpos, term->sel_end)
         );
+
       if (term->in_vbell || selected)
         tattr.attr ^= ATTR_REVERSE;
+
+      bool flashchar = term->in_vbell &&
+                       ((cfg.bell_flash_style & FLASH_FULL)
+                        ||
+                        ((cfg.bell_flash_style & FLASH_BORDER)
+                         && (i == 0 || j == 0 ||
+                             i == term->rows - 1 || j == term->cols - 1
+                            )
+                        )
+                       );
+
+      if (flashchar) {
+        if (cfg.bell_flash_style & FLASH_REVERSE)
+          tattr.attr ^= ATTR_REVERSE;
+        else {
+          colour_i bgi = (tattr.attr & ATTR_BGMASK) >> ATTR_BGSHIFT;
+          if (term->rvideo) {
+            if (bgi >= 256)
+              bgi ^= 2;
+          }
+          colour bg = bgi >= TRUE_COLOUR ? tattr.truebg : colours[bgi];
+
+          colour_i fgi = (tattr.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
+          if (term->rvideo) {
+            if (fgi >= 256)
+              fgi ^= 2;
+          }
+          if (tattr.attr & ATTR_BOLD && cfg.bold_as_colour) {
+            if (fgi < 8) {
+              fgi |= 8;
+            }
+            else if (fgi >= 256 && fgi != TRUE_COLOUR && !cfg.bold_as_font) {
+              fgi |= 1;
+            }
+          }
+          colour fg = fgi >= TRUE_COLOUR ? tattr.truefg : colours[fgi];
+          if (tattr.attr & ATTR_DIM) {
+            fg = (fg & 0xFEFEFEFE) >> 1;
+            if (!cfg.bold_as_colour || fgi >= 256)
+              fg += (bg & 0xFEFEFEFE) >> 1;
+          }
+
+          tattr.truebg = brighten(bg, fg);
+          tattr.attr = (tattr.attr & ~ATTR_BGMASK) | (TRUE_COLOUR << ATTR_BGSHIFT);
+        }
+      }
 
       int match = in_results(term, scrpos);
       if (match > 0) {
