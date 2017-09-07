@@ -1059,7 +1059,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     return;
   }
 
- /* Current window sizes ... */
+  /* Current window sizes ... */
   RECT cr, wr;
   GetClientRect(wnd, &cr);
   GetWindowRect(wnd, &wr);
