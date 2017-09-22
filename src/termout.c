@@ -26,8 +26,8 @@
 #define CPAIR(x, y) ((x) << 8 | (y))
 
 static string primary_da1 = "\e[?1;2c";
-static string primary_da2 = "\e[?62;1;2;4;6;15;22c";
-static string primary_da3 = "\e[?63;1;2;4;6;15;22c";
+static string primary_da2 = "\e[?62;1;2;4;6;9;15;22c";
+static string primary_da3 = "\e[?63;1;2;4;6;9;15;22c";
 
 
 static bool
@@ -390,10 +390,10 @@ do_ctrl(struct term* term, char c)
       free(ab);
     }
     when CTRL('N'):   /* LS1: Locking-shift one */
-      term->curs.g0123 = 1;
+      term->curs.gl = 1;
       term_update_cs(term);
     when CTRL('O'):   /* LS0: Locking-shift zero */
-      term->curs.g0123 = 0;
+      term->curs.gl = 0;
       term_update_cs(term);
     otherwise:
       return false;
@@ -401,11 +401,80 @@ do_ctrl(struct term* term, char c)
   return true;
 }
 
+static uchar esc_mod0 = 0;
+static uchar esc_mod1 = 0;
+
 static void
 do_esc(struct term* term, uchar c)
 {
   term_cursor *curs = &term->curs;
   term->state = NORMAL;
+
+  // NRC tweaks
+  uchar nrc_designate = 0;
+  uchar nrc_select;
+  // first check for two-character character set designations (%5, %6)
+  if (term->esc_mod == 0xFF && esc_mod1 == '%'
+      && strchr("()-*.+/", esc_mod0)) {
+    // transform two-character character set designations
+    nrc_designate = esc_mod0;
+    nrc_select = c == '5' ? CSET_DECSPGR : c;
+  }
+  // then check for further designations that work without decnrc_enabled
+  else if (strchr("<", c) && strchr("()-*.+/", term->esc_mod)) {
+    // '<': DEC Supplementary
+    nrc_designate = term->esc_mod;
+    nrc_select = c;
+  }
+  // ↕ this is a bit ugly (xterm uses a table), but hey it works
+  if (term->curs.decnrc_enabled
+     // also allow unguarded designations
+     || (nrc_designate && strchr("%<", nrc_select))
+     ) {
+    if (!nrc_designate && strchr("()-*.+/", term->esc_mod)) {
+      nrc_designate = term->esc_mod;
+      // transform alternative designation indicators
+      switch (c) {
+        when 'C':  nrc_select = CSET_FI;
+        when 'E':  nrc_select = CSET_NO;
+        when '6':  nrc_select = CSET_NO;
+        when 'H':  nrc_select = CSET_SE;
+        when 'f':  nrc_select = CSET_FR;  // not documented for DEC VT510
+        when '9':  nrc_select = CSET_CA;  // not documented for DEC VT320
+        otherwise: nrc_select = c;
+      }
+    }
+    // if a character set designation was identified, check if it's applicable
+    if (nrc_designate) {
+      if (strchr("<%45RQKY`6Z7=", nrc_select)) {
+        // 94 character sets
+        switch (nrc_designate) {
+          when '(': curs->csets[0] = nrc_select;
+          when ')': curs->csets[1] = nrc_select;
+          when '*': curs->csets[2] = nrc_select;
+          when '+': curs->csets[3] = nrc_select;
+          otherwise: nrc_select = 0;
+        }
+      }
+      else if (strchr("A", nrc_select)) {
+        // 96 character sets
+        switch (nrc_designate) {
+          when '-': curs->csets[1] = nrc_select;
+          when '.': curs->csets[2] = nrc_select;
+          when '/': curs->csets[3] = nrc_select;
+          otherwise: nrc_select = 0;
+        }
+      }
+      else
+        nrc_select = 0;
+      // finish handling if a character set designation was applied
+      if (nrc_select) {
+        term_update_cs(term);
+        return;
+      }
+    }
+  }
+
   switch (CPAIR(term->esc_mod, c)) {
     when '[':  /* CSI: control sequence introducer */
       term->state = CSI_ARGS;
@@ -499,10 +568,19 @@ do_esc(struct term* term, uchar c)
       curs->utf = false;
       term_update_cs(term);
     when 'n':  /* LS2: Invoke G2 character set as GL */
-      term->curs.g0123 = 2;
+      term->curs.gl = 2;
       term_update_cs(term);
     when 'o':  /* LS3: Invoke G3 character set as GL */
-      term->curs.g0123 = 3;
+      term->curs.gl = 3;
+      term_update_cs(term);
+    when '~':  /* LS1R: Invoke G1 character set as GR */
+      term->curs.gr = 1;
+      term_update_cs(term);
+    when '}':  /* LS2R: Invoke G2 character set as GR */
+      term->curs.gr = 2;
+      term_update_cs(term);
+    when '|':  /* LS3R: Invoke G3 character set as GR */
+      term->curs.gr = 3;
       term_update_cs(term);
     when 'N':  /* SS2: Single Shift G2 character set */
       term->curs.cset_single = curs->csets[2];
@@ -678,6 +756,8 @@ set_modes(struct term* term, bool state)
           term->cursor_on = state;
         when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
           term->deccolm_allowed = state;
+        when 42: /* DECNRCM: national replacement character sets */
+          term->curs.decnrc_enabled = state;
         when 67: /* DECBKM: backarrow key mode */
           term->backspace_sends_bs = state;
         when 80: /* DECSDM: SIXEL display mode */
@@ -1576,6 +1656,25 @@ term_write(struct term* term, const char *buf, uint len)
           continue;
         }
 
+        short cset = term->curs.csets[term->curs.gl];
+        if (term->curs.cset_single != CSET_ASCII) {
+          cset = term->curs.cset_single;
+          term->curs.cset_single = CSET_ASCII;
+        }
+        else if (term->curs.decnrc_enabled
+         && term->curs.gr && term->curs.csets[term->curs.gr] != CSET_ASCII
+         && !term->curs.oem_acs && !term->curs.utf
+         && c >= 0x80 && c < 0xFF) {
+          // tune C1 behaviour to mimic xterm
+          if (c < 0xA0)
+            continue;
+          // TODO: if we'd ever support 96 character sets (other than 'A')
+          // 0xFF should be handled specifically
+
+          c &= 0x7F;
+          cset = term->curs.csets[term->curs.gr];
+        }
+
         switch (cs_mb1towc(&wc, c)) {
           when 0: // NUL or low surrogate
             if (wc)
@@ -1660,11 +1759,15 @@ term_write(struct term* term, const char *buf, uint len)
           width = xcwidth(wc);
 #endif
 
-        short cset = term->curs.csets[term->curs.g0123];
-        if (term->curs.cset_single != CSET_ASCII) {
-          cset = term->curs.cset_single;
-          term->curs.cset_single = CSET_ASCII;
+        wchar NRC(wchar * map) {
+          static char * rpl = "#@[\\]^_`{|}~";
+          char * match = strchr(rpl, c);
+          if (match)
+            return map[match - rpl];
+          else
+            return wc;
         }
+
         switch (cset) {
           when CSET_LINEDRW:  // VT100 line drawing characters
             if (0x60 <= wc && wc <= 0x7E) {
@@ -1691,22 +1794,57 @@ term_write(struct term* term, const char *buf, uint len)
 #endif
               wc = dispwc;
             }
-          when CSET_TECH:
+          when CSET_TECH:  // DEC Technical character set
             if (c > ' ' && c < 0x7F) {
               // = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬␦␦╲╱␦␦␦␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
-              wc = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬╶╶╲╱╴╴╳␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
+              // = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎛⎝⎞⎠⎨⎬╶╶╲╱╴╴╳␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
+              wc = W("⎷┌─⌠⌡│⎡⎣⎤⎦⎧⎩⎫⎭⎨⎬╶╶╲╱╴╴╳␦␦␦␦≤≠≥∫∴∝∞÷Δ∇ΦΓ∼≃Θ×Λ⇔⇒≡ΠΨ␦Σ␦␦√ΩΞΥ⊂⊃∩∪∧∨¬αβχδεφγηιθκλ␦ν∂πψρστ␦ƒωξυζ←↑→↓")
                    [c - ' ' - 1];
-              if (c >= 0x31 && c <= 0x37) {
-                static uchar techdraw_code[7] = {
-                  0x81, 0x82, 0, 0, 0x85, 0x86, 0x87
+              if (c <= 0x37) {
+                static uchar techdraw_code[23] = {
+                  0x80,                    // square root base
+                  0, 0, 0, 0, 0,
+                  0x88, 0x89, 0x8A, 0x8B,  // square bracket corners
+                  0, 0, 0, 0,              // curly bracket hooks
+                  0, 0,                    // curly bracket middle pieces
+                  0x81, 0x82, 0, 0, 0x85, 0x86, 0x87  // sum segments
                 };
-                uchar dispcode = techdraw_code[c - 0x31];
+                uchar dispcode = techdraw_code[c - 0x21];
                 term->curs.attr.attr |= ((unsigned long long)dispcode) << ATTR_GRAPH_SHIFT;
               }
             }
-          when CSET_GBCHR:
+          when CSET_GBCHR:  // NRC United Kingdom
             if (c == '#')
               wc = 0xA3; // pound sign
+          when CSET_NL:
+            wc = NRC(W("£¾ĳ½|^_`¨ƒ¼´"));  // Dutch
+          when CSET_FI:
+            wc = NRC(W("#@ÄÖÅÜ_éäöåü"));  // Finnish
+          when CSET_FR:
+            wc = NRC(W("£à°ç§^_`éùè¨"));  // French
+          when CSET_CA:
+            wc = NRC(W("#àâçêî_ôéùèû"));  // French Canadian
+          when CSET_DE:
+            wc = NRC(W("#§ÄÖÜ^_`äöüß"));  // German
+          when CSET_IT:
+            wc = NRC(W("£§°çé^_ùàòèì"));  // Italian
+          when CSET_NO:
+            wc = NRC(W("#ÄÆØÅÜ_äæøåü"));  // Norwegian/Danish
+          when CSET_PT:
+            wc = NRC(W("#@ÃÇÕ^_`ãçõ~"));  // Portuguese
+          when CSET_ES:
+            wc = NRC(W("£§¡Ñ¿^_`°ñç~"));  // Spanish
+          when CSET_SE:
+            wc = NRC(W("#ÉÄÖÅÜ_éäöåü"));  // Swedish
+          when CSET_CH:
+            wc = NRC(W("ùàéçêîèôäöüû"));  // Swiss
+          when CSET_DECSPGR   // DEC Supplemental Graphic
+            or CSET_DECSUPP:  // DEC Supplemental
+            if (c > ' ' && c < 0x7F) {
+              // = W("¡¢£␦¥␦§¨©ª«␦␦␦␦°±²³␦µ¶·␦¹º»¼½␦¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ␦ÑÒÓÔÕÖŒØÙÚÛÜÝ␦ßàáâãäåæçèéêëìíîï␦ñòóôõöœøùúûüÿ␦")
+              wc = W("¡¢£␦¥␦§¤©ª«␦␦␦␦°±²³␦µ¶·␦¹º»¼½␦¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏ␦ÑÒÓÔÕÖŒØÙÚÛÜŸ␦ßàáâãäåæçèéêëìíîï␦ñòóôõöœøùúûüÿ␦")
+                   [c - ' ' - 1];
+            }
           otherwise: ;
         }
         write_char(term, wc, width);
@@ -1715,8 +1853,18 @@ term_write(struct term* term, const char *buf, uint len)
       when ESCAPE or CMD_ESCAPE:
         if (c < 0x20)
           do_ctrl(term, c);
-        else if (c < 0x30)
-          term->esc_mod = term->esc_mod ? 0xFF : c;
+        else if (c < 0x30) {
+          if (term->esc_mod) {
+            esc_mod0 = term->esc_mod;
+            esc_mod1 = c;
+            term->esc_mod = 0xFF;
+          }
+          else {
+            esc_mod0 = 0;
+            esc_mod1 = 0;
+            term->esc_mod = c;
+          }
+        }
         else if (c == '\\' && term->state == CMD_ESCAPE) {
           /* Process DCS or OSC sequence if we see ST. */
           do_cmd(term);

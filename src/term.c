@@ -137,12 +137,14 @@ static void
 term_cursor_reset(term_cursor *curs)
 {
   curs->attr = CATTR_DEFAULT;
-  curs->g0123 = 0;
+  curs->gl = 0;
+  curs->gr = 0;
   curs->oem_acs = 0;
   curs->utf = false;
   for (uint i = 0; i < lengthof(curs->csets); i++)
     curs->csets[i] = CSET_ASCII;
   curs->cset_single = CSET_ASCII;
+  curs->decnrc_enabled = false;
 
   curs->autowrap = true;
   curs->rev_wrap = cfg.old_wrapmodes;
@@ -1283,11 +1285,14 @@ term_paint(struct term* term)
               )
       {
         if ((tattr.attr & ATTR_WIDE) == 0 && win_char_width(tchar) == 2
+            // do not tamper with graphics
+            && !line->lattr
             // and restrict narrowing to ambiguous width chars
             //&& ambigwide(tchar)
             // but then they will be clipped...
-           )
+           ) {
           tattr.attr |= ATTR_NARROW;
+        }
         else if (tattr.attr & ATTR_WIDE
                  // guard character expanding properly to avoid 
                  // false hits as reported for CJK in #570,
@@ -1298,8 +1303,9 @@ term_paint(struct term* term)
                  && win_char_width(tchar) == 1 // && !widerange(tchar)
                  // and reassure to apply this only to ambiguous width chars
                  && ambigwide(tchar)
-                )
+                ) {
           tattr.attr |= ATTR_EXPAND;
+        }
       }
       else if (dispchars[j].attr.attr & ATTR_NARROW)
         tattr.attr |= ATTR_NARROW;
@@ -1740,7 +1746,7 @@ term_update_cs(struct term* term)
   cs_set_mode(
     curs->oem_acs ? CSM_OEM :
     curs->utf ? CSM_UTF8 :
-    curs->csets[curs->g0123] == CSET_OEM ? CSM_OEM : CSM_DEFAULT
+    curs->csets[curs->gl] == CSET_OEM ? CSM_OEM : CSM_DEFAULT
   );
 }
 
