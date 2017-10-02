@@ -1403,7 +1403,7 @@ static struct {
         when IDM_TOGCHARINFO: toggle_charinfo();
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(term); win_update();
-        when IDM_RESET: winimgs_clear(term); term_reset(term); win_update();
+        when IDM_RESET: winimgs_clear(term); term_reset(term, true); win_update();
         when IDM_DEFSIZE:
           default_size();
         when IDM_DEFSIZE_ZOOM:

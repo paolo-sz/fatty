@@ -341,6 +341,10 @@ typedef struct {
   imglist *altlast;
 } termimgs;
 
+struct mode_entry {
+  int mode, val;
+};
+
 struct term {
   bool on_alt_screen;     /* On alternate screen? */
   bool show_other_screen;
@@ -509,11 +513,14 @@ struct term {
   bool markpos_valid;
 
   struct child* child;
+
+  struct mode_entry * mode_stack;
+  int mode_stack_len;
 };
 
 extern void term_resize(struct term* term, int, int);
 extern void term_scroll(struct term* term, int, int);
-extern void term_reset(struct term* term);
+extern void term_reset(struct term* term, bool full);
 extern void term_free(struct term* term);
 extern void term_clear_scrollback(struct term* term);
 extern void term_mouse_click(struct term* term, mouse_button, mod_keys, pos, int count);

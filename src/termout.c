@@ -415,7 +415,7 @@ do_esc(struct term* term, uchar c)
 
   // NRC tweaks
   uchar nrc_designate = 0;
-  uchar nrc_select;
+  uchar nrc_select = 0;
   // first check for two-character character set designations (%5, %6)
   if (term->esc_mod == 0xFF && esc_mod1 == '%'
       && strchr("()-*.+/", esc_mod0)) {
@@ -514,7 +514,7 @@ do_esc(struct term* term, uchar c)
       write_primary_da(term->child);
     when 'c':  /* RIS: restore power-on settings */
       winimgs_clear(term);
-      term_reset(term);
+      term_reset(term, true);
       if (term->reset_132) {
         win_set_chars(term->rows, 80);
         term->reset_132 = 0;
@@ -633,13 +633,16 @@ do_sgr(struct term* term)
             term_update_cs(term);
           }
         }
-      when 12 ... 19:
+      when 12 ... 20:
         attr.attr &= ~FONTFAM_MASK;
         attr.attr |= (unsigned long long)(term->csi_argv[i] - 10) << ATTR_FONTFAM_SHIFT;
       //when 21: attr.attr &= ~ATTR_BOLD;
       when 21: attr.attr |= ATTR_DOUBLYUND;
       when 22: attr.attr &= ~(ATTR_BOLD | ATTR_DIM);
-      when 23: attr.attr &= ~ATTR_ITALIC;
+      when 23:
+        attr.attr &= ~ATTR_ITALIC;
+        if (((attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT) + 10 == 20)
+          attr.attr &= ~FONTFAM_MASK;
       when 24: attr.attr &= ~(ATTR_UNDER | ATTR_DOUBLYUND);
       when 25: attr.attr &= ~(ATTR_BLINK | ATTR_BLINK2);
       when 27: attr.attr &= ~ATTR_REVERSE;
@@ -1009,6 +1012,35 @@ get_mode(struct term* term, bool privatemode, int arg)
   }
 }
 
+static void
+push_mode(struct term* term, int mode, int val)
+{
+  struct mode_entry * new_stack = renewn(term->mode_stack, term->mode_stack_len + 1);
+  if (new_stack) {
+    term->mode_stack = new_stack;
+    term->mode_stack[term->mode_stack_len].mode = mode;
+    term->mode_stack[term->mode_stack_len].val = val;
+    term->mode_stack_len++;
+  }
+}
+
+static int
+pop_mode(struct term* term, int mode)
+{
+  for (int i = term->mode_stack_len - 1; i >= 0; i--)
+    if (term->mode_stack[i].mode == mode) {
+      int val = term->mode_stack[i].val;
+      term->mode_stack_len--;
+      for (int j = i; j < term->mode_stack_len; j++)
+        term->mode_stack[j] = term->mode_stack[j + 1];
+      struct mode_entry * new_stack = renewn(term->mode_stack, term->mode_stack_len);
+      if (new_stack)
+        term->mode_stack = new_stack;
+      return val;
+    }
+  return -1;
+}
+
 /*
  * dtterm window operations and xterm extensions.
    CSI Ps ; Ps ; Ps t
@@ -1097,6 +1129,8 @@ do_csi(struct term* term, uchar c)
     term->esc_mod = '$';
 
   switch (CPAIR(term->esc_mod, c)) {
+    when CPAIR('!', 'p'):     /* DECSTR: soft terminal reset */
+      term_reset(term, false);
     when 'A':        /* CUU: move up N lines */
       move(term, curs->x, curs->y - arg0_def1, 1);
     when 'e':        /* VPR: move down N lines */
@@ -1163,10 +1197,29 @@ do_csi(struct term* term, uchar c)
         child_printf(term->child, "\e[%d;%dR", curs->y + 1 - (curs->origin ? term->marg_top : 0), curs->x + 1);
       else if (arg0 == 5)
         child_write(term->child, "\e[0n", 4);
+    when CPAIR('?', 'n'):  /* DSR, DEC */
+      if (arg0 == 6)
+        child_printf(term->child, "\e[?%d;%dR", curs->y + 1 - (curs->origin ? term->marg_top : 0), curs->x + 1);
+      else if (arg0 == 15)
+        child_printf(term->child, "\e[?%un", 11 - !!*cfg.printer);
     when 'h' or CPAIR('?', 'h'):  /* SM/DECSET: set (private) modes */
       set_modes(term, true);
     when 'l' or CPAIR('?', 'l'):  /* RM/DECRST: reset (private) modes */
       set_modes(term, false);
+    when CPAIR('?', 's'): { /* Save DEC Private Mode (DECSET) values */
+      int arg = term->csi_argv[0];
+      int val = get_mode(term, true, arg);
+      if (val)
+        push_mode(term, arg, val);
+    }
+    when CPAIR('?', 'r'): { /* Restore DEC Private Mode (DECSET) values */
+      int arg = term->csi_argv[0];
+      int val = pop_mode(term, arg);
+      if (val >= 0) {
+        term->csi_argc = 1;
+        set_modes(term, val & 1);
+      }
+    }
     when CPAIR('$', 'p'): { /* DECRQM: request (private) mode */
       int arg = term->csi_argv[0];
       child_printf(term->child, "\e[%s%u;%u$y",
@@ -1237,17 +1290,15 @@ do_csi(struct term* term, uchar c)
     when CPAIR('*', '|'):     /* DECSNLS */
      /*
       * Set number of lines on screen
-      * VT420 uses VGA like hardware and can
-      * support any size in reasonable range
-      * (24..49 AIUI) with no default specified.
+      * VT420 uses VGA like hardware and can support any size 
+      * in reasonable range (24..49 AIUI) with no default specified.
       */
       win_set_chars(arg0 ?: cfg.rows, term->cols);
       term->selected = false;
     when CPAIR('$', '|'):     /* DECSCPP */
      /*
       * Set number of columns per page
-      * Docs imply range is only 80 or 132, but
-      * I'll allow any.
+      * Docs imply range is only 80 or 132, but I'll allow any.
       */
       win_set_chars(term->rows, arg0 ?: cfg.cols);
       term->selected = false;
@@ -1264,7 +1315,8 @@ do_csi(struct term* term, uchar c)
       }
     }
     when 'x':        /* DECREQTPARM: report terminal characteristics */
-      child_printf(term->child, "\e[%c;1;1;112;112;1;0x", '2' + arg0);
+      if (arg0 <= 1)
+        child_printf(term->child, "\e[%u;1;1;120;120;1;0x", arg0 + 2);
     when 'Z': {      /* CBT (Cursor Backward Tabulation) */
       int n = arg0_def1;
       while (--n >= 0 && curs->x > 0) {
