@@ -227,6 +227,10 @@ typedef enum {
 static void
 send_mouse_event(struct term* term, mouse_action a, mouse_button b, mod_keys mods, pos p)
 {
+  if (term->mouse_mode == MM_LOCATOR) {
+    return;
+  }
+
   uint x = p.x + 1, y = p.y + 1;
 
   uint code = b ? b - 1 : 0x3;
@@ -319,6 +323,8 @@ send_keys(struct term* term, char *code, uint len, uint count)
 static bool
 is_app_mouse(struct term* term, mod_keys *mods_p)
 {
+  if (term->locator_1_enabled)
+    return true;
   if (!term->mouse_mode || term->show_other_screen)
     return false;
   bool override = *mods_p & cfg.click_target_mod;

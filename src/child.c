@@ -627,8 +627,10 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
       close(child_log_fd);
     close(child_win_fd);
 
-    if (child->dir && *child->dir)
+    if (child->dir && *child->dir) {
       chdir(child->dir);
+      setenv("PWD", child->dir, true);
+    }
 
 #ifdef add_child_parameters
     // add child parameters
