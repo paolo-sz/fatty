@@ -1195,7 +1195,11 @@ win_update_scrollbar(void)
                SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 }
 
-static void _reconfig(struct term* term, bool font_changed) {
+void
+win_font_cs_reconfig(struct term* term, bool font_changed)
+{
+  bool old_ambig_wide = cs_ambig_wide;
+  cs_reconfig();
   if (term->report_font_changed && font_changed)
     if (term->report_ambig_width)
       child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
@@ -1205,7 +1209,9 @@ static void _reconfig(struct term* term, bool font_changed) {
     child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
 }
 
-static void font_cs_reconfig(bool font_changed) {
+static void
+font_cs_reconfig(bool font_changed)
+{
   if (font_changed) {
     win_init_fonts(cfg.font.size);
     trace_resize((" (font_cs_reconfig -> win_adapt_term_size)\n"));
@@ -1215,9 +1221,7 @@ static void font_cs_reconfig(bool font_changed) {
   win_update_transparency(cfg.opaque_when_focused);
   win_update_mouse();
 
-  old_ambig_wide = cs_ambig_wide;
-  cs_reconfig();
-  win_for_each_term_bool(_reconfig, font_changed);
+  win_for_each_term_bool(win_font_cs_reconfig, font_changed);
 }
   
 void

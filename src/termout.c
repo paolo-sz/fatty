@@ -5,8 +5,7 @@
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include "termpriv.h"
-
-#include "winpriv.h"
+#include "winpriv.h"  // win_get_font, win_change_font
 #include "appinfo.h"
 #include "charset.h"
 #include "child.h"
@@ -26,8 +25,8 @@
 #define CPAIR(x, y) ((x) << 8 | (y))
 
 static string primary_da1 = "\e[?1;2c";
-static string primary_da2 = "\e[?62;1;2;4;6;9;15;22c";
-static string primary_da3 = "\e[?63;1;2;4;6;9;15;22c";
+static string primary_da2 = "\e[?62;1;2;4;6;9;15;22;29c";
+static string primary_da3 = "\e[?63;1;2;4;6;9;15;22;29c";
 
 
 static bool
@@ -243,11 +242,17 @@ write_primary_da(struct child* child)
   child_write(child, primary_da, strlen(primary_da));
 }
 
+static wchar last_char = 0;
+static int last_width = 0;
+
 static void
 write_char(struct term* term, wchar c, int width)
 {
   if (!c)
     return;
+
+  last_char = c;
+  last_width = width;
 
   term_cursor *curs = &term->curs;
   termline *line = term->lines[curs->y];
@@ -1131,6 +1136,9 @@ do_csi(struct term* term, uchar c)
   switch (CPAIR(term->esc_mod, c)) {
     when CPAIR('!', 'p'):     /* DECSTR: soft terminal reset */
       term_reset(term, false);
+    when 'b':        /* REP: repeat preceding character */
+      for (int i = 0; i < arg0_def1; i++)
+        write_char(term, last_char, last_width);
     when 'A':        /* CUU: move up N lines */
       move(term, curs->x, curs->y - arg0_def1, 1);
     when 'e':        /* VPR: move down N lines */
@@ -1348,7 +1356,7 @@ do_csi(struct term* term, uchar c)
           child_printf(term->child, "\e[?%un", 11 - !!*cfg.printer);
         // DEC Locator
         when 53 or 55:
-          child_printf(term->child, "\e[?50n");  // change to 53 when fully implemented
+          child_printf(term->child, "\e[?53n");
         when 56:
           child_printf(term->child, "\e[?57;1n");
       }
@@ -1356,8 +1364,11 @@ do_csi(struct term* term, uchar c)
     when CPAIR('\'', 'z'): {  /* DECELR: enable locator reporting */
       switch (arg0) {
         when 0:
-          term->mouse_mode = 0;
-          win_update_mouse();
+          if (term->mouse_mode == MM_LOCATOR) {
+            term->mouse_mode = 0;
+            win_update_mouse();
+          }
+          term->locator_1_enabled = false;
         when 1:
           term->mouse_mode = MM_LOCATOR;
           win_update_mouse();
@@ -1371,14 +1382,38 @@ do_csi(struct term* term, uchar c)
         when 1:
           term->locator_by_pixels = true;
       }
+      term->locator_rectangle = false;
+    }
+    when CPAIR('\'', '{'): {  /* DECSLE: select locator events */
+      for (uint i = 0; i < term->csi_argc; i++)
+        switch (term->csi_argv[i]) {
+          when 0: term->locator_report_up = term->locator_report_dn = false;
+          when 1: term->locator_report_dn = true;
+          when 2: term->locator_report_dn = false;
+          when 3: term->locator_report_up = true;
+          when 4: term->locator_report_up = false;
+        }
     }
     when CPAIR('\'', '|'): {  /* DECRQLP: request locator position */
-      if (term->locator_1_enabled) {
-        int x, y, button;
-        win_get_locator_info(&x, &y, &button, term->locator_by_pixels);
-        child_printf(term->child, "\e[1;%d;%d;%d;0&w", button, y, x);
+      if (term->mouse_mode == MM_LOCATOR || term->locator_1_enabled) {
+        int x, y, buttons;
+        win_get_locator_info(&x, &y, &buttons, term->locator_by_pixels);
+        child_printf(term->child, "\e[1;%d;%d;%d;0&w", buttons, y, x);
         term->locator_1_enabled = false;
       }
+      else {
+        //child_printf("\e[0&w");  // xterm reports this if loc. compiled in
+      }
+    }
+    when CPAIR('\'', 'w'): {  /* DECEFR: enable filter rectangle */
+      int arg2 = term->csi_argv[2], arg3 = term->csi_argv[3];
+      int x, y, buttons;
+      win_get_locator_info(&x, &y, &buttons, term->locator_by_pixels);
+      term->locator_top = arg0 ?: y;
+      term->locator_left = arg1 ?: x;
+      term->locator_bottom = arg2 ?: y;
+      term->locator_right = arg3 ?: x;
+      term->locator_rectangle = true;
     }
   }
 }
@@ -1803,6 +1838,20 @@ do_cmd(struct term* term)
         term->wide_extra = true;
     }
     when 52: do_clipboard(term);
+    when 50: {
+      uint ff = (term->curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
+      if (!strcmp(s, "?")) {
+        char * fn = cs__wcstombs(win_get_font(ff) ?: W(""));
+        child_printf(term->child, "\e]50;%s\e\\", fn);
+        free(fn);
+      }
+      else {
+        if (ff < lengthof(cfg.fontfams) - 1) {
+          wstring wfont = cs__mbstowcs(s);  // let this leak...
+          win_change_font(ff, wfont);
+        }
+      }
+    }
   }
 }
 
