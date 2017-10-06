@@ -48,6 +48,7 @@ typedef struct {
   colour fg_colour, bold_colour, bg_colour, cursor_colour, underl_colour;
   bool underl_manual;
   colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
+  colour sel_fg_colour, sel_bg_colour;
   colour search_fg_colour, search_bg_colour, search_current_colour;
   wstring theme_file;
   string colour_scheme;

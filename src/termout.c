@@ -1685,6 +1685,7 @@ do_colour_osc(struct term* term, bool has_index_arg, uint i, bool reset)
         return;
     }
   }
+
   colour c;
   if (reset)
     win_set_colour(i, (colour)-1);
@@ -1749,12 +1750,13 @@ do_cmd(struct term* term)
 {
   char *s = term->cmd_buf;
   s[term->cmd_len] = 0;
-  wchar *ws = cs__mbstowcs(s);
 
   switch (term->cmd_num) {
-    when 0 or 2: 
-      win_tab_set_title(term, ws);  // ignore icon title
-      free(ws);
+    when 0 or 2: {
+	  wchar *ws = cs__mbstowcs(s);
+	  win_tab_set_title(term, ws);  // ignore icon title
+	  free(ws);
+    }
     when 4:   do_colour_osc(term, true, 4, false);
     when 5:   do_colour_osc(term, true, 5, false);
     when 104: do_colour_osc(term, true, 4, true);
@@ -1762,9 +1764,13 @@ do_cmd(struct term* term)
     when 10:  do_colour_osc(term, false, FG_COLOUR_I, false);
     when 11:  do_colour_osc(term, false, BG_COLOUR_I, false);
     when 12:  do_colour_osc(term, false, CURSOR_COLOUR_I, false);
+    when 17:  do_colour_osc(term, false, SEL_COLOUR_I, false);
+    when 19:  do_colour_osc(term, false, SEL_TEXT_COLOUR_I, false);
     when 110: do_colour_osc(term, false, FG_COLOUR_I, true);
     when 111: do_colour_osc(term, false, BG_COLOUR_I, true);
     when 112: do_colour_osc(term, false, CURSOR_COLOUR_I, true);
+    when 117: do_colour_osc(term, false, SEL_COLOUR_I, true);
+    when 119: do_colour_osc(term, false, SEL_TEXT_COLOUR_I, true);
     when 7:  // Set working directory (from Mac Terminal) for Alt+F2
       // extract dirname from file://host/path scheme
       if (!strncmp(s, "file:", 5))
