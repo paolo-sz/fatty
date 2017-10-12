@@ -15,6 +15,7 @@ extern HINSTANCE inst;  // The all-important instance handle
 extern HWND wnd, tab_wnd;        // the main terminal window
 extern HIMC imc;        // the input method context
 extern HWND config_wnd; // the options window
+extern ATOM class_atom;
 
 extern COLORREF colours[COLOUR_NUM];
 extern colour brighten(colour c, colour against);
@@ -30,7 +31,7 @@ extern char * fontpropinfo(void);
 
 extern int g_render_tab_height; // current tab height in pixels
 extern bool support_wsl;
-extern wchar * wsl_basepath;
+extern wstring wsl_basepath;
 
 extern bool win_is_fullscreen;
 extern uint dpi;
