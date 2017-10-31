@@ -1,6 +1,6 @@
 // termout.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe
+// Based on code from mintty by Andy Koppe and Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -1999,10 +1999,11 @@ term_write(struct term* term, const char *buf, uint len)
         if (is_low_surrogate(wc)) {
           if (hwc) {
 #if HAS_LOCALES
+            int width = cfg.charwidth ? xcwidth(combine_surrogates(hwc, wc)) :
 # ifdef __midipix__
-            int width = wcwidth(combine_surrogates(hwc, wc));
+                        wcwidth(combine_surrogates(hwc, wc));
 # else
-            int width = wcswidth((wchar[]){hwc, wc}, 2);
+                        wcswidth((wchar[]){hwc, wc}, 2);
 # endif
 #else
             int width = xcwidth(combine_surrogates(hwc, wc));
@@ -2046,13 +2047,16 @@ term_write(struct term* term, const char *buf, uint len)
         }
         else
 #if HAS_LOCALES
-          width = wcwidth(wc);
-#ifdef hide_isolate_marks
+          if (cfg.charwidth)
+            width = xcwidth(wc);
+          else
+            width = wcwidth(wc);
+# ifdef hide_isolate_marks
           // force bidi isolate marks to be zero-width;
           // however, this is inconsistent with locale width
           if (wc >= 0x2066 && wc <= 0x2069)
             width = 0;  // bidi isolate marks
-#endif
+# endif
 #else
           width = xcwidth(wc);
 #endif

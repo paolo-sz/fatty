@@ -1,6 +1,6 @@
 // termclip.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe
+// Based on code from mintty by Andy Koppe and Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -170,7 +170,7 @@ term_open(struct term* term)
   while (iswspace(*p))
     p++;
   if (*p)
-    win_open(buf.textbuf);  // textbuf is freed by win_open if possible
+    win_open(buf.textbuf);  // textbuf is freed by win_open
   else
     free(buf.textbuf);
 }

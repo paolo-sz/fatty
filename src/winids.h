@@ -28,14 +28,15 @@
 #define IDM_SEARCH          0x00F0
 #define IDM_TOGLOG          0x01F0
 #define IDM_TOGCHARINFO     0x02F0
-#define IDM_USERCOMMAND     0x0300
+#define IDM_USERCOMMAND     0x1000
+#define IDM_SESSIONCOMMAND  0x5000
+#define IDM_GOTAB           0x9000
+
 #define IDM_NEWTAB          0x0100
 #define IDM_KILLTAB         0x0110
-
 #define IDM_PREVTAB     0x0120
 #define IDM_NEXTTAB     0x0130
 #define IDM_MOVELEFT    0x0140
 #define IDM_MOVERIGHT   0x0150
-#define IDM_GOTAB           0x8000
 
 #endif

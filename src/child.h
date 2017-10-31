@@ -29,19 +29,20 @@ extern void child_free(struct child* child);
 extern void child_proc(void);
 extern void child_kill(void);
 extern void child_terminate(struct child* child);
-extern void child_write(struct child* child, const char *, unsigned int len);
-extern void child_printf(struct child* child, const char *fmt, ...) __attribute__((format(printf, 2, 3)));
+extern void child_write(struct child* child, const char *, uint len);
+extern void child_printf(struct child* child, const char * fmt, ...) __attribute__((format(printf, 2, 3)));
 extern void child_send(struct child* child, const char *, uint len);
 extern void child_sendw(struct child* child, const wchar *, uint len);
-extern void child_resize(struct child* child, struct winsize *winp);
+extern void child_resize(struct child* child, struct winsize * winp);
 extern bool child_is_alive(struct child* child);
 extern bool child_is_parent(struct child* child);
 extern bool child_is_any_parent();
-extern char * foreground_prog(struct child* child);
+extern char * foreground_prog(struct child* child);  // to be free()d
 extern void user_command(struct child* child, int n);
 extern wstring child_conv_path(struct child*, wstring);
-extern void child_fork(struct child* child, int argc, char *argv[], int moni);
+extern void child_fork(struct child* child, int argc, char * argv[], int moni);
 extern void child_set_fork_dir(struct child* child, char *);
+extern void child_launch(struct child* child, int n, int argc, char * argv[], int moni);
 
 void child_onexit(int sig);
 void child_init();
@@ -49,5 +50,7 @@ void child_init();
 extern int child_win_fd;
 extern int child_log_fd;
 
+//extern void child_kill(bool point_blank);
+//extern char * child_tty(void);
 
 #endif

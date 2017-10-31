@@ -39,6 +39,10 @@ char * fatty_debug;
 #include <propkey.h>
 #endif
 
+#ifndef INT16
+#define INT16 short
+#endif
+
 
 bool icon_is_from_shortcut = false;
 
@@ -84,7 +88,7 @@ static bool maxheight = false;
 static bool store_taskbar_properties = false;
 static bool prevent_pinning = false;
 bool support_wsl = false;
-wstring wsl_basepath = 0;
+wstring wsl_basepath = W("");
 static char * wsl_guid = 0;
 static bool start_home = false;
 
@@ -390,13 +394,99 @@ get_tab(uint tabi)
     return 0;
 }
 
+#define dont_debug_tabs
+
 static void
 win_gotab(uint n)
 {
   HWND tab = get_tab(n);
-  ShowWindow(tab, SW_RESTORE);
+
   // apparently, we don't have to fiddle with SetWindowPos as in win_switch
   BringWindowToTop(tab);
+  ShowWindow(tab, SW_RESTORE);
+
+  // reposition / resize
+#ifdef geom_sync_from_launching
+  if (cfg.geom_sync) {
+    // Actually, we should not do this here, but only in the target tab
+    // (after notifying it with the size), in order to respect a
+    // possibly different SessionGeomSync config there.
+    RECT r;
+    GetWindowRect(wnd, &r);
+    SetWindowPos(tab, null, r.left, r.top, r.right - r.left, r.bottom - r.top,
+                 SWP_NOZORDER);
+  }
+#else
+  RECT r;
+  GetWindowRect(wnd, &r);
+#ifdef debug_tabs
+  printf("switcher %d,%d %d,%d\n", (int)r.left, (int)r.top, (int)(r.right - r.left), (int)(r.bottom - r.top));
+#endif
+  if (win_is_fullscreen)
+    SendMessageW(tab, WM_USER, 0, -1);
+  else
+    SendMessageW(tab, WM_USER,
+                 MAKEWPARAM(r.right - r.left, r.bottom - r.top),
+                 MAKELPARAM(r.left, r.top));
+#endif
+
+  if (tab == wnd)
+    // avoid hiding when switching to myself
+    return;
+
+#ifdef hide_myself
+#warning needs to implement: unhide other when closing
+  // hide myself
+# ifdef short_hide
+  ShowWindow(wnd, SW_HIDE);
+# else
+  SetWindowPos(wnd, null, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOOWNERZORDER |
+               SWP_HIDEWINDOW | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+# endif
+#endif
+}
+
+static void
+win_synctabs(int level)
+{
+  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      if (curr_wnd != wnd) {
+        if (win_is_fullscreen)
+          SendMessageW(curr_wnd, WM_USER, 0, -1);
+        else if (level == 3) // minimize
+          SendMessageW(curr_wnd, WM_USER, 0, 0);
+        else {
+          RECT r;
+          GetWindowRect(wnd, &r);
+#ifdef debug_tabs
+          printf("sync all %d,%d %d,%d\n", (int)r.left, (int)r.top, (int)(r.right - r.left), (int)(r.bottom - r.top));
+#endif
+          SendMessageW(curr_wnd, WM_USER,
+                       MAKEWPARAM(r.right - r.left, r.bottom - r.top),
+                       MAKELPARAM(r.left, r.top));
+        }
+      }
+    }
+    return true;
+  }
+  if (cfg.geom_sync >= level)
+    EnumWindows(wnd_enum_tabs, 0);
+}
+
+static void
+win_launch(int n)
+{
+  HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+  int x, y;
+  int moni = search_monitors(&x, &y, mon, true, 0);
+  child_launch(win_active_terminal()->child, n, main_argc, main_argv, moni);
 }
 
 
@@ -863,6 +953,10 @@ win_set_chars(int rows, int cols)
   struct term* term = win_active_terminal();
 
   trace_resize(("--- win_set_chars %d×%d\n", rows, cols));
+
+  if (win_is_fullscreen)
+    clear_fullscreen();
+
   // prevent resizing to same logical size
   // which would remove bottom padding and spoil some Windows magic (#629)
   if (rows != term->rows || cols != term->cols) {
@@ -958,9 +1052,9 @@ win_bell(struct term* term, config * conf)
       //  3 -> 0x00000020 MB_ICONQUESTION    Question
       //  4 -> 0x00000030 MB_ICONEXCLAMATION Exclamation
       //  5 -> 0x00000040 MB_ICONASTERISK    Asterisk
-      // -1 -> 0xFFFFFFFF                    Simple Beep
       MessageBeep((conf->bell_type - 1) * 16);
     } else if (conf->bell_type < 0)
+      // -1 -> 0xFFFFFFFF                    Simple Beep
       MessageBeep(0xFFFFFFFF);
 
     if (free_bell_name)
@@ -1376,7 +1470,7 @@ static struct {
 #ifdef debug_only_sizepos_messages
     if (strstr(wm_name, "POSCH") || strstr(wm_name, "SIZ"))
 #endif
-    printf("[%d] win_proc %04X %s (%04X %08X)\n", (int)time(0), message, wm_name, (unsigned)wp, (unsigned)lp);
+    printf("[%d]->%8p %04X %s (%04X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
   struct term* term = 0;
@@ -1423,6 +1517,61 @@ static struct {
         child_kill();
       return 0;
 
+#ifdef show_icon_via_callback
+    when WM_MEASUREITEM: {
+      MEASUREITEMSTRUCT* lpmis = (MEASUREITEMSTRUCT*)lp;
+      if (lpmis) {
+        lpmis->itemWidth += 2;
+        if (lpmis->itemHeight < 16)
+          lpmis->itemHeight = 16;
+      }
+    }
+
+//https://www.nanoant.com/programming/themed-menus-icons-a-complete-vista-xp-solution
+    when WM_DRAWITEM: {
+# ifdef debug_drawicon
+      printf("WM_DRAWITEM\n");
+# endif
+      DRAWITEMSTRUCT* lpdis = (DRAWITEMSTRUCT*)lp;
+      /// this is the wrong wnd anyway...
+      HICON icon = (HICON)GetClassLongPtr(wnd, GCLP_HICONSM);
+      if (!lpdis || lpdis->CtlType != ODT_MENU)
+        break; // not for a menu
+      if (!icon)
+        break;
+      DrawIcon(lpdis->hDC,
+               lpdis->rcItem.left - 16,
+               lpdis->rcItem.top
+                      + (lpdis->rcItem.bottom - lpdis->rcItem.top - 16) / 2,
+               icon);
+// -> Invalid cursor handle.
+      DestroyIcon(icon);
+    }
+#endif
+
+    when WM_USER:  // reposition and resize
+      if (cfg.geom_sync) {
+#ifdef debug_tabs
+        printf("switched %d,%d %d,%d\n", (INT16)LOWORD(lp), (INT16)HIWORD(lp), LOWORD(wp), HIWORD(wp));
+#endif
+        if (win_is_fullscreen)
+          clear_fullscreen();
+
+        if (!wp) {
+          if (!lp && cfg.geom_sync >= 3)
+            ShowWindow(wnd, SW_MINIMIZE);
+          else if (lp == -1)
+            win_maximise(2);
+        }
+        else
+          // (INT16) to handle multi-monitor negative coordinates properly
+          SetWindowPos(wnd, null,
+                       //GET_X_LPARAM(lp), GET_Y_LPARAM(lp),
+                       (INT16)LOWORD(lp), (INT16)HIWORD(lp),
+                       LOWORD(wp), HIWORD(wp),
+                       SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+      }
+
     when WM_COMMAND or WM_SYSCOMMAND: {
 # ifdef debug_messages
       static struct {
@@ -1439,8 +1588,12 @@ static struct {
         }
       printf("                           %04X %s\n", (int)wp, idm_name);
 # endif
-      if ((wp & ~0xF) >= IDM_GOTAB)
+      if ((wp & ~0xF) >= 0xF000)
+        ; // skip WM_SYSCOMMAND from Windows here (but process own ones)
+      else if ((wp & ~0xF) >= IDM_GOTAB)
         win_gotab(wp - IDM_GOTAB);
+      else if ((wp & ~0xF) >= IDM_SESSIONCOMMAND)
+        win_launch(wp - IDM_SESSIONCOMMAND);
       else if ((wp & ~0xF) >= IDM_USERCOMMAND)
         user_command(term->child, wp - IDM_USERCOMMAND);
       else
@@ -1707,6 +1860,9 @@ static struct {
         go_fullscr_on_max = false;
         make_fullscreen();
       }
+      else if (wp == SIZE_MINIMIZED) {
+        win_synctabs(3);
+      }
 
       if (!resizing) {
         trace_resize((" (win_proc (WM_SIZE) -> win_adapt_term_size)\n"));
@@ -1754,6 +1910,8 @@ static struct {
         trace_resize((" (win_proc (WM_EXITSIZEMOVE) -> win_adapt_term_size)\n"));
         win_adapt_term_size(shift, false);
       }
+
+      win_synctabs(2);
     }
 
     when WM_WINDOWPOSCHANGED: {
@@ -2287,6 +2445,19 @@ getlxssinfo(wstring wslname,
   if (!lxss)
     return false;
 
+  wchar * legacy_icon()
+  {
+    // "%LOCALAPPDATA%/lxss/bash.ico"
+    char * icf = getenv("LOCALAPPDATA");
+    if (icf) {
+      wchar * icon = cs__mbstowcs(icf);
+      icon = renewn(icon, wcslen(icon) + 15);
+      wcscat(icon, W("\\lxss\\bash.ico"));
+      return icon;
+    }
+    return 0;
+  }
+
   bool getlxssdistinfo(HKEY lxss, wchar * guid)
   {
     wchar * rootfs;
@@ -2318,13 +2489,7 @@ getlxssinfo(wstring wslname,
     }
     else {  // legacy
       rootfs = wcsdup(bp);
-      // "%LOCALAPPDATA%/lxss/bash.ico"
-      char * icf = getenv("LOCALAPPDATA");
-      if (icf) {
-        icon = cs__mbstowcs(icf);
-        icon = renewn(icon, wcslen(icon) + 15);
-        wcscat(icon, W("\\lxss\\bash.ico"));
-      }
+      icon = legacy_icon();
     }
 #ifdef debug_reg_lxss
     printf("WSL distribution name %ls\n", getreg(lxss, guid, W("DistributionName")));
@@ -2341,7 +2506,33 @@ getlxssinfo(wstring wslname,
 
   if (!wslname || !*wslname) {
     wchar * dd = getreg(HKEY_CURRENT_USER, lxsskeyname, W("DefaultDistribution"));
-    int ok = getlxssdistinfo(lxss, dd);
+    int ok;
+    if (dd) {
+      ok = getlxssdistinfo(lxss, dd);
+      free(dd);
+    }
+    else {  // Legacy "Bash on Windows" installed only, no registry info
+#ifdef set_basepath_here
+      // "%LOCALAPPDATA%\\lxss"
+      char * icf = getenv("LOCALAPPDATA");
+      if (icf) {
+        wchar * rootfs = cs__mbstowcs(icf);
+        rootfs = renewn(rootfs, wcslen(rootfs) + 6);
+        wcscat(rootfs, W("\\lxss"));
+        *wsl_rootfs = rootfs;
+        *wsl_guid = "";
+        *wsl_icon = legacy_icon();
+        ok = true;
+      }
+      else
+        ok = false;
+#else
+      *wsl_guid = "";
+      *wsl_rootfs = W("");  // activate legacy tricks in winclip.c
+      *wsl_icon = legacy_icon();
+      ok = true;
+#endif
+    }
     regclose(lxss);
     return ok;
   }
@@ -2398,7 +2589,7 @@ waccess(wstring fn, int amode)
 static bool
 select_WSL(char * wsl)
 {
-  wchar * wslname = cs__mbstowcs(wsl);
+  wchar * wslname = cs__mbstowcs(wsl ?: "");
   wstring wsl_icon;
   // set --rootfs implicitly
   bool ok = getlxssinfo(wslname, &wsl_guid, &wsl_basepath, &wsl_icon);
@@ -2487,7 +2678,7 @@ opts[] = {
   {"nortl",      no_argument,       0, ''},  // short option not enabled
   {"wsl",        no_argument,       0, ''},  // short option not enabled
 #if CYGWIN_VERSION_API_MINOR >= 74
-  {"WSL",        required_argument, 0, ''},  // short option not enabled
+  {"WSL",        optional_argument, 0, ''},  // short option not enabled
 #endif
   {"rootfs",     required_argument, 0, ''},  // short option not enabled
   {"dir~",       no_argument,       0, '~'},
@@ -2683,7 +2874,7 @@ main(int argc, char *argv[])
 #if CYGWIN_VERSION_API_MINOR >= 74
       when '':
         if (!select_WSL(optarg))
-          option_error(__("WSL distribution '%s' not found"), optarg);
+          option_error(__("WSL distribution '%s' not found"), optarg ?: _("(Default)"));
 #endif
       when '~':
         start_home = true;
@@ -2807,8 +2998,10 @@ main(int argc, char *argv[])
     char ** new_argv = newn(char *, argc + 2 + 4 + start_home);
     char ** pargv = new_argv;
     *pargv++ = "-wslbridge";
-    *pargv++ = "--distro-guid";
-    *pargv++ = wsl_guid;
+    if (*wsl_guid) {
+      *pargv++ = "--distro-guid";
+      *pargv++ = wsl_guid;
+    }
     *pargv++ = "-t";
     if (start_home)
       *pargv++ = "-C~";
@@ -3149,6 +3342,44 @@ main(int argc, char *argv[])
     trace_winsize("border_style");
   }
 
+  {
+    // INT16 to handle multi-monitor negative coordinates properly
+    INT16 sx = 0, sy = 0, sdx = 1, sdy = 1;
+    short si = 0;
+    if (getenv("FATTY_X")) {
+      sx = atoi(getenv("FATTY_X"));
+      unsetenv("FATTY_X");
+      si++;
+    }
+    if (getenv("FATTY_Y")) {
+      sy = atoi(getenv("FATTY_Y"));
+      unsetenv("FATTY_Y");
+      si++;
+    }
+    if (getenv("FATTY_DX")) {
+      sdx = atoi(getenv("FATTY_DX"));
+      unsetenv("FATTY_DX");
+      si++;
+    }
+    if (getenv("FATTY_DY")) {
+      sdy = atoi(getenv("FATTY_DY"));
+      unsetenv("FATTY_DY");
+      si++;
+    }
+    if (cfg.geom_sync) {
+#ifdef debug_tabs
+      printf("launched %d,%d %d,%d\n", sx, sy, sdx, sdy);
+#endif
+      if (si >= 2 && !sdx && !sdy) {
+        win_maximise(2);
+      }
+      else if (si == 4) {
+        SetWindowPos(wnd, null, sx, sy, sdx, sdy, SWP_NOZORDER);
+      }
+      trace_winsize("launch");
+    }
+  }
+
   configure_taskbar();
 
   // The input method context.
@@ -3226,6 +3457,8 @@ main(int argc, char *argv[])
   go_fullscr_on_max = (cfg.window == -1);
   ShowWindow(wnd, go_fullscr_on_max ? SW_SHOWMAXIMIZED : cfg.window);
   SetFocus(wnd);
+
+  win_synctabs(4);
 
   // Message loop.
   do {

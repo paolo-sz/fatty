@@ -143,11 +143,19 @@ typedef struct {
   // "Hidden"
   int bidi;
   bool disable_alternate_screen;
+  char charwidth;
   wstring app_id;
   wstring app_name;
   wstring app_launch_cmd;
   wstring drop_commands;
   wstring user_commands;
+  wstring session_commands;
+  string menu_mouse;
+  string menu_ctrlmouse;
+  string menu_altmouse;
+  string menu_menu;
+  string menu_ctrlmenu;
+  int geom_sync;
   int col_spacing, row_spacing;
   int padding;
   bool handle_dpichanged;

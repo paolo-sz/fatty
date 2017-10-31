@@ -1,6 +1,6 @@
 // termmouse.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe
+// Based on code from mintty by Andy Koppe and Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -47,6 +47,8 @@ sel_spread_word(struct term* term, pos p, bool forward)
       if (!forward)
         ret_p = p;
     }
+    else if (c == ' ' && p.x > 0 && get_char(line, p.x - 1) == '\\')
+      ret_p = p;
     else if (!(strchr("&,;?!", c) || c == (forward ? '=' : ':')))
       break;
 
@@ -388,11 +390,12 @@ term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int co
   else {
     // generic transformation M4/M5 -> Alt+left/right;
     // if any specific handling is designed for M4/M5, this needs to be tweaked
+    bool fake_alt = false;
     switch (b) {
       when MBT_4:
-        b = MBT_LEFT; mods |= MDK_ALT;
+        b = MBT_LEFT; mods |= MDK_ALT; fake_alt = true;
       when MBT_5:
-        b = MBT_RIGHT; mods |= MDK_ALT;
+        b = MBT_RIGHT; mods |= MDK_ALT; fake_alt = true;
       otherwise:;
     }
 
@@ -402,7 +405,11 @@ term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int co
     int rca = cfg.right_click_action;
     term->mouse_state = 0;
     if (b == MBT_RIGHT && (rca == RC_MENU || shift_or_ctrl)) {
-      if (!alt)
+      // disable Alt+mouse menu opening;
+      // the menu would often be closed soon by auto-repeat Alt, sending
+      // WM_CAPTURECHANGED, WM_UNINITMENUPOPUP, WM_MENUSELECT, WM_EXITMENULOOP
+      // trying to ignore WM_CAPTURECHANGED does not help
+      if (!alt || fake_alt)
         win_popup_menu(mods);
     }
     else if (b == MBT_MIDDLE && (mods & ~MDK_SHIFT) == MDK_CTRL) {
