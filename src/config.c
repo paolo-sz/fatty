@@ -1175,10 +1175,18 @@ load_scheme(string cs)
 void
 load_config(string filename, int to_save)
 {
+  char * home = getenv("HOME");
+
   trace_theme(("load_config <%s> %d\n", filename, to_save));
   if (!to_save) {
     // restore base configuration, without theme mix-ins
     copy_config("load", &cfg, &file_cfg);
+  }
+
+  bool free_filename = false;
+  if (*filename == '~' && filename[1] == '/') {
+    filename = asform("%s%s", home, filename + 1);
+    free_filename = true;
   }
 
   if (access(filename, R_OK) == 0 && access(filename, W_OK) < 0)
@@ -1194,6 +1202,9 @@ load_config(string filename, int to_save)
       rc_filename = path_posix_to_win_w(filename);
     }
   }
+
+  if (free_filename)
+    delete(filename);
 
   if (file) {
     while (fgets(linebuf, sizeof linebuf, file)) {
