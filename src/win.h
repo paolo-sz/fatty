@@ -65,7 +65,7 @@ extern uint win_get_font_size(void);
 extern void win_check_glyphs(wchar *wcs, uint num);
 
 extern void win_open(wstring path);
-extern void win_copy(const wchar *data, uint *attrs, int len);
+extern void win_copy(const wchar *data, cattr *cattrs, int len);
 extern void win_paste(void);
 
 extern void win_set_timer(void (*cb)(void*), void* data, uint ticks);
@@ -90,5 +90,15 @@ extern wchar win_combine_chars(wchar bc, wchar cc);
 extern wchar win_linedraw_char(int i);
 
 extern struct term* win_active_terminal();
+
+typedef enum {
+    ACM_TERM = 1,        /* actual terminal rendering */
+    ACM_RTF_PALETTE = 2, /* winclip - rtf palette setup stage */
+    ACM_RTF_GEN = 4,     /* winclip - rtf generation stage */
+    ACM_SIMPLE = 8,      /* simplified (for truecolour(...) ) */
+    ACM_VBELL_BG = 16,   /* visual-bell background highlight */
+} attr_colour_mode;
+
+extern cattr apply_attr_colour(cattr a, attr_colour_mode mode);
 
 #endif

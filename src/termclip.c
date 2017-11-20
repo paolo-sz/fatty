@@ -10,47 +10,44 @@
 #include "child.h"
 #include "charset.h"
 
-/*
- * Helper routine for term_copy(): growing buffer.
- */
 typedef struct {
-  int buflen;   /* amount of allocated space in textbuf/attrbuf */
-  int bufpos;   /* amount of actual data */
-  wchar *textbuf;       /* buffer for copied text */
-  wchar *textptr;       /* = textbuf + bufpos (current insertion point) */
-  uint *attrbuf; /* buffer for copied attributes */
-  uint *attrptr; /* = attrbuf + bufpos */
+  size_t size;   // number of items allocated for text/cattrs
+  size_t len;    // number of actual items at text/cattrs
+  wchar *text;   // text to copy (eventually null terminated)
+  cattr *cattrs; // matching cattr for each wchar of text
 } clip_workbuf;
 
 static void
-clip_addchar(clip_workbuf * b, wchar chr, int attr)
+destroy_clip_workbuf(clip_workbuf * b)
 {
-  if (b->bufpos >= b->buflen) {
-    b->buflen += 128;
-    b->textbuf = renewn(b->textbuf, b->buflen);
-    b->textptr = b->textbuf + b->bufpos;
-    b->attrbuf = renewn(b->attrbuf, b->buflen);
-    b->attrptr = b->attrbuf + b->bufpos;
-  }
-  *b->textptr++ = chr;
-  *b->attrptr++ = attr;
-  b->bufpos++;
+  assert(b && b->size); // we're only called after get_selection, which always allocates
+  free(b->text);
+  free(b->cattrs);
+  free(b);
 }
 
+// All b members must be 0 initially, ca may be null if the caller doesn't care
 static void
-get_selection(struct term* term, clip_workbuf *buf, pos start, pos end, bool rect)
+clip_addchar(clip_workbuf * b, wchar chr, cattr * ca)
 {
-//  pos start = term.sel_start, end = term.sel_end; bool rect = term.sel_rect;
+  if (b->len >= b->size) {
+    b->size = b->len ? b->len * 2 : 1024;  // x2 strategy, 1K chars initially
+    b->text = renewn(b->text, b->size);
+    b->cattrs = renewn(b->cattrs, b->size);
+  }
 
-  int old_top_x;
-  int attr;
+  b->text[b->len] = chr;
+  b->cattrs[b->len] = ca ? *ca : (cattr){0};
+  b->len++;
+}
 
-  buf->buflen = 5120;
-  buf->bufpos = 0;
-  buf->textptr = buf->textbuf = newn(wchar, buf->buflen);
-  buf->attrptr = buf->attrbuf = newn(uint, buf->buflen);
-
-  old_top_x = start.x;    /* needed for rect==1 */
+// except OOM, guaranteed at least emtpy null terminated wstring and one cattr
+static clip_workbuf*
+get_selection(struct term* term, pos start, pos end, bool rect)
+{
+  int old_top_x = start.x;    /* needed for rect==1 */
+  clip_workbuf *buf = newn(clip_workbuf, 1);
+  *buf = (clip_workbuf){0};  // all members to 0 initially
 
   while (poslt(start, end)) {
     bool nl = false;
@@ -107,7 +104,7 @@ get_selection(struct term* term, clip_workbuf *buf, pos start, pos end, bool rec
 
       while (1) {
         wchar c = line->chars[x].chr;
-        attr = line->chars[x].attr.attr;
+        cattr *pca = &line->chars[x].attr;
         if (c == SIXELCH && *cfg.sixel_clip_char) {
           // copy replacement into clipboard
           if (!*sixel_clipp)
@@ -120,7 +117,7 @@ get_selection(struct term* term, clip_workbuf *buf, pos start, pos end, bool rec
         cbuf[1] = 0;
 
         for (p = cbuf; *p; p++)
-          clip_addchar(buf, *p, attr);
+          clip_addchar(buf, *p, pca);
 
         if (line->chars[x].cc_next)
           x += line->chars[x].cc_next;
@@ -139,6 +136,7 @@ get_selection(struct term* term, clip_workbuf *buf, pos start, pos end, bool rec
     release_line(line);
   }
   clip_addchar(buf, 0, 0);
+  return buf;
 }
 
 void
@@ -147,13 +145,9 @@ term_copy(struct term* term)
   if (!term->selected)
     return;
 
-  clip_workbuf buf;
-  get_selection(term, &buf, term->sel_start, term->sel_end, term->sel_rect);
-
- /* Finally, transfer all that to the clipboard. */
-  win_copy(buf.textbuf, buf.attrbuf, buf.bufpos);
-  free(buf.textbuf);
-  free(buf.attrbuf);
+  clip_workbuf *buf = get_selection(term, term->sel_start, term->sel_end, term->sel_rect);
+  win_copy(buf->text, buf->cattrs, buf->len);
+  destroy_clip_workbuf(buf);
 }
 
 void
@@ -161,18 +155,16 @@ term_open(struct term* term)
 {
   if (!term->selected)
     return;
-  clip_workbuf buf;
-  get_selection(term, &buf, term->sel_start, term->sel_end, term->sel_rect);
-  free(buf.attrbuf);
+  clip_workbuf *buf = get_selection(term, term->sel_start, term->sel_end, term->sel_rect);
 
   // Don't bother opening if it's all whitespace.
-  wchar *p = buf.textbuf;
+  wchar *p = buf->text;
   while (iswspace(*p))
     p++;
   if (*p)
-    win_open(buf.textbuf);  // textbuf is freed by win_open
-  else
-    free(buf.textbuf);
+    win_open(wcsdup(buf->text));  // win_open frees its argument
+
+  destroy_clip_workbuf(buf);
 }
 
 void
@@ -309,10 +301,9 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
     rect = term->sel_rect;
   }
 
-  clip_workbuf buf;
-  get_selection(term, &buf, start, end, rect);
-  wchar * tbuf = buf.textbuf;
-  free(buf.attrbuf);
+  clip_workbuf *buf = get_selection(term, start, end, rect);
+  wchar * tbuf = wcsdup(buf->text);
+  destroy_clip_workbuf(buf);
   return tbuf;
 }
 

@@ -62,6 +62,10 @@ typedef enum {
   TRUE_COLOUR = 0x180
 } colour_i;
 
+// colour classes
+#define CCL_ANSI8(i) ((i) < 8)
+#define CCL_DEFAULT(i) ((i) >= FG_COLOUR_I && (i) <= BOLD_BG_COLOUR_I)
+#define CCL_TRUEC(i) ((i) >= TRUE_COLOUR)
 
 /* Special Characters:
  * UCSWIDE is a special value used in the terminal data to signify
@@ -159,8 +163,10 @@ enum {
   ATTR_DEFAULT = ATTR_DEFFG | ATTR_DEFBG,
 };
 
+typedef unsigned long long cattrflags;
+
 typedef struct {
-  unsigned long long attr;
+  cattrflags attr;
   uint truefg;
   uint truebg;
 } cattr;
