@@ -1,4 +1,4 @@
-// winmain.c (part of FaTTY)
+﻿// winmain.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by 2008-13 Andy Koppe, 2015-2017 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
@@ -52,6 +52,8 @@ HINSTANCE inst;
 HWND wnd, tab_wnd;
 HIMC imc;
 ATOM class_atom;
+
+char *home;
 
 static char **main_argv;
 static int main_argc;
@@ -2723,7 +2725,6 @@ opts[] = {
 int
 main(int argc, char *argv[])
 {
-  char* home;
   char* cmd;
 
   main_argv = argv;
@@ -2740,20 +2741,20 @@ main(int argc, char *argv[])
     fflush(mtlog);
   }
 #endif
-  init_config();
-  cs_init();
-
   // Determine home directory.
-  home = getenv("HOME");
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
   // Before Cygwin 1.5, the passwd structure is faked.
   struct passwd *pw = getpwuid(getuid());
-#endif
+  home = (pw && pw->pw_dir && *pw->pw_dir) ? strdup(pw->pw_dir) :
+#else
+  home = getenv("HOME");
   home = home ? strdup(home) :
-#if CYGWIN_VERSION_DLL_MAJOR >= 1005
-    (pw && pw->pw_dir && *pw->pw_dir) ? strdup(pw->pw_dir) :
 #endif
     asform("/home/%s", getlogin());
+  setenv("HOME", home, 1);
+
+  init_config();
+  cs_init();
 
   // Set size and position defaults.
   STARTUPINFOW sui;

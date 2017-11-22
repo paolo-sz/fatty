@@ -13,6 +13,7 @@
 
 extern HINSTANCE inst;  // The all-important instance handle
 extern HWND wnd, tab_wnd;        // the main terminal window
+extern char *home;
 extern HIMC imc;        // the input method context
 extern HWND config_wnd; // the options window
 extern ATOM class_atom;

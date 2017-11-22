@@ -789,7 +789,6 @@ init_config_dirs(void)
 
   int ncd = 3;
   char * appdata = getenv("APPDATA");
-  char * home = getenv("HOME");
   if (appdata)
     ncd++;
   if (config_dir)
@@ -1175,8 +1174,6 @@ load_scheme(string cs)
 void
 load_config(string filename, int to_save)
 {
-  char * home = getenv("HOME");
-
   trace_theme(("load_config <%s> %d\n", filename, to_save));
   if (!to_save) {
     // restore base configuration, without theme mix-ins

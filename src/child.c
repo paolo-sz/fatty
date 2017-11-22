@@ -99,13 +99,11 @@ open_logfile(bool toggling)
     }
     else {
       char * log;
-/*
       if (*cfg.log == '~' && cfg.log[1] == '/') {
         /// substitute '~' -> home
         log = asform("%s/%s", home, cs__wcstombs(&cfg.log[2]));
       }
       else
-*/
         log = path_win_w_to_posix(cfg.log);
 #ifdef debug_logfilename
       printf("<%ls> -> <%s>\n", cfg.log, log);
