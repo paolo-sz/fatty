@@ -1458,11 +1458,12 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
         a.attr &= ~ATTR_BOLD;
     }
 
-    if (a.attr & ATTR_INVISIBLE)
-      fgi = bgi;
+    if (a.attr & ATTR_INVISIBLE) {
+      fgi = bgi; a.truefg = a.truebg;
+    }
 
     a.attr |= fgi << ATTR_FGSHIFT | bgi << ATTR_BGSHIFT;
-    return a;  // rtf colouring ignores true colours
+    return a;  // rtf colouring prefers indexed where possible
   }
 
   if (reset_bold)
@@ -1478,9 +1479,10 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
   colour bg = bgi >= TRUE_COLOUR ? a.truebg : win_get_colour(bgi);
 
   if (do_dim && (a.attr & ATTR_DIM)) {
-    fg = (fg & 0xFEFEFEFE) >> 1; // Halve the brightness.
-    if (!cfg.bold_as_colour || fgi >= 256)
-      fg += (bg & 0xFEFEFEFE) >> 1; // Blend with background.
+    // we dim by blending fg 50-50 with the default terminal bg
+    // (x & 0xFEFEFEFE) >> 1  halves each of the RGB components of x .
+    // win_get_colour(..) takes term.rvideo into account.
+    fg = ((fg & 0xFEFEFEFE) >> 1) + ((win_get_colour(BG_COLOUR_I) & 0xFEFEFEFE) >> 1);
   }
 
   if (do_reverse && (a.attr & ATTR_REVERSE)) {
@@ -1499,19 +1501,6 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
   a.truebg = bg;
   a.attr |= TRUE_COLOUR << ATTR_FGSHIFT | TRUE_COLOUR << ATTR_BGSHIFT;
   return a;
-}
-
-/*
- * Extract colour value from attribute;
- * simplified version of the algorithm below.
- */
-colour
-truecolour(cattr * pattr, colour bg)
-{
-  return apply_attr_colour(
-    (cattr){ .attr = pattr->attr, .truefg = pattr->truefg, .truebg = bg },
-    ACM_SIMPLE
-  ).truefg;
 }
 
 /*
@@ -1838,7 +1827,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
           xx += char_width / 2;
         if (!termattrs_equal_fg(&textattr[i], &textattr[i - 1])) {
           // determine colour to be used for combining characters
-          colour fg = truecolour(&textattr[i], bg);
+          colour fg = apply_attr_colour(textattr[i], ACM_SIMPLE).truefg;
           SetTextColor(dc, fg);
         }
         ulen = char1ulen(&text[i]);
