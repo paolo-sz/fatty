@@ -102,6 +102,65 @@ ispathprefixw(wstring pref, wstring path)
   return false;
 }
 
+wchar *
+dewsl(wchar * wpath)
+{
+#ifdef debug_wsl
+  printf("open <%ls>\n", wpath);
+#endif
+  if (wcsncmp(wpath, W("/mnt/"), 5) == 0) {
+    wchar * unwsl = newn(wchar, wcslen(wpath) + 6);
+    wcscpy(unwsl, W("/cygdrive"));
+    wcscat(unwsl, wpath + 4);
+    delete(wpath);
+    wpath = unwsl;
+  }
+  else if (*wpath == '/' && *wsl_basepath) {
+    static wchar * wbase = 0;
+    if (!wbase) {
+      char * pbase = path_win_w_to_posix(wsl_basepath);
+      wbase = cs__mbstowcs(pbase);
+      free(pbase);
+    }
+
+    wchar * unwsl = newn(wchar, wcslen(wbase) + wcslen(wpath) + 1);
+    wcscpy(unwsl, wbase);
+    wcscat(unwsl, wpath);
+    delete(wpath);
+    wpath = unwsl;
+  }
+  else if (*wpath == '/') {  // prepend %LOCALAPPDATA%\lxss[\rootfs]
+    // deprecated case; for WSL, wsl_basepath should be set
+    char * appd = getenv("LOCALAPPDATA");
+    if (appd) {
+      wchar * wappd = cs__mbstowcs(appd);
+      appd = path_win_w_to_posix(wappd);
+      free(wappd);
+      wappd = cs__mbstowcs(appd);
+      free(appd);
+
+      bool rootfs_mount = true;
+      for (uint i = 0; i < lengthof(lxss_mounts); i++) {
+        if (ispathprefixw(lxss_mounts[i].w, wpath)) {
+          rootfs_mount = false;
+          break;
+        }
+      }
+
+      wchar * unwsl = newn(wchar, wcslen(wappd) + wcslen(wpath) + 13);
+      wcscpy(unwsl, wappd);
+      free(wappd);
+      wcscat(unwsl, W("/lxss"));
+      if (rootfs_mount)
+        wcscat(unwsl, W("/rootfs"));
+      wcscat(unwsl, wpath);
+      delete(wpath);
+      wpath = unwsl;
+    }
+  }
+  return wpath;
+}
+
 void
 win_open(wstring wpath)
 // frees wpath
@@ -136,59 +195,7 @@ win_open(wstring wpath)
   else {
     // Need to convert POSIX path to Windows first
     if (support_wsl) {
-#ifdef debug_wsl
-      printf("open <%ls>\n", wpath);
-#endif
-      if (wcsncmp(wpath, W("/mnt/"), 5) == 0) {
-        wchar * unwsl = newn(wchar, wcslen(wpath) + 6);
-        wcscpy(unwsl, W("/cygdrive"));
-        wcscat(unwsl, wpath + 4);
-        delete(wpath);
-        wpath = unwsl;
-      }
-      else if (*wpath == '/' && *wsl_basepath) {
-        static wchar * wbase = 0;
-        if (!wbase) {
-          char * pbase = path_win_w_to_posix(wsl_basepath);
-          wbase = cs__mbstowcs(pbase);
-          free(pbase);
-        }
-
-        wchar * unwsl = newn(wchar, wcslen(wbase) + wcslen(wpath) + 1);
-        wcscpy(unwsl, wbase);
-        wcscat(unwsl, wpath);
-        delete(wpath);
-        wpath = unwsl;
-      }
-      else if (*wpath == '/') {  // prepend %LOCALAPPDATA%\lxss[\rootfs]
-        // deprecated case; for WSL, wsl_basepath should be set
-        char * appd = getenv("LOCALAPPDATA");
-        if (appd) {
-          wchar * wappd = cs__mbstowcs(appd);
-          appd = path_win_w_to_posix(wappd);
-          free(wappd);
-          wappd = cs__mbstowcs(appd);
-          free(appd);
-
-          bool rootfs_mount = true;
-          for (uint i = 0; i < lengthof(lxss_mounts); i++) {
-            if (ispathprefixw(lxss_mounts[i].w, wpath)) {
-              rootfs_mount = false;
-              break;
-            }
-          }
-
-          wchar * unwsl = newn(wchar, wcslen(wappd) + wcslen(wpath) + 13);
-          wcscpy(unwsl, wappd);
-          free(wappd);
-          wcscat(unwsl, W("/lxss"));
-          if (rootfs_mount)
-            wcscat(unwsl, W("/rootfs"));
-          wcscat(unwsl, wpath);
-          delete(wpath);
-          wpath = unwsl;
-        }
-      }
+      wpath = dewsl((wchar *)wpath);
     }
     wstring conv_wpath = child_conv_path(win_active_terminal()->child, wpath);
 #ifdef debug_wsl
@@ -208,8 +215,8 @@ win_open(wstring wpath)
 // input is the exact middle:
 // - The r/g/b channels and the gray value: the higher value output is chosen.
 // - If the gray and color have same distance from the input - color is chosen.
-static uint8_t
-rgb_to_x256(uint8_t r, uint8_t g, uint8_t b)
+static uchar
+rgb_to_x256(uchar r, uchar g, uchar b)
 {
     // Calculate the nearest 0-based color index at 16 .. 231
 #   define v2ci(v) (v < 48 ? 0 : v < 115 ? 1 : (v - 35) / 40)
@@ -563,6 +570,9 @@ paste_hdrop(HDROP drop)
     uint wfn_len = DragQueryFileW(drop, i, 0, 0);
     wchar wfn[wfn_len + 1];
     DragQueryFileW(drop, i, wfn, wfn_len + 1);
+#ifdef debug_dragndrop
+    printf("dropped file <%ls>\n", wfn);
+#endif
     char *fn = path_win_w_to_posix(wfn);
 
     bool has_tick = false, needs_quotes = false, needs_dollar = false;

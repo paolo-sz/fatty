@@ -25,6 +25,7 @@ char * fatty_debug;
 
 #include <CommCtrl.h>
 #include <Windows.h>
+#include <Windowsx.h>
 #include <locale.h>
 #include <getopt.h>
 #include <pwd.h>
@@ -82,7 +83,10 @@ enum {
   WIN_MINIMIZE = 0,
   WIN_MAXIMIZE = -1,
   WIN_TOP = 1,
+  WIN_TITLE = 7,
 };
+
+static void update_tab_titles(void);
 
 // Options
 static string border_style = 0;
@@ -293,8 +297,10 @@ set_per_monitor_dpi_aware(void)
 void
 win_set_title(wchar *wtitle)
 {
-    if (cfg.title_settable)
+    if (cfg.title_settable) {
       SetWindowTextW(wnd, wtitle);
+      update_tab_titles();
+    }
 }
 
 void
@@ -390,8 +396,20 @@ win_switch(bool back, bool alternate)
   }
 }
 
+
+/*
+ *  Virtual Tabs
+ */
+
+#define dont_debug_tabs
+#define dont_debug_tabbar
+
 static uint tabn = 0;
 static HWND * tabs = 0;
+
+#ifndef GWL_USERDATA
+#define GWL_USERDATA -21
+#endif
 
 void
 clear_tabs()
@@ -421,7 +439,63 @@ get_tab(uint tabi)
     return 0;
 }
 
-#define dont_debug_tabs
+static void
+refresh_tab_titles()
+{
+  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      int len = GetWindowTextLengthW(curr_wnd);
+      if (!len) {
+        // check whether already terminating
+        LONG fini = GetWindowLong(curr_wnd, GWL_USERDATA);
+        if (fini) {
+#ifdef debug_tabbar
+          printf("[%8p] get tab %8p: fini\n", wnd, curr_wnd);
+#endif
+          return true;
+        }
+      }
+      wchar title[len + 1];
+      GetWindowTextW(curr_wnd, title, len + 1);
+#ifdef debug_tabbar
+      printf("[%8p] get tab %8p: <%ls>\n", wnd, curr_wnd, title);
+#endif
+    }
+    return true;
+  }
+  if (cfg.geom_sync)
+    EnumWindows(wnd_enum_tabs, 0);
+}
+
+static void
+update_tab_titles()
+{
+  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      if (curr_wnd != wnd) {
+        PostMessage(curr_wnd, WM_USER, 0, WIN_TITLE);
+#ifdef debug_tabbar
+        printf("notified %8p to update tabbar\n", curr_wnd);
+#endif
+      }
+    }
+    return true;
+  }
+  if (cfg.geom_sync) {
+    refresh_tab_titles();
+    EnumWindows(wnd_enum_tabs, 0);
+  }
+}
 
 static void
 win_gotab(uint n)
@@ -497,6 +571,11 @@ win_synctabs(int level)
   if (cfg.geom_sync >= level)
     EnumWindows(wnd_enum_tabs, 0);
 }
+
+
+/*
+ *  Monitor-related window functions
+ */
 
 static void
 win_launch(int n)
@@ -1581,6 +1660,10 @@ static struct {
 
         ShowWindow(wnd, SW_RESTORE);
       }
+      else if (!wp && lp == WIN_TITLE) {
+        if (cfg.geom_sync)
+          refresh_tab_titles();
+      }
       else if (cfg.geom_sync) {
 #ifdef debug_tabs
         printf("switched %d,%d %d,%d\n", (INT16)LOWORD(lp), (INT16)HIWORD(lp), LOWORD(wp), HIWORD(wp));
@@ -1805,6 +1888,22 @@ static struct {
 #endif
 
       return 0;
+
+    when WM_MOUSEACTIVATE: {
+	  DWORD pos = GetMessagePos();
+	  int x_pos = GET_X_LPARAM(pos);
+	  int y_pos = GET_Y_LPARAM(pos);
+	  RECT tab_wnd_rect;
+	  
+	  if (GetWindowRect(tab_wnd, &tab_wnd_rect)) {
+	    if ((x_pos >= tab_wnd_rect.left) && (x_pos <= tab_wnd_rect.right) && (y_pos >= tab_wnd_rect.top) && (y_pos <= tab_wnd_rect.bottom)) {
+		  return MA_NOACTIVATE;
+		}
+	  }
+	  
+      // prevent accidental selection on activation (#717)
+      return MA_ACTIVATEANDEAT;
+	}
 
     when WM_ACTIVATE:
       if ((wp & 0xF) != WA_INACTIVE) {
@@ -2184,6 +2283,18 @@ void
 exit_fatty(int exit_val)
 {
   report_pos();
+
+  // could there be a lag until the window is actually destroyed?
+  // so we'd have to add a safeguard here...
+  SetWindowTextA(wnd, "");
+  // indicate "terminating"
+  SetWindowLong(wnd, GWL_USERDATA, -1);
+  // flush properties cache
+  SetWindowPos(wnd, null, 0, 0, 0, 0,
+               SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER
+               | SWP_NOREPOSITION | SWP_NOACTIVATE | SWP_NOCOPYBITS);
+  update_tab_titles();
+
   exit(exit_val);
 }
 
@@ -2449,22 +2560,6 @@ regclose(HKEY key)
     RegCloseKey(key);
 }
 
-static wchar *
-getreg(HKEY key, wstring subkey, wstring attribute)
-{
-  DWORD blen;
-  int res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, 0, &blen);
-  if (res)
-    return 0;
-  wchar * val = malloc(blen);
-  res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, val, &blen);
-  if (res) {
-    free(val);
-    return 0;
-  }
-  return val;
-}
-
 #define dont_debug_reg_lxss
 
 static bool
@@ -2494,18 +2589,18 @@ getlxssinfo(wstring wslname,
     wchar * rootfs;
     wchar * icon = 0;
 
-    wchar * bp = getreg(lxss, guid, W("BasePath"));
+    wchar * bp = getregstr(lxss, guid, W("BasePath"));
     if (!bp)
       return false;
 
-    wchar * pn = getreg(lxss, guid, W("PackageFamilyName"));
+    wchar * pn = getregstr(lxss, guid, W("PackageFamilyName"));
     if (pn) {  // look for installation directory and icon file
       rootfs = newn(wchar, wcslen(bp) + 8);
       wcscpy(rootfs, bp);
       wcscat(rootfs, W("\\rootfs"));
       HKEY appdata = regopen(HKEY_CURRENT_USER, W("Software\\Classes\\Local Settings\\Software\\Microsoft\\Windows\\CurrentVersion\\AppModel\\SystemAppData"));
       HKEY package = regopen(appdata, pn);
-      wchar * pfn = getreg(package, W("Schemas"), W("PackageFullName"));
+      wchar * pfn = getregstr(package, W("Schemas"), W("PackageFullName"));
       regclose(package);
       regclose(appdata);
       // "%ProgramW6432%/WindowsApps/<PackageFullName>/images/icon.ico"
@@ -2523,7 +2618,7 @@ getlxssinfo(wstring wslname,
       icon = legacy_icon();
     }
 #ifdef debug_reg_lxss
-    printf("WSL distribution name %ls\n", getreg(lxss, guid, W("DistributionName")));
+    printf("WSL distribution name %ls\n", getregstr(lxss, guid, W("DistributionName")));
     printf("-- guid %ls\n", guid);
     printf("-- root %ls\n", rootfs);
     printf("-- pack %ls\n", pn);
@@ -2536,7 +2631,7 @@ getlxssinfo(wstring wslname,
   }
 
   if (!wslname || !*wslname) {
-    wchar * dd = getreg(HKEY_CURRENT_USER, lxsskeyname, W("DefaultDistribution"));
+    wchar * dd = getregstr(HKEY_CURRENT_USER, lxsskeyname, W("DefaultDistribution"));
     int ok;
     if (dd) {
       ok = getlxssdistinfo(lxss, dd);
@@ -2585,7 +2680,7 @@ getlxssinfo(wstring wslname,
       wchar subkey[keylen];
       ret = RegEnumKeyW(lxss, i, subkey, keylen);
       if (ret == ERROR_SUCCESS) {
-          wchar * dn = getreg(lxss, subkey, W("DistributionName"));
+          wchar * dn = getregstr(lxss, subkey, W("DistributionName"));
           if (0 == wcscmp(dn, wslname)) {
             int ok = getlxssdistinfo(lxss, subkey);
             regclose(lxss);
@@ -3513,6 +3608,7 @@ main(int argc, char *argv[])
   SetFocus(wnd);
 
   win_synctabs(4);
+  update_tab_titles();
 
   // Message loop.
   do {

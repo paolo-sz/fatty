@@ -1503,8 +1503,8 @@ closemuicache()
   }
 }
 
-static wchar *
-getreg(HKEY key, wchar * subkey, wchar * attribute)
+wchar *
+getregstr(HKEY key, wstring subkey, wstring attribute)
 {
 #if CYGWIN_VERSION_API_MINOR < 74
   (void)key;
@@ -1512,12 +1512,20 @@ getreg(HKEY key, wchar * subkey, wchar * attribute)
   (void)attribute;
   return 0;
 #else
-  DWORD blen;
-  int res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, 0, &blen);
+  // RegGetValueW is easier but not supported on Windows XP
+  HKEY sk = 0;
+  RegOpenKeyW(key, subkey, &sk);
+  if (!sk)
+    return 0;
+  DWORD type;
+  DWORD len;
+  int res = RegQueryValueExW(sk, attribute, 0, &type, 0, &len);
   if (res)
     return 0;
-  wchar * val = malloc(blen);
-  res = RegGetValueW(key, subkey, attribute, RRF_RT_ANY, 0, val, &blen);
+  if (!(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ))
+    return 0;
+  wchar * val = malloc (len);
+  res = RegQueryValueExW(sk, attribute, 0, &type, (void *)val, &len);
   if (res) {
     free(val);
     return 0;
@@ -1531,12 +1539,12 @@ muieventlabel(wchar * event)
 {
   // HKEY_CURRENT_USER\AppEvents\EventLabels\SystemAsterisk
   // DispFileName -> "@mmres.dll,-5843"
-  wchar * rsr = getreg(evlabels, event, W("DispFileName"));
+  wchar * rsr = getregstr(evlabels, event, W("DispFileName"));
   if (!rsr)
     return 0;
   // HKEY_CURRENT_USER\Software\Classes\Local Settings\MuiCache\N\M
   // "@mmres.dll,-5843" -> "Sternchen"
-  wchar * lbl = getreg(muicache, 0, rsr);
+  wchar * lbl = getregstr(muicache, 0, rsr);
   free(rsr);
   return lbl;
 }
@@ -1986,8 +1994,8 @@ download_scheme(char * url)
 #else
   fclose(sf);
   remove(sfn);
-#endif
   free(sfn);
+#endif
 
   return sch;
 }

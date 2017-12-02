@@ -100,8 +100,10 @@ open_logfile(bool toggling)
     else {
       char * log;
       if (*cfg.log == '~' && cfg.log[1] == '/') {
-        /// substitute '~' -> home
-        log = asform("%s/%s", home, cs__wcstombs(&cfg.log[2]));
+        // substitute '~' -> home
+        char * path = cs__wcstombs(&cfg.log[2]);
+        log = asform("%s/%s", home, path);
+        free(path);
       }
       else
         log = path_win_w_to_posix(cfg.log);
@@ -300,10 +302,18 @@ child_create(struct child* child, struct term* term,
     exit_fatty(255);
   }
   else { // Parent process.
+#ifdef __midipix__
+    // This corrupts CR in cygwin
+    struct termios attr;
+    tcgetattr(child->pty_fd, &attr);
+    cfmakeraw(&attr);
+    tcsetattr(child->pty_fd, TCSANOW, &attr);
+#endif
+
     child->pid = pid;
 
     fcntl(child->pty_fd, F_SETFL, O_NONBLOCK);
-    
+
     child_update_charset(child);
 
     if (cfg.create_utmp) {
@@ -498,6 +508,15 @@ user_command(struct child* child, int n)
         *sepp = '\0';
 
       if (n == 0) {
+        int fgpid = foreground_pid(child);
+        if (fgpid) {
+          char * _fgpid = 0;
+          asprintf(&_fgpid, "%d", fgpid);
+          if (_fgpid) {
+            setenv("FATTY_PID", _fgpid, true);
+            free(_fgpid);
+          }
+        }
         char * fgp = foreground_prog(child);
         if (fgp) {
           setenv("FATTY_PROG", fgp, true);
@@ -660,8 +679,25 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
     close(child_win_fd);
 
     if (child->dir && *child->dir) {
-      chdir(child->dir);
-      setenv("PWD", child->dir, true);
+      string set_dir = child->dir;
+      if (support_wsl) {
+        wchar * wcd = cs__utftowcs(child->dir);
+#ifdef debug_wsl
+        printf("fork wsl <%ls>\n", wcd);
+#endif
+        wcd = dewsl(wcd);
+#ifdef debug_wsl
+        printf("fork wsl <%ls>\n", wcd);
+#endif
+        set_dir = (string)cs__wcstombs(wcd);
+        delete(wcd);
+      }
+
+      chdir(set_dir);
+      setenv("PWD", set_dir, true);
+
+      if (support_wsl)
+        delete(set_dir);
     }
 
 #ifdef add_child_parameters

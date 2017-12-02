@@ -37,7 +37,7 @@ clip_addchar(clip_workbuf * b, wchar chr, cattr * ca)
   }
 
   b->text[b->len] = chr;
-  b->cattrs[b->len] = ca ? *ca : (cattr){0};
+  b->cattrs[b->len] = ca ? *ca : (cattr){0, 0, 0};
   b->len++;
 }
 
@@ -47,7 +47,7 @@ get_selection(struct term* term, pos start, pos end, bool rect)
 {
   int old_top_x = start.x;    /* needed for rect==1 */
   clip_workbuf *buf = newn(clip_workbuf, 1);
-  *buf = (clip_workbuf){0};  // all members to 0 initially
+  *buf = (clip_workbuf){0, 0, 0, 0};  // all members to 0 initially
 
   while (poslt(start, end)) {
     bool nl = false;
@@ -363,6 +363,7 @@ term_cmd(struct term * term, char * cmdpat)
   unsetenv("FATTY_SELECT");
   unsetenv("FATTY_BUFFER");
   unsetenv("FATTY_CWD");
+  unsetenv("FATTY_PID");
   unsetenv("FATTY_PROG");
   if (cmdf) {
     if (term->bracketed_paste)
