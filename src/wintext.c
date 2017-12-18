@@ -15,6 +15,8 @@
 #include <usp10.h>  // Uniscribe
 
 
+#define dont_debug_bold
+
 enum {
   FONT_NORMAL    = 0x00,
   FONT_BOLD      = 0x01,
@@ -656,11 +658,20 @@ win_init_fontfamily(HDC dc, int findex)
     ff->fonts[FONT_UNDERLINE] = 0;
   }
 
-  if (ff->bold_mode == BOLD_FONT && fontsize[FONT_BOLD] != fontsize[FONT_NORMAL]) {
-    trace_font(("bold_mode %d\n", ff->bold_mode));
-    ff->bold_mode = BOLD_SHADOW;
-    DeleteObject(ff->fonts[FONT_BOLD]);
-    ff->fonts[FONT_BOLD] = 0;
+  if (ff->bold_mode == BOLD_FONT) {
+#ifdef debug_bold
+    printf("bold_font %d size %d bold %d %s %ls\n",
+           ff->bold_mode, fontsize[FONT_NORMAL], fontsize[FONT_BOLD],
+           fontsize[FONT_BOLD] != fontsize[FONT_NORMAL] ? "///" : "===",
+           ff->name);
+#endif
+    int diffsize = abs(fontsize[FONT_BOLD] - fontsize[FONT_NORMAL]);
+    if (diffsize * 99 > fontsize[FONT_NORMAL]) {
+      trace_font(("bold_mode %d\n", ff->bold_mode));
+      ff->bold_mode = BOLD_SHADOW;
+      DeleteObject(ff->fonts[FONT_BOLD]);
+      ff->fonts[FONT_BOLD] = 0;
+    }
   }
   trace_font(("bold_mode %d\n", ff->bold_mode));
   ff->fontflag[0] = ff->fontflag[1] = ff->fontflag[2] = 1;
@@ -1380,6 +1391,141 @@ text_out_end()
 
 // applies bold as colour if required, returns true if still needs thickening
 static bool
+old_apply_bold_colour(colour_i *pfgi)
+{
+  // We use two bits to control colouring and thickening for three classes of
+  // colours: ANSI (0-7), default, and other (8-256, true). We also reserve one
+  // combination for xterm's default (thicken everything, ANSI is also coloured).
+  // - "other" is always thickened and never gets colouring.
+  // - when bold_as_colour=no: ANSI+defaut are only thickened.
+  // - when bold_as_colour=yes:
+  //   .. and bold_as_font=no:  ANSI+default are only coloured
+  //   .. and bold_as_font=yes: ANSI+default are thickened, ANSI also coloured (xterm)
+  if (cfg.bold_as_colour) {
+    if (CCL_ANSI8(*pfgi)) {
+      *pfgi |= 8;     // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
+      return cfg.bold_as_font;
+    }
+    if (CCL_DEFAULT(*pfgi) && !cfg.bold_as_font) {
+      *pfgi |= 1;     // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
+      return false;
+    }
+  }
+  return true;
+}
+
+// removes default colours if not reversed, returns true if still needs thickening
+static bool
+old_rtf_bold_decolour(cattrflags attr, colour_i * pfgi, colour_i * pbgi)
+{
+  bool bold_thickens = cfg.bold_as_font;  // all colours
+  // if not reverse:
+  // - if only bold_as_colour, ATTR_BOLD still thickens default fg on default bg
+  // - don't colour default fg/bg (caller interprets COLOUR_NUM as "no colour").
+  if (!(attr & ATTR_REVERSE)) {
+    if (cfg.bold_as_colour && CCL_DEFAULT(*pfgi) && CCL_DEFAULT(*pbgi))
+      bold_thickens = true;  // even if bold_as_font=no
+    if (CCL_DEFAULT(*pfgi))
+      *pfgi = COLOUR_NUM;  // no colouring
+    if (CCL_DEFAULT(*pbgi))
+      *pbgi = COLOUR_NUM;  // no colouring
+  }
+  return (attr & ATTR_BOLD) && bold_thickens;
+}
+
+// Applies attributes to the fg/bg colours and returns the new cattr.
+//
+// "mode" maps to arbitrary sets of "things to do". Mostly these are just
+// groups of attributes to handle, but it may also reflect custom needs.
+//
+// While {FG|BG}MASK and truefg/truebg might update, attributes remain the same.
+// The exception is bold which can be applied as colour and/or thickness,
+// so ATTR_BOLD bit will be turned off if further thickening should not happen.
+// Always returns true colour, except ACM_RTF* modes which only do the palette.
+static cattr
+old_apply_attr_colour(cattr a, attr_colour_mode mode)
+{
+  // indexed modifications
+  bool do_reverse_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
+  bool do_bold_i = mode & (ACM_TERM | ACM_RTF_PALETTE | ACM_RTF_GEN | ACM_SIMPLE | ACM_VBELL_BG);
+  bool do_blink_i = mode & (ACM_TERM | ACM_RTF_PALETTE | ACM_RTF_GEN);
+  bool do_finalize_rtf_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
+  bool do_rtf_bold_decolour_i = mode & (ACM_RTF_GEN);
+
+  colour_i fgi = (a.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
+  colour_i bgi = (a.attr & ATTR_BGMASK) >> ATTR_BGSHIFT;
+  a.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);  // we'll refill it later
+
+  if (do_reverse_i && (a.attr & ATTR_REVERSE)) {
+    colour_i t = fgi; fgi = bgi; bgi = t;
+    colour tmp = a.truefg; a.truefg = a.truebg; a.truebg = tmp;
+  }
+
+  bool reset_bold = false;
+  if (do_bold_i && (a.attr & ATTR_BOLD))    // rtf_bold_decolour uses ATTR_BOLD
+    reset_bold = !old_apply_bold_colour(&fgi);  // we'll reset afterwards if needed
+
+  if (do_blink_i && (a.attr & ATTR_BLINK)) {
+    if (CCL_ANSI8(bgi))
+      bgi |= 8;
+    else if (CCL_DEFAULT(bgi))
+      bgi |= 1;
+  }
+
+  if (do_finalize_rtf_i) {
+    if (do_rtf_bold_decolour_i) {  // uses ATTR_BOLD, ATTR_REVERSE
+      bool thicken = old_rtf_bold_decolour(a.attr, &fgi, &bgi);
+      if (!thicken)
+        a.attr &= ~ATTR_BOLD;
+    }
+
+    if (a.attr & ATTR_INVISIBLE) {
+      fgi = bgi; a.truefg = a.truebg;
+    }
+
+    a.attr |= fgi << ATTR_FGSHIFT | bgi << ATTR_BGSHIFT;
+    return a;  // rtf colouring prefers indexed where possible
+  }
+
+  if (reset_bold)
+    a.attr &= ~ATTR_BOLD;  // off if we should not further thicken
+
+  // from here onward the result is true colour
+  bool do_dim = mode & (ACM_TERM | ACM_SIMPLE | ACM_VBELL_BG);
+  bool do_reverse = mode & (ACM_TERM);
+  bool do_invisible = mode & (ACM_TERM | ACM_SIMPLE);
+  bool do_vbell_bg = mode & (ACM_VBELL_BG);
+
+  colour fg = fgi >= TRUE_COLOUR ? a.truefg : win_get_colour(fgi);
+  colour bg = bgi >= TRUE_COLOUR ? a.truebg : win_get_colour(bgi);
+
+  if (do_dim && (a.attr & ATTR_DIM)) {
+    // we dim by blending fg 50-50 with the default terminal bg
+    // (x & 0xFEFEFEFE) >> 1  halves each of the RGB components of x .
+    // win_get_colour(..) takes term.rvideo into account.
+    fg = ((fg & 0xFEFEFEFE) >> 1) + ((win_get_colour(BG_COLOUR_I) & 0xFEFEFEFE) >> 1);
+  }
+
+  if (do_reverse && (a.attr & ATTR_REVERSE)) {
+    colour t = fg; fg = bg; bg = t;
+  }
+
+  if (do_invisible && (a.attr & ATTR_INVISIBLE))
+    fg = bg;
+
+  if (do_vbell_bg)  // FIXME: we should have TATTR_VBELL. selection should too
+    bg = brighten(bg, fg);
+
+  // ACM_TERM does also search and cursor colours. for now we don't handle those
+
+  a.truefg = fg;
+  a.truebg = bg;
+  a.attr |= TRUE_COLOUR << ATTR_FGSHIFT | TRUE_COLOUR << ATTR_BGSHIFT;
+  return a;
+}
+
+// applies bold as colour if required, returns true if still needs thickening
+static bool
 apply_bold_colour(colour_i *pfgi)
 {
   // We use two bits to control colouring and thickening for three classes of
@@ -1398,14 +1544,20 @@ apply_bold_colour(colour_i *pfgi)
       *pfgi |= 8;  // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
     return true;  // both thickened
   }
-  // normal independent controls
+  // switchable bold_colour
+  if (win_active_terminal()->enable_bold_colour && CCL_DEFAULT(*pfgi)
+      && colours[BOLD_COLOUR_I] != (colour)-1) {
+    *pfgi = BOLD_COLOUR_I;
+  }
+  else
+  // normal independent as_font/as_colour controls
   if (cfg.bold_as_colour) {
     if (ansi)
       *pfgi |= 8;
     else  // default
       *pfgi |= 1;  // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
   }
-  return cfg.bold_as_font;
+  return cfg.bold_as_font;  // thicken if bold_as_font
 }
 
 // removes default colours if not reversed, returns true if still needs thickening
@@ -1439,6 +1591,9 @@ rtf_bold_decolour(cattrflags attr, colour_i * pfgi, colour_i * pbgi)
 cattr
 apply_attr_colour(cattr a, attr_colour_mode mode)
 {
+  if (cfg.old_bold)
+    return old_apply_attr_colour(a, mode);
+
   // indexed modifications
   bool do_reverse_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
   bool do_bold_i = mode & (ACM_TERM | ACM_RTF_PALETTE | ACM_RTF_GEN | ACM_SIMPLE | ACM_VBELL_BG);
@@ -2048,7 +2203,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
 #ifdef debug_bold
   if (xwidth > 1) {
     force_manual_underline = true;
-    ul = 0x80E02020;
+    ul = 0x802020E0;
   }
   else if (nfont & FONT_BOLD) {
     force_manual_underline = true;
@@ -2440,6 +2595,10 @@ win_set_colour(colour_i i, colour c)
 
   if (c == (colour)-1) {
     // ... reset to default ...
+    if (i == BOLD_COLOUR_I) {
+      colours[BOLD_COLOUR_I] = cfg.bold_colour;
+    }
+    else
     if (i == BOLD_FG_COLOUR_I) {
       bold_colour_selected = false;
       if (cfg.bold_colour != (colour)-1)
@@ -2555,5 +2714,5 @@ win_reset_colours(void)
   win_set_colour(SEL_COLOUR_I, cfg.sel_bg_colour);
   win_set_colour(SEL_TEXT_COLOUR_I, cfg.sel_fg_colour);
   // Bold colour
-  win_set_colour(BOLD_FG_COLOUR_I, (colour)-1);
+  win_set_colour(BOLD_COLOUR_I, (colour)-1);
 }

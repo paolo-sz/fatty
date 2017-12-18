@@ -14,7 +14,7 @@
 #include "winimg.h"
 #include "base64.h"
 
-#include <sys/termios.h>
+#include <termios.h>
 
 #define TERM_CMD_BUF_INC_STEP 128
 #define TERM_CMD_BUF_MAX_SIZE (1024 * 1024)
@@ -1668,18 +1668,16 @@ do_colour_osc(struct term* term, bool has_index_arg, uint i, bool reset)
     s += len;
     if (osc % 100 == 5) {
       if (i == 0)
-        i = BOLD_FG_COLOUR_I;
-        // should we also flag that bold colour has been set explicitly 
-        // so it isn't overridden when setting foreground colour?
+        i = BOLD_COLOUR_I;
 #ifdef other_color_substitutes
       else if (i == 1)
-        i = UNDERLINE_FG_COLOUR_I;
+        i = UNDERLINE_COLOUR_I;
       else if (i == 2)
-        i = BLINK_FG_COLOUR_I;
+        i = BLINK_COLOUR_I;
       else if (i == 3)
-        i = REVERSE_FG_COLOUR_I;
+        i = REVERSE_COLOUR_I;
       else if (i == 4)
-        i = ITALIC_FG_COLOUR_I;
+        i = ITALIC_COLOUR_I;
 #endif
       else
         return;
@@ -1761,6 +1759,12 @@ do_cmd(struct term* term)
     }
     when 4:   do_colour_osc(term, true, 4, false);
     when 5:   do_colour_osc(term, true, 5, false);
+    when 6 or 106: {
+      int col, on;
+      if (sscanf(term->cmd_buf, "%u;%u", &col, &on) == 2)
+        if (col == 0)
+          term->enable_bold_colour = on;
+    }
     when 104: do_colour_osc(term, true, 4, true);
     when 105: do_colour_osc(term, true, 5, true);
     when 10:  do_colour_osc(term, false, FG_COLOUR_I, false);

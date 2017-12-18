@@ -489,6 +489,11 @@ win_init_ctxmenu(bool extended_menu)
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FULLSCREEN_ZOOM, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FLIPSCREEN, 0);
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+  if (extended_menu) {
+    //__ Context menu:
+    AppendMenuW(ctxmenu, MF_ENABLED, IDM_BREAK, _W("Send Break"));
+    AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+  }
 
   if (extended_menu && *cfg.user_commands) {
     append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND);
@@ -1659,6 +1664,10 @@ win_key_down(WPARAM wp, LPARAM lp)
       if (!vk_special(ctrl & !extended ? cfg.key_break : cfg.key_pause))
         return false;
     when VK_CANCEL:
+      if (!strcmp(cfg.key_break, "_BRK_")) {
+        child_break(active_term->child);
+        return false;
+      }
       if (!vk_special(cfg.key_break))
         return false;
     when VK_SNAPSHOT:

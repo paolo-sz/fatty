@@ -1,7 +1,7 @@
 #ifndef CHILD_H
 #define CHILD_H
 
-#include <sys/termios.h>
+#include <termios.h>
 
 extern bool icon_is_from_shortcut;
 extern bool clone_size_token;
@@ -30,6 +30,7 @@ extern void child_proc(void);
 extern void child_kill(void);
 extern void child_terminate(struct child* child);
 extern void child_write(struct child* child, const char *, uint len);
+extern void child_break(struct child* child);
 extern void child_printf(struct child* child, const char * fmt, ...) __attribute__((format(printf, 2, 3)));
 extern void child_send(struct child* child, const char *, uint len);
 extern void child_sendw(struct child* child, const wchar *, uint len);
