@@ -15,7 +15,7 @@
 #include <usp10.h>  // Uniscribe
 
 
-#define dont_debug_bold
+#define dont_debug_bold 1
 
 enum {
   FONT_NORMAL    = 0x00,
@@ -166,7 +166,7 @@ colour_dist(colour a, colour b)
 #define dont_debug_brighten
 
 colour
-brighten(colour c, colour against)
+brighten(colour c, colour against, bool monotone)
 {
   uint r = red(c), g = green(c), b = blue(c);
   // "brighten" away from the background:
@@ -196,6 +196,10 @@ brighten(colour c, colour against)
     printf("darker %06X -> %06X dist %d\n", c, bright, colour_dist(c, bright));
 #endif
     if (colour_dist(bright, c) < thrsh || colour_dist(bright, against) < thrsh) {
+      if (monotone) {
+        uint r = red(bright), g = green(bright), b = blue(bright);
+        return make_colour(r - (r >> 2), g - (g >> 2), b - (b >> 2));
+      }
       bright = _brighter();
 #ifdef debug_brighten
       printf("   fix %06X -> %06X dist %d/%d\n", c, bright, colour_dist(bright, c), colour_dist(bright, against));
@@ -208,6 +212,10 @@ brighten(colour c, colour against)
     printf("lightr %06X -> %06X dist %d\n", c, bright, colour_dist(c, bright));
 #endif
     if (colour_dist(bright, c) < thrsh || colour_dist(bright, against) < thrsh) {
+      if (monotone) {
+        uint r = red(bright), g = green(bright), b = blue(bright);
+        return make_colour(r + ((256 - r) >> 2), g + ((256 - g) >> 2), b + ((256 - b) >> 2));
+      }
       bright = _darker();
 #ifdef debug_brighten
       printf("   fix %06X -> %06X dist %d/%d\n", c, bright, colour_dist(bright, c), colour_dist(bright, against));
@@ -232,9 +240,9 @@ get_font_quality(void)
 
 #define dont_debug_create_font
 
-#define dont_debug_fonts
+#define dont_debug_fonts 1
 
-#ifdef debug_fonts
+#if defined(debug_fonts) && debug_fonts > 0
 #define trace_font(params)	printf params
 #else
 #define trace_font(params)	
@@ -351,8 +359,9 @@ adjust_font_weights(struct fontfam * ff)
     (void)fontType;
     (void)lParam;
 
-    //trace_font(("%ls %ldx%ld (%ldx%ld) %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)tmp->tmAveCharWidth, (long int)tmp->tmHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
-    trace_font(("%ls %ldx%ld %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+#if defined(debug_fonts) && debug_fonts > 1
+    trace_font(("%ls %dx%d %d it %d cs %d %s\n", lfp->lfFaceName, (int)lfp->lfWidth, (int)lfp->lfHeight, (int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+#endif
 
     font_found = true;
     if (lfp->lfCharSet == ANSI_CHARSET)
@@ -454,7 +463,7 @@ win_init_fontfamily(HDC dc, int findex)
       DeleteObject(ff->fonts[i]);
       ff->fonts[i] = 0;
     }
-    ff->fontflag[i] = 0;
+    ff->fontflag[i] = false;
   }
 
   // if initialized as BOLD_SHADOW then real bold is never attempted
@@ -487,7 +496,7 @@ win_init_fontfamily(HDC dc, int findex)
 
   LOGFONT logfont;
   GetObject(ff->fonts[FONT_NORMAL], sizeof(LOGFONT), &logfont);
-  trace_font(("created font %s %ld it %d cs %d\n", logfont.lfFaceName, (long int)logfont.lfWeight, logfont.lfItalic, logfont.lfCharSet));
+  trace_font(("created font %s %d it %d cs %d\n", logfont.lfFaceName, (int)logfont.lfWeight, logfont.lfItalic, logfont.lfCharSet));
   SelectObject(dc, ff->fonts[FONT_NORMAL]);
   GetTextMetrics(dc, &tm);
   if (!tm.tmHeight) {
@@ -511,14 +520,17 @@ win_init_fontfamily(HDC dc, int findex)
 
   if (!findex) {
     ff->row_spacing = row_padding(tm.tmInternalLeading, tm.tmExternalLeading);
-    trace_font(("h %ld asc %ld dsc %ld ild %ld eld %ld %ls\n", (long int)tm.tmHeight, (long int)tm.tmAscent, (long int)tm.tmDescent, (long int)tm.tmInternalLeading, (long int)tm.tmExternalLeading, ff->name));
+    trace_font(("00 height %d avwidth %d asc %d dsc %d intlead %d extlead %d %ls\n", 
+               (int)tm.tmHeight, (int)tm.tmAveCharWidth, (int)tm.tmAscent, (int)tm.tmDescent, 
+               (int)tm.tmInternalLeading, (int)tm.tmExternalLeading, 
+               ff->name));
     ff->row_spacing += cfg.row_spacing;
     if (ff->row_spacing < -tm.tmDescent)
       ff->row_spacing = -tm.tmDescent;
-    trace_font(("row spacing int %ld ext %ld -> %+d; add %+d -> %+d; desc %ld -> %+d %ls\n", 
-        (long int)tm.tmInternalLeading, (long int)tm.tmExternalLeading, row_padding(tm.tmInternalLeading, tm.tmExternalLeading),
+    trace_font(("row spacing int %d ext %d -> %+d; add %+d -> %+d; desc %d -> %+d %ls\n", 
+        (int)tm.tmInternalLeading, (int)tm.tmExternalLeading, row_padding(tm.tmInternalLeading, tm.tmExternalLeading),
         cfg.row_spacing, row_padding(tm.tmInternalLeading, tm.tmExternalLeading) + cfg.row_spacing,
-        (long int)tm.tmDescent, ff->row_spacing, ff->name));
+        (int)tm.tmDescent, ff->row_spacing, ff->name));
     ff->col_spacing = cfg.col_spacing;
 
     cell_height = tm.tmHeight + ff->row_spacing;
@@ -640,10 +652,25 @@ win_init_fontfamily(HDC dc, int findex)
   if (ff->descent >= cell_height)
     ff->descent = cell_height - 1;
 
+#ifdef handle_baseline_leap
+  int base_ascent = tm.tmAscent;
+#endif
   for (uint i = 0; i < lengthof(fontsize); i++) { // could skip FONT_ITALIC here
     if (ff->fonts[i]) {
-      if (SelectObject(dc, ff->fonts[i]) && GetTextMetrics(dc, &tm))
+      if (SelectObject(dc, ff->fonts[i]) && GetTextMetrics(dc, &tm)) {
         fontsize[i] = tm.tmAveCharWidth + 256 * tm.tmHeight;
+        trace_font(("%02X height %d avwidth %d asc %d dsc %d intlead %d extlead %d %ls\n", 
+               i, (int)tm.tmHeight, (int)tm.tmAveCharWidth, (int)tm.tmAscent, (int)tm.tmDescent, 
+               (int)tm.tmInternalLeading, (int)tm.tmExternalLeading, 
+               ff->name));
+#ifdef handle_baseline_leap
+        if (i == FONT_BOLD && tm.tmAscent < base_ascent) {
+          // for Courier New, this correlates with a significant visual leap 
+          // of the bold font from the baseline of the normal font,
+          // but not for other fonts; so let's do nothing
+        }
+#endif
+      }
       else
         fontsize[i] = -i;
     }
@@ -659,14 +686,16 @@ win_init_fontfamily(HDC dc, int findex)
   }
 
   if (ff->bold_mode == BOLD_FONT) {
-#ifdef debug_bold
-    printf("bold_font %d size %d bold %d %s %ls\n",
-           ff->bold_mode, fontsize[FONT_NORMAL], fontsize[FONT_BOLD],
-           fontsize[FONT_BOLD] != fontsize[FONT_NORMAL] ? "///" : "===",
-           ff->name);
-#endif
     int diffsize = abs(fontsize[FONT_BOLD] - fontsize[FONT_NORMAL]);
-    if (diffsize * 99 > fontsize[FONT_NORMAL]) {
+#if defined(debug_create_font) || defined(debug_bold)
+    if (*ff->name)
+      printf("bold_mode %d font_size %d size %d bold %d diff %d %s %ls\n",
+             ff->bold_mode, font_size,
+             fontsize[FONT_NORMAL], fontsize[FONT_BOLD], diffsize,
+             fontsize[FONT_BOLD] != fontsize[FONT_NORMAL] ? "///" : "===",
+             ff->name);
+#endif
+    if (diffsize * 16 > fontsize[FONT_NORMAL]) {
       trace_font(("bold_mode %d\n", ff->bold_mode));
       ff->bold_mode = BOLD_SHADOW;
       DeleteObject(ff->fonts[FONT_BOLD]);
@@ -674,7 +703,9 @@ win_init_fontfamily(HDC dc, int findex)
     }
   }
   trace_font(("bold_mode %d\n", ff->bold_mode));
-  ff->fontflag[0] = ff->fontflag[1] = ff->fontflag[2] = 1;
+  ff->fontflag[FONT_NORMAL] = true;
+  ff->fontflag[FONT_BOLD] = true;
+  ff->fontflag[FONT_UNDERLINE] = true;
 }
 
 static wstring
@@ -707,8 +738,9 @@ findFraktur(wstring * fnp)
     (void)fontType;
     (void)lParam;
 
-    //trace_font(("%ls %ldx%ld (%ldx%ld) %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)tmp->tmAveCharWidth, (long int)tmp->tmHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
-    trace_font(("%ls %ldx%ld %ld it %d cs %d %s\n", lfp->lfFaceName, (long int)lfp->lfWidth, (long int)lfp->lfHeight, (long int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+#if defined(debug_fonts) && debug_fonts > 1
+    trace_font(("%ls %dx%d %d it %d cs %d %s\n", lfp->lfFaceName, (int)lfp->lfWidth, (int)lfp->lfHeight, (int)lfp->lfWeight, lfp->lfItalic, lfp->lfCharSet, (lfp->lfPitchAndFamily & 3) == FIXED_PITCH ? "fixed" : ""));
+#endif
     if ((lfp->lfPitchAndFamily & 3) == FIXED_PITCH
      && !lfp->lfCharSet
      && lfp->lfFaceName[0] != '@'
@@ -728,7 +760,6 @@ findFraktur(wstring * fnp)
 
   HDC dc = GetDC(0);
   EnumFontFamiliesExW(dc, 0, enum_fonts, 0, 0);
-  trace_font(("font width (%d)%d(%d)/(%d)%d(%d)", fw_norm_0, ff->fw_norm, fw_norm_1, fw_bold_0, ff->fw_bold, fw_bold_1));
   ReleaseDC(0, dc);
 }
 
@@ -1216,7 +1247,7 @@ another_font(struct fontfam * ff, int fontno)
                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                 get_font_quality(), FIXED_PITCH | FF_DONTCARE, ff->name);
 
-  ff->fontflag[fontno] = 1;
+  ff->fontflag[fontno] = true;
 }
 
 void
@@ -1232,27 +1263,22 @@ win_set_ime_open(bool open)
 
 #define dont_debug_win_text
 
+#ifdef debug_win_text
 static void
-_trace_line(char * tag, wchar * text, int len)
+_trace_line(char * tag, cattr attr, ushort lattr, wchar * text, int len)
 {
   bool show = false;
   for (int i = 0; i < len; i++)
     if (text[i] != ' ') show = true;
   if (show) {
-    printf("%s", tag);
+    printf("%s %04X %08llX", tag, lattr, attr.attr);
     for (int i = 0; i < len; i++) printf(" %04X", text[i]);
     printf("\n");
   }
 }
-
-inline static void
-trace_line(char * tag, wchar * text, int len)
-{
-  _trace_line(tag, text, len);
-}
-
-#ifndef debug_win_text
-#define trace_line(tag, text, len)	
+#define trace_line(tag) _trace_line(tag, attr, lattr, text, len)
+#else
+#define trace_line(tag)
 #endif
 
 static wchar
@@ -1514,7 +1540,7 @@ old_apply_attr_colour(cattr a, attr_colour_mode mode)
     fg = bg;
 
   if (do_vbell_bg)  // FIXME: we should have TATTR_VBELL. selection should too
-    bg = brighten(bg, fg);
+    bg = brighten(bg, fg, false);
 
   // ACM_TERM does also search and cursor colours. for now we don't handle those
 
@@ -1663,7 +1689,7 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
     fg = bg;
 
   if (do_vbell_bg)  // FIXME: we should have TATTR_VBELL. selection should too
-    bg = brighten(bg, fg);
+    bg = brighten(bg, fg, false);
 
   // ACM_TERM does also search and cursor colours. for now we don't handle those
 
@@ -1687,9 +1713,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   struct fontfam * ff = &fontfamilies[findex];
 
   bool clearpad = lattr & LATTR_CLEARPAD;
-  trace_line("win_text:", text, len);
+  trace_line("win_text:");
 
+  bool ldisp2 = !!(lattr & LATTR_DISP2);
   lattr &= LATTR_MODE;
+
   int char_width = cell_width * (1 + (lattr != LATTR_NORM));
 
  /* Only want the left half of double width lines */
@@ -1731,8 +1759,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
 
     if (too_close) {
       //cursor_colour = fg;
-      colour ccfg = brighten(cursor_colour, fg);
-      colour ccbg = brighten(cursor_colour, bg);
+      colour ccfg = brighten(cursor_colour, fg, false);
+      colour ccbg = brighten(cursor_colour, bg, false);
       if (colour_dist(ccfg, bg) < mindist
           && colour_dist(ccfg, bg) < colour_dist(ccbg, bg))
         cursor_colour = ccbg;
@@ -1765,10 +1793,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   if (attr.attr & ATTR_NARROW)
     nfont |= FONT_NARROW;
 
-#ifdef debug_bold
-  wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
-  printf("bold_mode %d attr_bold %d <%ls>\n", ff->bold_mode, !!(attr.attr & ATTR_BOLD), t);
-#endif
+  bool do_special_underlay = false;
+  if (cfg.bold_as_special && (attr.attr & ATTR_BOLD)) {
+    do_special_underlay = true;
+    attr.attr &= ~ATTR_BOLD;
+  }
   if (ff->bold_mode == BOLD_FONT && (attr.attr & ATTR_BOLD))
     nfont |= FONT_BOLD;
   if (ff->und_mode == UND_FONT && (attr.attr & ATTR_UNDER))
@@ -1794,6 +1823,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   another_font(ff, nfont);
   if (!ff->fonts[nfont])
     nfont = FONT_NORMAL;
+
+#if defined(debug_bold) && debug_bold > 1
+  wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
+  printf("font %02X (%dpt) bold_mode %d attr_bold %d fg %06X <%ls>\n", nfont, font_size, ff->bold_mode, !!(attr.attr & ATTR_BOLD), fg, t);
+#endif
 
  /* With selected font, begin preparing the rendering */
   SelectObject(dc, ff->fonts[nfont]);
@@ -1834,11 +1868,11 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
       .nGlyphs = len
     };
 
-    trace_line(" <ChrPlc:", text, len);
+    trace_line(" <ChrPlc:");
     GetCharacterPlacementW(dc, text, len, 0, &gcpr,
                            FLI_MASK | GCP_CLASSIN | GCP_DIACRITIC);
     len = gcpr.nGlyphs;
-    trace_line(" >ChrPlc:", text, len);
+    trace_line(" >ChrPlc:");
     eto_options |= ETO_GLYPH_INDEX;
   }
 
@@ -1923,6 +1957,136 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
   if (line_width < 1)
     line_width = 1;
 
+ /* Determine shadow/overstrike bold or double-width/height width */
+  int xwidth = 1;
+  if (ff->bold_mode == BOLD_SHADOW && (attr.attr & ATTR_BOLD)) {
+    // This could be scaled with font size, but at risk of clipping
+    xwidth = 2;
+    if (lattr != LATTR_NORM) {
+      xwidth = 3; // 4?
+    }
+  }
+
+ /* Manual underline */
+  colour ul = fg;
+  int uloff = ff->descent + (cell_height - ff->descent + 1) / 2;
+  if (lattr == LATTR_BOT)
+    uloff = ff->descent + (cell_height - ff->descent + 1) / 2;
+  uloff += line_width / 2;
+  if (uloff >= cell_height)
+    uloff = cell_height - 1;
+
+  if (cfg.underl_colour != (colour)-1)
+    ul = cfg.underl_colour;
+#ifdef debug_underline
+  if (cfg.underl_colour == (colour)-1)
+    ul = 0x802020E0;
+  if (lattr == LATTR_TOP)
+    ul = 0x80E0E020;
+  if (lattr == LATTR_BOT)
+    ul = 0x80E02020;
+#endif
+#ifdef debug_bold
+  if (xwidth > 1) {
+    force_manual_underline = true;
+    ul = 0x802020E0;
+  }
+  else if (nfont & FONT_BOLD) {
+    force_manual_underline = true;
+    ul = 0x8020E020;
+  }
+#endif
+
+  bool underlaid = false;
+  void clear_run() {
+    if (!underlaid) {
+      ExtTextOutW(dc, xt, yt, eto_options | ETO_OPAQUE, &box, W(" "), 1, dxs);
+
+      underlaid = true;
+    }
+  }
+
+ /* Special underlay */
+  if (do_special_underlay && !ldisp2) {
+    xchar uc = 0x2312;
+    int ulaylen = uc > 0xFFFF ? ulen * 2 : ulen;
+    wchar ulay[ulaylen];
+    for (int i = 0; i < ulaylen; i++)
+      if (uc > 0xFFFF)
+        if (i & 1)
+          ulay[i] = low_surrogate(uc);
+        else
+          ulay[i] = high_surrogate(uc);
+      else
+        ulay[i] = uc;
+
+    static colour rainbow[] = { // https://en.wikipedia.org/wiki/Rainbow
+      RGB(0xFF, 0x00, 0x00), // red
+      RGB(0xFF, 0x66, 0x00), // orange
+      RGB(0xFF, 0xEE, 0x00), // yellow
+      RGB(0x00, 0xFF, 0x00), // green
+      RGB(0x00, 0x99, 0xFF), // blue
+      RGB(0x44, 0x00, 0xFF), // indigo
+      RGB(0x99, 0x00, 0xFF), // violet
+      };
+
+    int dist = cell_height / 20 + 1;
+    int leap = cell_height <= 20 ? 3 : cell_height <= 30 ? 2 : 1;
+    int y = yt - cell_height / 2 + 4 * dist;
+    for (uint c = 0; c < lengthof(rainbow); c += leap) {
+      SetTextColor(dc, rainbow[c]);
+      uint eto = eto_options;
+      if (!underlaid && !c)
+        eto |= ETO_OPAQUE;
+      ExtTextOutW(dc, xt, y, eto, &box, ulay, ulaylen, dxs);
+      y += dist;
+    }
+    SetTextColor(dc, bg);
+    ExtTextOutW(dc, xt, y, eto_options, &box, ulay, ulaylen, dxs);
+    SetTextColor(dc, fg);
+
+    underlaid = true;
+  }
+
+ /* Underline */
+  if (!ldisp2 && lattr != LATTR_TOP &&
+      (force_manual_underline ||
+       (ff->und_mode == UND_LINE && (attr.attr & ATTR_UNDER)) ||
+       (attr.attr & ATTR_DOUBLYUND))) {
+    clear_run();
+
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    int gapfrom = 0, gapdone = 0;
+    if (attr.attr & ATTR_DOUBLYUND) {
+      if (line_width < 3)
+        line_width = 3;
+      int gap = line_width / 3;
+      gapfrom = (line_width - gap) / 2;
+      gapdone = line_width - gapfrom;
+    }
+    for (int l = 0; l < line_width; l++) {
+      if (l >= gapdone || l < gapfrom) {
+        MoveToEx(dc, x, y + uloff - l, null);
+        LineTo(dc, x + ulen * char_width, y + uloff - l);
+      }
+    }
+    oldpen = SelectObject(dc, oldpen);
+    DeleteObject(oldpen);
+  }
+
+ /* Overline */
+  if (!ldisp2 && lattr != LATTR_BOT && attr.attr & ATTR_OVERL) {
+    clear_run();
+
+    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    for (int l = 0; l < line_width; l++) {
+      MoveToEx(dc, x, y + l, null);
+      LineTo(dc, x + ulen * char_width, y + l);
+    }
+    oldpen = SelectObject(dc, oldpen);
+    DeleteObject(oldpen);
+  }
+
  /* DEC Tech adjustments */
   if (graph & 0x80) {  // DEC Technical rendering to be fixed
     if ((graph & ~1) == 0x88)  // left square bracket corners
@@ -1937,24 +2101,17 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
         text[i] = 0x2502;
   }
 
- /* Determine shadow/overstrike bold or double-width/height width */
-  int xwidth = 1;
-  if (ff->bold_mode == BOLD_SHADOW && (attr.attr & ATTR_BOLD)) {
-    // This could be scaled with font size, but at risk of clipping
-    xwidth = 2;
-    if (lattr != LATTR_NORM) {
-      xwidth = 3; // 4?
-    }
-  }
-
  /* Finally, draw the text */
-  SetBkMode(dc, OPAQUE);
-  uint overwropt = ETO_OPAQUE;
-  if (attr.attr & ATTR_ITALIC) {
+  uint overwropt;
+  if (ldisp2 || underlaid) {
     SetBkMode(dc, TRANSPARENT);
     overwropt = 0;
   }
-  trace_line(" TextOut:", text, len);
+  else {
+    SetBkMode(dc, OPAQUE);
+    overwropt = ETO_OPAQUE;
+  }
+  trace_line(" TextOut:");
   // The combining characters separate rendering trick *alone* 
   // makes some combining characters better (~#553, #295), 
   // others worse (#565); however, together with the 
@@ -2015,8 +2172,8 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
     }
   text_out_end();
 
+ /* Manual drawing of certain graphics */
   // line_width already set above for DEC Tech adjustments
-
 #define dont_debug_vt100_line_drawing_chars
 #ifdef debug_vt100_line_drawing_chars
   fg = 0x00FF0000;
@@ -2181,60 +2338,6 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
     DeleteObject(oldpen);
   }
 
- /* Manual underline */
-  colour ul = fg;
-  int uloff = ff->descent + (cell_height - ff->descent + 1) / 2;
-  if (lattr == LATTR_BOT)
-    uloff = ff->descent + (cell_height - ff->descent + 1) / 2;
-  uloff += line_width / 2;
-  if (uloff >= cell_height)
-    uloff = cell_height - 1;
-
-  if (cfg.underl_colour != (colour)-1)
-    ul = cfg.underl_colour;
-#ifdef debug_underline
-  if (cfg.underl_colour == (colour)-1)
-    ul = 0x802020E0;
-  if (lattr == LATTR_TOP)
-    ul = 0x80E0E020;
-  if (lattr == LATTR_BOT)
-    ul = 0x80E02020;
-#endif
-#ifdef debug_bold
-  if (xwidth > 1) {
-    force_manual_underline = true;
-    ul = 0x802020E0;
-  }
-  else if (nfont & FONT_BOLD) {
-    force_manual_underline = true;
-    ul = 0x8020E020;
-  }
-#endif
-
- /* Underline */
-  if (lattr != LATTR_TOP &&
-      (force_manual_underline ||
-       (ff->und_mode == UND_LINE && (attr.attr & ATTR_UNDER)) ||
-       (attr.attr & ATTR_DOUBLYUND))) {
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
-    int gapfrom = 0, gapdone = 0;
-    if (attr.attr & ATTR_DOUBLYUND) {
-      if (line_width < 3)
-        line_width = 3;
-      int gap = line_width / 3;
-      gapfrom = (line_width - gap) / 2;
-      gapdone = line_width - gapfrom;
-    }
-    for (int l = 0; l < line_width; l++) {
-      if (l >= gapdone || l < gapfrom) {
-        MoveToEx(dc, x, y + uloff - l, null);
-        LineTo(dc, x + len * char_width, y + uloff - l);
-      }
-    }
-    oldpen = SelectObject(dc, oldpen);
-    DeleteObject(oldpen);
-  }
-
  /* Strikeout */
   if (attr.attr & ATTR_STRIKEOUT
       && (cfg.underl_manual || cfg.underl_colour != (colour)-1)) {
@@ -2242,18 +2345,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
       MoveToEx(dc, x, y + soff + l, null);
-      LineTo(dc, x + len * char_width, y + soff + l);
-    }
-    oldpen = SelectObject(dc, oldpen);
-    DeleteObject(oldpen);
-  }
-
- /* Overline */
-  if (lattr != LATTR_BOT && attr.attr & ATTR_OVERL) {
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
-    for (int l = 0; l < line_width; l++) {
-      MoveToEx(dc, x, y + l, null);
-      LineTo(dc, x + len * char_width, y + l);
+      LineTo(dc, x + ulen * char_width, y + soff + l);
     }
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
@@ -2310,6 +2402,7 @@ win_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort
     DeleteObject(SelectObject(dc, oldpen));
   }
 }
+
 
 /* Check availability of characters in the current font.
  * Zeroes each of the characters in the input array that isn't available.
@@ -2604,7 +2697,7 @@ win_set_colour(colour_i i, colour c)
       if (cfg.bold_colour != (colour)-1)
         colours[BOLD_FG_COLOUR_I] = cfg.bold_colour;
       else
-        colours[BOLD_FG_COLOUR_I] = brighten(colours[FG_COLOUR_I], colours[BG_COLOUR_I]);
+        colours[BOLD_FG_COLOUR_I] = brighten(colours[FG_COLOUR_I], colours[BG_COLOUR_I], true);
     }
     else if (i == FG_COLOUR_I)
       colours[i] = cfg.fg_colour;
@@ -2636,9 +2729,9 @@ win_set_colour(colour_i i, colour c)
         if (cfg.bold_colour != (colour)-1)
           colours[BOLD_FG_COLOUR_I] = cfg.bold_colour;
         else {
-          colours[BOLD_FG_COLOUR_I] = brighten(c, colours[BG_COLOUR_I]);
+          colours[BOLD_FG_COLOUR_I] = brighten(c, colours[BG_COLOUR_I], true);
           // renew this too as brighten() may refer to contrast colour:
-          colours[BOLD_BG_COLOUR_I] = brighten(colours[BG_COLOUR_I], colours[FG_COLOUR_I]);
+          colours[BOLD_BG_COLOUR_I] = brighten(colours[BG_COLOUR_I], colours[FG_COLOUR_I], true);
         }
       }
     when BOLD_FG_COLOUR_I:
@@ -2648,9 +2741,9 @@ win_set_colour(colour_i i, colour c)
         if (cfg.bold_colour != (colour)-1)
           colours[BOLD_FG_COLOUR_I] = cfg.bold_colour;
         else {
-          colours[BOLD_BG_COLOUR_I] = brighten(c, colours[FG_COLOUR_I]);
+          colours[BOLD_BG_COLOUR_I] = brighten(c, colours[FG_COLOUR_I], true);
           // renew this too as brighten() may refer to contrast colour:
-          colours[BOLD_FG_COLOUR_I] = brighten(colours[FG_COLOUR_I], colours[BG_COLOUR_I]);
+          colours[BOLD_FG_COLOUR_I] = brighten(colours[FG_COLOUR_I], colours[BG_COLOUR_I], true);
         }
       }
     when CURSOR_COLOUR_I: {
@@ -2715,4 +2808,12 @@ win_reset_colours(void)
   win_set_colour(SEL_TEXT_COLOUR_I, cfg.sel_fg_colour);
   // Bold colour
   win_set_colour(BOLD_COLOUR_I, (colour)-1);
+#if defined(debug_bold) || defined(debug_brighten)
+  string ci[] = {"FG_COLOUR_I", "BOLD_FG_COLOUR_I", "BG_COLOUR_I", "BOLD_BG_COLOUR_I", "CURSOR_TEXT_COLOUR_I", "CURSOR_COLOUR_I", "IME_CURSOR_COLOUR_I", "SEL_COLOUR_I", "SEL_TEXT_COLOUR_I", "BOLD_COLOUR_I"};
+  for (int i = FG_COLOUR_I; i < COLOUR_NUM; i++)
+    if (colours[i] == (colour)-1)
+      printf("colour %d ------ [%s]\n", i, ci[i - FG_COLOUR_I]);
+    else
+      printf("colour %d %06X [%s]\n", i, (int)colours[i], ci[i - FG_COLOUR_I]);
+#endif
 }

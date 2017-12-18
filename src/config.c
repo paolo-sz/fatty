@@ -171,6 +171,8 @@ const config default_cfg = {
   .word_chars = "",
   .word_chars_excl = "",
   .use_system_colours = false,
+  .short_long_opts = false,
+  .bold_as_special = false,
   .old_bold = false,
   .ime_cursor_colour = DEFAULT_COLOUR,
   .ansi_colours = {
@@ -390,6 +392,8 @@ options[] = {
   {"IMECursorColour", OPT_COLOUR, offcfg(ime_cursor_colour)},
   {"SixelClipChars", OPT_WSTRING, offcfg(sixel_clip_char)},
   {"OldBold", OPT_BOOL, offcfg(old_bold)},
+  {"ShortLongOpts", OPT_BOOL, offcfg(short_long_opts)},
+  {"BoldAsRainbowSparkles", OPT_BOOL, offcfg(bold_as_special)},
 
   // ANSI colours
   {"Black", OPT_COLOUR, offcfg(ansi_colours[BLACK_I])},

@@ -161,11 +161,11 @@ enum {
 /* Line attributes.
  */
 enum {
-  LATTR_NORM      = 0x0000u,
-  LATTR_WIDE      = 0x0001u,
-  LATTR_TOP       = 0x0002u,
-  LATTR_BOT       = 0x0003u,
-  LATTR_MODE      = 0x0003u,
+  LATTR_NORM      = 0x0000u, /* DEC single-width line (DECSWL) */
+  LATTR_WIDE      = 0x0001u, /* DEC double-width line (DECDWL) */
+  LATTR_TOP       = 0x0002u, /* DEC double-height line (DECDHL), top half */
+  LATTR_BOT       = 0x0003u, /* DEC double-height line (DECDHL), bottom half */
+  LATTR_MODE      = 0x0003u, /* mask for double-width/height attributes */
   LATTR_WRAPPED   = 0x0010u, /* this line wraps to next */
   LATTR_WRAPPED2  = 0x0020u, /* with WRAPPED: CJK wide character
                                   * wrapped to next line, so last
@@ -173,7 +173,10 @@ enum {
   LATTR_CLEARPAD  = 0x0040u, /* flag to clear padding from overhang */
   LATTR_MARKED    = 0x0100u, /* scroll marker */
   LATTR_UNMARKED  = 0x0200u, /* secondary scroll marker */
-  LATTR_NOBIDI    = 0x1000u, /* disable bidi on this line */
+  LATTR_NOBIDI    = 0x4000u, /* disable bidi on this line */
+  // overlay line display (italic right-to-left overhang handling):
+  LATTR_DISP1     = 0x1000u,
+  LATTR_DISP2     = 0x2000u,
 };
 
 enum {
