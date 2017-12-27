@@ -242,8 +242,10 @@ write_primary_da(struct child* child)
   child_write(child, primary_da, strlen(primary_da));
 }
 
+static wchar last_high = 0;
 static wchar last_char = 0;
 static int last_width = 0;
+cattr last_attr = {.attr = ATTR_DEFAULT, .truefg = 0, .truebg = 0};
 
 static void
 write_char(struct term* term, wchar c, int width)
@@ -251,11 +253,22 @@ write_char(struct term* term, wchar c, int width)
   if (!c)
     return;
 
-  last_char = c;
-  last_width = width;
-
   term_cursor *curs = &term->curs;
   termline *line = term->lines[curs->y];
+
+  // support non-BMP for the REP function;
+  // this is a hack, it would be cleaner to fold the term_write block
+  //   switch (term.state) when NORMAL:
+  // and repeat that
+  if (width == -1) {  // low surrogate
+    last_high = last_char;
+  }
+  else {
+    last_high = 0;
+    last_width = width;
+  }
+  last_char = c;
+  last_attr = curs->attr;
 
   void put_char(wchar c)
   {
@@ -1136,9 +1149,20 @@ do_csi(struct term* term, uchar c)
   switch (CPAIR(term->esc_mod, c)) {
     when CPAIR('!', 'p'):     /* DECSTR: soft terminal reset */
       term_reset(term, false);
-    when 'b':        /* REP: repeat preceding character */
-      for (int i = 0; i < arg0_def1; i++)
-        write_char(term, last_char, last_width);
+    when 'b': {      /* REP: repeat preceding character */
+      cattr cur_attr = term->curs.attr;
+      term->curs.attr = last_attr;
+      wchar h = last_high, c = last_char;
+      for (int i = 0; i < arg0_def1; i++) {
+        if (h) {  // non-BMP
+          write_char(term, h, last_width);
+          write_char(term, c, -1);
+        }
+        else
+          write_char(term, c, last_width);
+      }
+      term->curs.attr = cur_attr;
+    }
     when 'A':        /* CUU: move up N lines */
       move(term, curs->x, curs->y - arg0_def1, 1);
     when 'e':        /* VPR: move down N lines */
