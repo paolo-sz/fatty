@@ -1384,6 +1384,7 @@ term_paint(struct term* term)
     int laststart = 0;
     int firstitalicstart = -1;
     bool prevdirtyitalic = false;
+    bool firstdirtyitalic = false;
     bool dirtyrect = false;
     for (int j = 0; j < term->cols; j++) {
       if (dispchars[j].attr.attr & DATTR_STARTRUN) {
@@ -1412,13 +1413,19 @@ term_paint(struct term* term)
         prevdirtyitalic = true;
       else if (dispchars[j].attr.attr & DATTR_STARTRUN)
         prevdirtyitalic = false;
+      if (j == 0)
+        firstdirtyitalic = prevdirtyitalic;
 
       if (dirtyrect)
         dispchars[j].attr.attr |= ATTR_INVALID;
     }
     if (prevdirtyitalic) {
-      // clear italic overhang into right padding border
+      // clear overhang into right padding border
       win_text(term->cols, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr | LATTR_CLEARPAD, false);
+    }
+    if (firstdirtyitalic) {
+      // clear overhang into left padding border
+      win_text(-1, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr | LATTR_CLEARPAD, false);
     }
 
    /*
@@ -1428,6 +1435,7 @@ term_paint(struct term* term)
     wchar text[maxtextlen];
     cattr textattr[maxtextlen];
     int textlen = 0;
+
     bool has_rtl = false;
     uchar bc = 0;
     bool dirty_run = (line->lattr != displine->lattr);
@@ -1437,6 +1445,9 @@ term_paint(struct term* term)
 
     displine->lattr = line->lattr;
 
+#define dont_use_italic_chunk_stack
+
+#ifdef use_italic_chunk_stack
     static struct italic_chunk {
       int x;
       wchar * text;
@@ -1476,6 +1487,64 @@ term_paint(struct term* term)
         icp->textattr[k] = textattr[k];
       icp->has_rtl = has_rtl;
     }
+#else
+    // buffer for pending overlay output; for support of character overhang
+    // (italics and wide glyphs), such chunks are output in two steps;
+    // the first output paints the background (and possibly manual underline)
+    // and the second output paints the text, over the adjacent chunks
+    wchar ovl_text[maxtextlen];
+    cattr ovl_textattr[maxtextlen];
+    int ovl_len = 0;
+    int ovl_x, ovl_y;
+    cattr ovl_attr;
+    ushort ovl_lattr;
+    bool ovl_has_rtl;
+
+    void flush_text()
+    {
+      if (ovl_len) {
+        win_text(ovl_x, ovl_y, ovl_text, ovl_len, ovl_attr, ovl_textattr, ovl_lattr | LATTR_DISP2, ovl_has_rtl);
+        ovl_len = 0;
+      }
+    }
+#endif
+
+#define dont_debug_run
+
+#define dont_debug_out_text
+
+#ifdef debug_run
+# define debug_out_text
+#endif
+
+    void out_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
+    {
+#ifdef debug_out_text
+      wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
+      for (int i = len - 1; i >= 0 && t[i] == ' '; i--)
+        t[i] = 0;
+      if (*t)
+        printf("out <%ls>\n", t);
+#endif
+      if (attr.attr & (ATTR_ITALIC | TATTR_COMBDOUBL)) {
+#ifdef use_italic_chunk_stack
+        push_text(x, text, len, attr, textattr, has_rtl);
+#else
+        win_text(x, y, text, len, attr, textattr, lattr | LATTR_DISP1, has_rtl);
+        flush_text();
+        ovl_x = x;
+        ovl_y = y;
+        wcsncpy(ovl_text, text, len);
+        ovl_len = len;
+        ovl_attr = attr;
+        memcpy(ovl_textattr, textattr, len * sizeof(cattr));
+        ovl_lattr = lattr;
+        ovl_has_rtl = has_rtl;
+#endif
+      }
+      else
+        win_text(x, y, text, len, attr, textattr, lattr, has_rtl);
+    }
 
     for (int j = 0; j < term->cols; j++) {
       termchar *d = chars + j;
@@ -1486,10 +1555,9 @@ term_paint(struct term* term)
       if ((dispchars[j].attr.attr ^ tattr.attr) & ATTR_WIDE)
         dirty_line = true;
 
-#define dont_debug_run
-
 #ifdef debug_run
-#define trace_run(tag)	({if (tchar & 0xFF00) printf("break (%s) %04X\n", tag, tchar);})
+#define trace_run(tag)	({/*if (tchar & 0xFF00)*/ if (tchar != ' ') printf("break (%s) (%04X)%04X\n", tag, j > 0 ? newchars[j - 1].chr : 0, tchar);})
+
 #else
 #define trace_run(tag)	(void)0
 #endif
@@ -1498,11 +1566,35 @@ term_paint(struct term* term)
                        || (tattr.truefg != attr.truefg)
                        || (tattr.truebg != attr.truebg);
 
+      inline bool has_comb(termchar * tc)
+      {
+        if (!tc->cc_next)
+          return false;
+        if (!is_high_surrogate(tc->chr))
+          return true;
+        tc += tc->cc_next;
+        return tc->cc_next;
+      }
+
      /*
       * Break on both sides of any combined-character cell.
       */
-      if (d->cc_next || (j > 0 && d[-1].cc_next))
+      if (has_comb(d) || (j > 0 && has_comb(&d[-1])))
         trace_run("cc"), break_run = true;
+
+#ifdef keep_non_BMP_characters_together_in_one_chunk
+     /*
+      * Break when switching BMP/non-BMP.
+      */
+      if (j > 0 && is_high_surrogate(d->chr) ^ is_high_surrogate(d[-1].chr))
+        trace_run("bmp"), break_run = true;
+#else
+     /*
+      * Break on both sides of non-BMP character.
+      */
+      if (j > 0 && (is_high_surrogate(d->chr) || is_high_surrogate(d[-1].chr)))
+        trace_run("bmp"), break_run = true;
+#endif
 
       if (!dirty_line) {
         if (dispchars[j].chr == tchar &&
@@ -1526,7 +1618,8 @@ term_paint(struct term* term)
         if (!is_sep_class(tbc) && !is_sep_class(bc))
           // break at RTL and other changes to avoid glyph confusion (#285)
           trace_run("bcs"), break_run = true;
-        else if (is_punct_class(tbc) || is_punct_class(bc))
+        //else if (is_punct_class(tbc) || is_punct_class(bc))
+        else if ((tbc == EN) ^ (bc == EN))
           // break at digit to avoid adaptation to script style
           trace_run("bcp"), break_run = true;
       }
@@ -1541,12 +1634,8 @@ term_paint(struct term* term)
           printf(">\n");
         }
 #endif
-        if (dirty_run && textlen) {
-          if (attr.attr & (ATTR_ITALIC | TATTR_COMBDOUBL))
-            push_text(start, text, textlen, attr, textattr, has_rtl);
-          else
-            win_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
-        }
+        if (dirty_run && textlen)
+          out_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
         start = j;
         textlen = 0;
         has_rtl = false;
@@ -1632,7 +1721,10 @@ term_paint(struct term* term)
       }
     }
     if (dirty_run && textlen)
-      win_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
+      out_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
+#ifndef use_italic_chunk_stack
+    flush_text();
+#else
 
     for (int j = italic_chunks - 1; j >= 0; j--) {
       struct italic_chunk * icp = &italic_stack[j];
@@ -1669,6 +1761,7 @@ term_paint(struct term* term)
       free(icp->textattr);
     }
     italic_chunks = 0;
+#endif
 
     release_line(line);
   }
