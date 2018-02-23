@@ -41,6 +41,8 @@ extern bool win_is_fullscreen;
 extern uint dpi;
 extern bool per_monitor_dpi_aware;
 
+extern bool click_focus_token;
+
 extern void win_paint(void);
 
 extern void win_init_fonts(int size);
@@ -74,6 +76,8 @@ extern bool win_key_up(WPARAM, LPARAM);
 
 extern wchar * dewsl(wchar * wpath);
 extern void win_init_drop_target(void);
+
+extern wstring wslicon(wchar * params);
 
 extern void win_switch(bool back, bool alternate);
 extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, MONITORINFO *mip);

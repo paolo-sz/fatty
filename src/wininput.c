@@ -24,31 +24,22 @@ static int alt_F2_monix = 0, alt_F2_moniy = 0;
 static int transparency_pending = 0;
 
 
-/* Menu handling */
-
-static void
-append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd)
+static inline void
+show_last_error()
 {
-  char * cmds = cs__wcstoutf(commands);
-  char * cmdp = cmds;
-  int n = 0;
-  char sepch = ';';
-  if ((uchar)*cmdp <= (uchar)' ')
-    sepch = *cmdp++;
-
-  char * endp;
-  while ((endp = strchr(cmdp, ':'))) {
-    *endp = '\0';
-    AppendMenuW(menu, MF_ENABLED, idm_cmd + n, _W(cmdp));
-    n++;
-    cmdp = strchr(endp + 1, sepch);
-    if (cmdp)
-      cmdp++;
-    else
-      break;
+  int err = GetLastError();
+  if (err) {
+    static wchar winmsg[1024];  // constant and < 1273 or 1705 => issue #530
+    FormatMessageW(
+      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_MAX_WIDTH_MASK,
+      0, err, 0, winmsg, lengthof(winmsg), 0
+    );
+    printf("Error %d: %ls\n", err, winmsg);
   }
-  free(cmds);
 }
+
+
+/* Icon conversion */
 
 // https://www.nanoant.com/programming/themed-menus-icons-a-complete-vista-xp-solution
 // last attempt among lots of googled solution proposals, 
@@ -102,6 +93,56 @@ icon_bitmap(HICON hIcon)
   DeleteDC(dst_hdc);
   ReleaseDC(desktop, screen_dev);
   return bmp;
+}
+
+
+/* Menu handling */
+
+static void
+append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons)
+{
+  char * cmds = cs__wcstoutf(commands);
+  char * cmdp = cmds;
+  int n = 0;
+  char sepch = ';';
+  if ((uchar)*cmdp <= (uchar)' ')
+    sepch = *cmdp++;
+
+  char * paramp;
+  while ((paramp = strchr(cmdp, ':'))) {
+    *paramp++ = '\0';
+    AppendMenuW(menu, MF_ENABLED, idm_cmd + n, _W(cmdp));
+    cmdp = strchr(paramp, sepch);
+    if (cmdp)
+      *cmdp++ = '\0';
+
+    if (add_icons) {
+      MENUITEMINFOW mi;
+      mi.cbSize = sizeof(MENUITEMINFOW);
+      mi.fMask = MIIM_BITMAP;
+      wchar * params = cs__utftowcs(paramp);
+      wstring iconfile = wslicon(params);  // default: 0 (no icon)
+      free(params);
+      HICON icon;
+      if (iconfile)
+        icon = (HICON) LoadImageW(0, iconfile,
+                                  IMAGE_ICON, 0, 0,
+                                  LR_DEFAULTSIZE | LR_LOADFROMFILE
+                                  | LR_LOADTRANSPARENT);
+      else
+        icon = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
+      HBITMAP bitmap = icon_bitmap(icon);
+      mi.hbmpItem = bitmap;
+      SetMenuItemInfoW(menu, idm_cmd + n, 0, &mi);
+      if (icon)
+        DestroyIcon(icon);
+    }
+
+    n++;
+    if (!cmdp)
+      break;
+  }
+  free(cmds);
 }
 
 static void
@@ -214,7 +255,7 @@ add_launcher(HMENU menu, bool vsep, bool hsep)
       AppendMenuW(menu, MF_SEPARATOR, 0, 0);
     AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session launcher"));
     AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND);
+    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true);
     return true;
   }
   else
@@ -496,7 +537,7 @@ win_init_ctxmenu(bool extended_menu)
   }
 
   if (extended_menu && *cfg.user_commands) {
-    append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND);
+    append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND, false);
     AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   }
 
@@ -681,6 +722,8 @@ static LPARAM last_lp = -1;
 static pos last_pos = {-1, -1};
 static int button_state = 0;
 
+bool click_focus_token = false;
+
 static pos
 get_mouse_pos(LPARAM lp)
 {
@@ -699,9 +742,13 @@ static bool tab_bar_click(LPARAM lp) {
 void
 win_mouse_click(mouse_button b, LPARAM lp)
 {
+  bool click_focus = click_focus_token;
+  click_focus_token = false;
+
   static mouse_button last_button;
   static uint last_time, count;
   static pos last_click_pos;
+  static bool last_skipped = false;
 
   win_show_mouse();
   if (tab_bar_click(lp)) return;
@@ -714,13 +761,28 @@ win_mouse_click(mouse_button b, LPARAM lp)
       p.x != last_click_pos.x || p.y != last_click_pos.y ||
       t - last_time > GetDoubleClickTime() || ++count > 3)
     count = 1;
+  //printf("mouse %d (focus %d skipped %d) ×%d\n", b, click_focus, last_skipped, count);
 
   SetFocus(wnd);  // in case focus was in search bar
-  term_mouse_click(win_active_terminal(), b, mods, p, count);
+
+  if (click_focus && b == MBT_LEFT && count == 1)
+    last_skipped = true;
+  else {
+    if (last_skipped && b == last_button
+        && p.x == last_click_pos.x && p.y == last_click_pos.y
+       )
+    {
+      // recognize double click also in application mouse modes
+      term_mouse_click(win_active_terminal(), b, mods, p, 1);
+    }
+    term_mouse_click(win_active_terminal(), b, mods, p, count);
+    last_skipped = false;
+  }
   last_pos = (pos){INT_MIN, INT_MIN};
   last_click_pos = p;
   last_time = t;
   last_button = b;
+
   if (alt_state > ALT_NONE)
     alt_state = ALT_CANCELLED;
   switch (b) {

@@ -17,6 +17,7 @@ char * fatty_debug;
 #include "winpriv.h"
 #include "winsearch.h"
 #include "winimg.h"
+#include "jumplist.h"
 
 #include "term.h"
 #include "appinfo.h"
@@ -50,6 +51,10 @@ char * fatty_debug;
 
 #ifndef INT16
 #define INT16 short
+#endif
+
+#ifndef GWL_USERDATA
+#define GWL_USERDATA -21
 #endif
 
 
@@ -89,10 +94,8 @@ enum {
   WIN_MINIMIZE = 0,
   WIN_MAXIMIZE = -1,
   WIN_TOP = 1,
-  WIN_TITLE = 7,
+  WIN_TITLE = 4,
 };
-
-static void update_tab_titles(void);
 
 // Options
 static string border_style = 0;
@@ -300,6 +303,157 @@ set_per_monitor_dpi_aware(void)
   return false;
 }
 
+/*
+  Session management: maintain list of window titles.
+ */
+
+#define dont_debug_tabbar
+
+static struct tabinfo {
+  unsigned long tag;
+  wchar * title;
+} * tabinfo = 0;
+int ntabinfo = 0;
+
+static void
+clear_tabinfo()
+{
+  for (int i = 0; i < ntabinfo; i++) {
+    free(tabinfo[i].title);
+  }
+  if (tabinfo) {
+    free(tabinfo);
+    tabinfo = 0;
+    ntabinfo = 0;
+  }
+}
+
+static void
+add_tabinfo(unsigned long tag, wchar * title)
+{
+  struct tabinfo * newtabinfo = renewn(tabinfo, ntabinfo + 1);
+  if (newtabinfo) {
+    tabinfo = newtabinfo;
+    tabinfo[ntabinfo].tag = tag;
+    tabinfo[ntabinfo].title = wcsdup(title);
+    ntabinfo++;
+  }
+}
+
+static void
+sort_tabinfo()
+{
+  int comp_tabinfo(const void * t1, const void * t2)
+  {
+    if (((struct tabinfo *)t1)->tag < ((struct tabinfo *)t2)->tag)
+      return -1;
+    if (((struct tabinfo *)t1)->tag > ((struct tabinfo *)t2)->tag)
+      return 1;
+    else
+      return 0;
+  }
+  qsort(tabinfo, ntabinfo, sizeof(struct tabinfo), comp_tabinfo);
+}
+
+/*
+  Enumerate all windows of the mintty class.
+  ///TODO: Maintain a local list of them.
+  To be used for tab bar display.
+ */
+static void
+refresh_tab_titles(bool trace)
+{
+  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      int len = GetWindowTextLengthW(curr_wnd);
+      if (!len) {
+        // check whether already terminating
+        LONG fini = GetWindowLong(curr_wnd, GWL_USERDATA);
+        if (fini) {
+#ifdef debug_tabbar
+          printf("[%8p] get tab %8p: fini\n", wnd, curr_wnd);
+#endif
+          return true;
+        }
+      }
+      wchar title[len + 1];
+      GetWindowTextW(curr_wnd, title, len + 1);
+#ifdef debug_tabbar
+      printf("[%8p] get tab %8p: <%ls>\n", wnd, curr_wnd, title);
+#endif
+
+      static bool sort_tabs_by_time = true;
+
+      if (sort_tabs_by_time) {
+        DWORD pid;
+        GetWindowThreadProcessId(curr_wnd, &pid);
+        HANDLE ph = OpenProcess(PROCESS_QUERY_INFORMATION, 0, pid);
+        // PROCESS_QUERY_LIMITED_INFORMATION ?
+        FILETIME cr_time, dummy;
+        if (GetProcessTimes(ph, &cr_time, &dummy, &dummy, &dummy)) {
+          unsigned long long crtime = ((unsigned long long)cr_time.dwHighDateTime << 32) | cr_time.dwLowDateTime;
+          add_tabinfo(crtime, title);
+          if (trace) {
+#ifdef debug_tabbar
+            SYSTEMTIME start_time;
+            if (FileTimeToSystemTime(&cr_time, &start_time))
+              printf("  %04d-%02d-%02d_%02d:%02d:%02d.%03d\n",
+                     start_time.wYear, start_time.wMonth, start_time.wDay,
+                     start_time.wHour, start_time.wMinute, 
+                     start_time.wSecond, start_time.wMilliseconds);
+#endif
+          }
+        }
+        CloseHandle(ph);
+      }
+      else
+        add_tabinfo((unsigned long)curr_wnd, title);
+
+    }
+    return true;
+  }
+
+  clear_tabinfo();
+  EnumWindows(wnd_enum_tabs, 0);
+  sort_tabinfo();
+}
+
+/*
+  Update list of windows in all windows of the mintty class.
+ */
+static void
+update_tab_titles()
+{
+  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      if (curr_wnd != wnd) {
+        PostMessage(curr_wnd, WM_USER, 0, WIN_TITLE);
+#ifdef debug_tabbar
+        printf("notified %8p to update tabbar\n", curr_wnd);
+#endif
+      }
+    }
+    return true;
+  }
+  if (cfg.geom_sync) {
+    // update my own list
+    refresh_tab_titles(true);
+    // tell the others to update their's
+    EnumWindows(wnd_enum_tabs, 0);
+  }
+}
+
+
 void
 win_set_title(wchar *wtitle)
 {
@@ -366,9 +520,25 @@ win_to_top(HWND top_wnd)
 
 static HWND first_wnd, last_wnd;
 
+#define dont_debug_sessions 1
+
 static BOOL CALLBACK
 wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp))
 {
+#ifdef debug_sessions
+  WINDOWINFO curr_wnd_info;
+  curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+  GetWindowInfo(curr_wnd, &curr_wnd_info);
+  if (class_atom == curr_wnd_info.atomWindowType) {
+    int len = GetWindowTextLengthW(curr_wnd);
+    wchar title[len + 1];
+    GetWindowTextW(curr_wnd, title, len + 1);
+    printf("[%8p.%d]%1s %2s %8p %ls\n", wnd, (int)unused_lp,
+           curr_wnd == wnd ? "=" : IsIconic(curr_wnd) ? "i" : "",
+           !first_wnd && curr_wnd != wnd && !IsIconic(curr_wnd) ? "->" : "",
+           curr_wnd, title);
+  }
+#endif
   if (curr_wnd != wnd && !IsIconic(curr_wnd)) {
     WINDOWINFO curr_wnd_info;
     curr_wnd_info.cbSize = sizeof(WINDOWINFO);
@@ -387,6 +557,13 @@ win_switch(bool back, bool alternate)
   // avoid being pushed behind other windows (#652)
   // but do it below, not here (wsltty#47)
   //SetWindowPos(wnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+
+#if defined(debug_sessions) && debug_sessions > 1
+  first_wnd = 0, last_wnd = 0;
+  EnumChildWindows(0, wnd_enum_proc, 1);
+  first_wnd = 0, last_wnd = 0;
+  EnumDesktopWindows(0, wnd_enum_proc, 8);
+#endif
 
   first_wnd = 0, last_wnd = 0;
   EnumWindows(wnd_enum_proc, 0);
@@ -409,14 +586,9 @@ win_switch(bool back, bool alternate)
  */
 
 #define dont_debug_tabs
-#define dont_debug_tabbar
 
 static uint tabn = 0;
 static HWND * tabs = 0;
-
-#ifndef GWL_USERDATA
-#define GWL_USERDATA -21
-#endif
 
 void
 clear_tabs()
@@ -446,63 +618,6 @@ get_tab(uint tabi)
     return 0;
 }
 
-static void
-refresh_tab_titles()
-{
-  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
-  {
-    (void)lp;
-    WINDOWINFO curr_wnd_info;
-    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
-    GetWindowInfo(curr_wnd, &curr_wnd_info);
-    if (class_atom == curr_wnd_info.atomWindowType) {
-      int len = GetWindowTextLengthW(curr_wnd);
-      if (!len) {
-        // check whether already terminating
-        LONG fini = GetWindowLong(curr_wnd, GWL_USERDATA);
-        if (fini) {
-#ifdef debug_tabbar
-          printf("[%8p] get tab %8p: fini\n", wnd, curr_wnd);
-#endif
-          return true;
-        }
-      }
-      wchar title[len + 1];
-      GetWindowTextW(curr_wnd, title, len + 1);
-#ifdef debug_tabbar
-      printf("[%8p] get tab %8p: <%ls>\n", wnd, curr_wnd, title);
-#endif
-    }
-    return true;
-  }
-  if (cfg.geom_sync)
-    EnumWindows(wnd_enum_tabs, 0);
-}
-
-static void
-update_tab_titles()
-{
-  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
-  {
-    (void)lp;
-    WINDOWINFO curr_wnd_info;
-    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
-    GetWindowInfo(curr_wnd, &curr_wnd_info);
-    if (class_atom == curr_wnd_info.atomWindowType) {
-      if (curr_wnd != wnd) {
-        PostMessage(curr_wnd, WM_USER, 0, WIN_TITLE);
-#ifdef debug_tabbar
-        printf("notified %8p to update tabbar\n", curr_wnd);
-#endif
-      }
-    }
-    return true;
-  }
-  if (cfg.geom_sync) {
-    refresh_tab_titles();
-    EnumWindows(wnd_enum_tabs, 0);
-  }
-}
 
 static void
 win_gotab(uint n)
@@ -1702,7 +1817,7 @@ static struct {
       }
       else if (!wp && lp == WIN_TITLE) {
         if (cfg.geom_sync)
-          refresh_tab_titles();
+          refresh_tab_titles(false);
       }
       else if (cfg.geom_sync) {
 #ifdef debug_tabs
@@ -1945,7 +2060,14 @@ static struct {
       // prevent accidental selection on activation (#717)
       if (LOWORD(lp) == HTCLIENT && HIWORD(lp) == WM_LBUTTONDOWN)
         if (!getenv("ConEmuPID"))
+#ifdef suppress_click_on_focus_at_message_level
+#warning this would also obstruct mouse function in the search bar
+          // ignore focus click
           return MA_ACTIVATEANDEAT;
+#else
+          // support selective mouse click suppression
+          click_focus_token = true;
+#endif
 	}
 
     when WM_ACTIVATE:
@@ -2457,198 +2579,6 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
 
 #endif
 
-typedef void (* CMDENUMPROC)(wstring label, wstring cmd, wstring icon, int icon_index);
-
-static wstring * jumplist_title = 0;
-static wstring * jumplist_cmd = 0;
-static wstring * jumplist_icon = 0;
-static int * jumplist_ii = 0;
-static int jumplist_len = 0;
-
-static void
-cmd_enum(wstring label, wstring cmd, wstring icon, int icon_index)
-{
-  jumplist_title = renewn(jumplist_title, jumplist_len + 1);
-  jumplist_cmd = renewn(jumplist_cmd, jumplist_len + 1);
-  jumplist_icon = renewn(jumplist_icon, jumplist_len + 1);
-  jumplist_ii = renewn(jumplist_ii, jumplist_len + 1);
-
-  jumplist_title[jumplist_len] = label;
-  jumplist_cmd[jumplist_len] = cmd;
-  jumplist_icon[jumplist_len] = icon;
-  jumplist_ii[jumplist_len] = icon_index;
-  jumplist_len++;
-}
-
-static void
-enum_commands(wstring commands, CMDENUMPROC cmdenum)
-{
-  char * cmds = cs__wcstoutf(commands);
-  char * cmdp = cmds;
-  char sepch = ';';
-  if ((uchar)*cmdp <= (uchar)' ')
-    sepch = *cmdp++;
-
-  char * paramp;
-  while ((paramp = strchr(cmdp, ':'))) {
-    *paramp = '\0';
-    paramp++;
-    char * sepp = strchr(paramp, sepch);
-    if (sepp)
-      *sepp = '\0';
-
-    cmdenum(_W(cmdp), cs__utftowcs(paramp), 0, 0);  // no icon
-
-    if (sepp)
-      cmdp = sepp + 1;
-    else
-      break;
-  }
-  free(cmds);
-}
-
-#include "jumplist.h"
-
-static void
-configure_taskbar(void)
-{
-  if (*cfg.task_commands) {
-    enum_commands(cfg.task_commands, cmd_enum);
-    setup_jumplist(cfg.app_id, jumplist_len, jumplist_title, jumplist_cmd, jumplist_icon, jumplist_ii);
-  }
-
-#if CYGWIN_VERSION_DLL_MAJOR >= 1007
-  // initial patch (issue #471) contributed by Johannes Schindelin
-  wchar * app_id = (wchar *) cfg.app_id;
-  wchar * relaunch_icon = (wchar *) cfg.icon;
-  wchar * relaunch_display_name = (wchar *) cfg.app_name;
-  wchar * relaunch_command = (wchar *) cfg.app_launch_cmd;
-
-#define dont_debug_properties
-
-#ifdef two_witty_ideas_with_bad_side_effects
-#warning automatic derivation of an AppId is likely not a good idea
-  // If an icon is configured but no app_id, we can derive one from the 
-  // icon in order to enable proper taskbar grouping by common icon.
-  // However, this has an undesirable side-effect if a shortcut is 
-  // pinned (presumably getting some implicit AppID from Windows) and 
-  // instances are started from there (with a different AppID...).
-  // Disabled.
-  if (relaunch_icon && *relaunch_icon && (!app_id || !*app_id)) {
-    const char * iconbasename = strrchr(cfg.icon, '/');
-    if (iconbasename)
-      iconbasename ++;
-    else {
-      iconbasename = strrchr(cfg.icon, '\\');
-      if (iconbasename)
-        iconbasename ++;
-      else
-        iconbasename = cfg.icon;
-    }
-    char * derived_app_id = malloc(strlen(iconbasename) + 7 + 1);
-    strcpy(derived_app_id, "Fatty.");
-    strcat(derived_app_id, iconbasename);
-    app_id = derived_app_id;
-  }
-  // If app_name is configured but no app_launch_cmd, we need an app_id 
-  // to make app_name effective as taskbar title, so invent one.
-  if (relaunch_display_name && *relaunch_display_name && 
-      (!app_id || !*app_id)) {
-    app_id = "Fatty.AppID";
-  }
-#endif
-
-  // Set the app ID explicitly, as well as the relaunch command and display name
-  if (prevent_pinning || (app_id && *app_id)) {
-    HMODULE shell = load_sys_library("shell32.dll");
-    HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
-      (void *)GetProcAddress(shell, "SHGetPropertyStoreForWindow");
-#ifdef debug_properties
-      printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
-#endif
-    if (pGetPropertyStore) {
-      IPropertyStore *pps;
-      HRESULT hr;
-      PROPVARIANT var;
-
-      hr = pGetPropertyStore(wnd, &IID_IPropertyStore, (void **) &pps);
-#ifdef debug_properties
-      printf("IPropertyStore found %d\n", SUCCEEDED(hr));
-#endif
-      if (SUCCEEDED(hr)) {
-        // doc: https://msdn.microsoft.com/en-us/library/windows/desktop/dd378459%28v=vs.85%29.aspx
-        // def: typedef struct tagPROPVARIANT PROPVARIANT: propidl.h
-        // def: enum VARENUM (VT_*): wtypes.h
-        // def: PKEY_*: propkey.h
-        if (relaunch_command && *relaunch_command && store_taskbar_properties) {
-#ifdef debug_properties
-          printf("AppUserModel_RelaunchCommand=%ls\n", relaunch_command);
-#endif
-          var.pwszVal = relaunch_command;
-          var.vt = VT_LPWSTR;
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchCommand, &var);
-        }
-        if (relaunch_display_name && *relaunch_display_name) {
-#ifdef debug_properties
-          printf("AppUserModel_RelaunchDisplayNameResource=%ls\n", relaunch_display_name);
-#endif
-          var.pwszVal = relaunch_display_name;
-          var.vt = VT_LPWSTR;
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
-        }
-        if (relaunch_icon && *relaunch_icon) {
-#ifdef debug_properties
-          printf("AppUserModel_RelaunchIconResource=%ls\n", relaunch_icon);
-#endif
-          var.pwszVal = relaunch_icon;
-          var.vt = VT_LPWSTR;
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchIconResource, &var);
-        }
-        if (prevent_pinning) {
-          var.boolVal = VARIANT_TRUE;
-#ifdef debug_properties
-          printf("AppUserModel_PreventPinning=%d\n", var.boolVal);
-#endif
-          var.vt = VT_BOOL;
-          // PreventPinning must be set before setting ID
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_PreventPinning, &var);
-        }
-#ifdef set_userpinned
-DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0xa8,0xd0,0xe1,0xd4,0x2d,0xe1,0xd5,0xf3,12);
-#define APPUSERMODEL_STARTPINOPTION_USERPINNED 2
-#warning needs Windows 8/10 to build...
-        {
-          var.uintVal = APPUSERMODEL_STARTPINOPTION_USERPINNED;
-#ifdef debug_properties
-          printf("AppUserModel_StartPinOption=%d\n", var.uintVal);
-#endif
-          var.vt = VT_UINT;
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_StartPinOption, &var);
-        }
-#endif
-        if (app_id && *app_id) {
-#ifdef debug_properties
-          printf("AppUserModel_ID=%ls\n", app_id);
-#endif
-          var.pwszVal = app_id;
-          var.vt = VT_LPWSTR;  // VT_EMPTY should remove but has no effect
-          pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_ID, &var);
-        }
-
-        pps->lpVtbl->Commit(pps);
-        pps->lpVtbl->Release(pps);
-      }
-    }
-  }
-#endif
-}
-
 
 #if CYGWIN_VERSION_API_MINOR >= 74
 
@@ -2844,6 +2774,258 @@ select_WSL(char * wsl)
 }
 
 #endif
+
+
+typedef void (* CMDENUMPROC)(wstring label, wstring cmd, wstring icon, int icon_index);
+
+static wstring * jumplist_title = 0;
+static wstring * jumplist_cmd = 0;
+static wstring * jumplist_icon = 0;
+static int * jumplist_ii = 0;
+static int jumplist_len = 0;
+
+static void
+cmd_enum(wstring label, wstring cmd, wstring icon, int icon_index)
+{
+  jumplist_title = renewn(jumplist_title, jumplist_len + 1);
+  jumplist_cmd = renewn(jumplist_cmd, jumplist_len + 1);
+  jumplist_icon = renewn(jumplist_icon, jumplist_len + 1);
+  jumplist_ii = renewn(jumplist_ii, jumplist_len + 1);
+
+  jumplist_title[jumplist_len] = label;
+  jumplist_cmd[jumplist_len] = cmd;
+  jumplist_icon[jumplist_len] = icon;
+  jumplist_ii[jumplist_len] = icon_index;
+  jumplist_len++;
+}
+
+wstring 
+wslicon(wchar * params)
+{
+  wstring icon = 0;  // default: no icon
+#if CYGWIN_VERSION_API_MINOR >= 74
+  wchar * wsl = wcsstr(params, W("--WSL"));
+  if (wsl) {
+    wsl += 5;
+    if (*wsl == '=')
+      wsl++;
+    else if (*wsl <= ' ')
+      ; // SP or NUL: no WSL distro specified
+    else
+      wsl = 0;
+  }
+  if (wsl) {
+    wchar * sp = wcsstr(wsl, W(" "));
+    int len;
+    if (sp)
+      len = sp - wsl;
+    else
+      len = wcslen(wsl);
+    if (len) {
+      wchar * wslname = newn(wchar, len + 1);
+      wcsncpy(wslname, wsl, len);
+      wslname[len] = 0;
+      char * guid;
+      wstring basepath;
+      int err = getlxssinfo(wslname, &guid, &basepath, &icon);
+      free(wslname);
+      if (!err) {
+        delete(basepath);
+        free(guid);
+      }
+    }
+    if (!icon) {  // no WSL distro specified or failed to find icon
+      char * wslico = get_resource_file(W("icon"), W("wsl.ico"), false);
+      if (wslico) {
+        icon = path_posix_to_win_w(wslico);
+        free(wslico);
+      }
+      else {
+        char * lappdata = getenv("LOCALAPPDATA");
+        if (lappdata && *lappdata) {
+          wslico = asform("%s/wsltty/wsl.ico", lappdata);
+          icon = cs__mbstowcs(wslico);
+          free(wslico);
+        }
+      }
+    }
+  }
+#else
+  (void)params;
+#endif
+  return icon;
+}
+
+static void
+enum_commands(wstring commands, CMDENUMPROC cmdenum)
+{
+  char * cmds = cs__wcstoutf(commands);
+  char * cmdp = cmds;
+  char sepch = ';';
+  if ((uchar)*cmdp <= (uchar)' ')
+    sepch = *cmdp++;
+
+  char * paramp;
+  while ((paramp = strchr(cmdp, ':'))) {
+    *paramp = '\0';
+    paramp++;
+    char * sepp = strchr(paramp, sepch);
+    if (sepp)
+      *sepp = '\0';
+
+    wchar * params = cs__utftowcs(paramp);
+    wstring icon = wslicon(params);  // default: 0 (no icon)
+    //printf("	task <%s> args <%ls> icon <%ls>\n", cmdp, params, icon);
+    cmdenum(_W(cmdp), params, icon, 0);
+
+    if (sepp)
+      cmdp = sepp + 1;
+    else
+      break;
+  }
+  free(cmds);
+}
+
+
+static void
+configure_taskbar(void)
+{
+  if (*cfg.task_commands) {
+    enum_commands(cfg.task_commands, cmd_enum);
+    setup_jumplist(cfg.app_id, jumplist_len, jumplist_title, jumplist_cmd, jumplist_icon, jumplist_ii);
+  }
+
+#if CYGWIN_VERSION_DLL_MAJOR >= 1007
+  // initial patch (issue #471) contributed by Johannes Schindelin
+  wchar * app_id = (wchar *) cfg.app_id;
+  wchar * relaunch_icon = (wchar *) cfg.icon;
+  wchar * relaunch_display_name = (wchar *) cfg.app_name;
+  wchar * relaunch_command = (wchar *) cfg.app_launch_cmd;
+
+#define dont_debug_properties
+
+#ifdef two_witty_ideas_with_bad_side_effects
+#warning automatic derivation of an AppId is likely not a good idea
+  // If an icon is configured but no app_id, we can derive one from the 
+  // icon in order to enable proper taskbar grouping by common icon.
+  // However, this has an undesirable side-effect if a shortcut is 
+  // pinned (presumably getting some implicit AppID from Windows) and 
+  // instances are started from there (with a different AppID...).
+  // Disabled.
+  if (relaunch_icon && *relaunch_icon && (!app_id || !*app_id)) {
+    const char * iconbasename = strrchr(cfg.icon, '/');
+    if (iconbasename)
+      iconbasename ++;
+    else {
+      iconbasename = strrchr(cfg.icon, '\\');
+      if (iconbasename)
+        iconbasename ++;
+      else
+        iconbasename = cfg.icon;
+    }
+    char * derived_app_id = malloc(strlen(iconbasename) + 7 + 1);
+    strcpy(derived_app_id, "Mintty.");
+    strcat(derived_app_id, iconbasename);
+    app_id = derived_app_id;
+  }
+  // If app_name is configured but no app_launch_cmd, we need an app_id 
+  // to make app_name effective as taskbar title, so invent one.
+  if (relaunch_display_name && *relaunch_display_name && 
+      (!app_id || !*app_id)) {
+    app_id = "Mintty.AppID";
+  }
+#endif
+
+  // Set the app ID explicitly, as well as the relaunch command and display name
+  if (prevent_pinning || (app_id && *app_id)) {
+    HMODULE shell = load_sys_library("shell32.dll");
+    HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
+      (void *)GetProcAddress(shell, "SHGetPropertyStoreForWindow");
+#ifdef debug_properties
+      printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
+#endif
+    if (pGetPropertyStore) {
+      IPropertyStore *pps;
+      HRESULT hr;
+      PROPVARIANT var;
+
+      hr = pGetPropertyStore(wnd, &IID_IPropertyStore, (void **) &pps);
+#ifdef debug_properties
+      printf("IPropertyStore found %d\n", SUCCEEDED(hr));
+#endif
+      if (SUCCEEDED(hr)) {
+        // doc: https://msdn.microsoft.com/en-us/library/windows/desktop/dd378459%28v=vs.85%29.aspx
+        // def: typedef struct tagPROPVARIANT PROPVARIANT: propidl.h
+        // def: enum VARENUM (VT_*): wtypes.h
+        // def: PKEY_*: propkey.h
+        if (relaunch_command && *relaunch_command && store_taskbar_properties) {
+#ifdef debug_properties
+          printf("AppUserModel_RelaunchCommand=%ls\n", relaunch_command);
+#endif
+          var.pwszVal = relaunch_command;
+          var.vt = VT_LPWSTR;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_RelaunchCommand, &var);
+        }
+        if (relaunch_display_name && *relaunch_display_name) {
+#ifdef debug_properties
+          printf("AppUserModel_RelaunchDisplayNameResource=%ls\n", relaunch_display_name);
+#endif
+          var.pwszVal = relaunch_display_name;
+          var.vt = VT_LPWSTR;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
+        }
+        if (relaunch_icon && *relaunch_icon) {
+#ifdef debug_properties
+          printf("AppUserModel_RelaunchIconResource=%ls\n", relaunch_icon);
+#endif
+          var.pwszVal = relaunch_icon;
+          var.vt = VT_LPWSTR;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_RelaunchIconResource, &var);
+        }
+        if (prevent_pinning) {
+          var.boolVal = VARIANT_TRUE;
+#ifdef debug_properties
+          printf("AppUserModel_PreventPinning=%d\n", var.boolVal);
+#endif
+          var.vt = VT_BOOL;
+          // PreventPinning must be set before setting ID
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_PreventPinning, &var);
+        }
+#ifdef set_userpinned
+DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0xa8,0xd0,0xe1,0xd4,0x2d,0xe1,0xd5,0xf3,12);
+#define APPUSERMODEL_STARTPINOPTION_USERPINNED 2
+#warning needs Windows 8/10 to build...
+        {
+          var.uintVal = APPUSERMODEL_STARTPINOPTION_USERPINNED;
+#ifdef debug_properties
+          printf("AppUserModel_StartPinOption=%d\n", var.uintVal);
+#endif
+          var.vt = VT_UINT;
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_StartPinOption, &var);
+        }
+#endif
+        if (app_id && *app_id) {
+#ifdef debug_properties
+          printf("AppUserModel_ID=%ls\n", app_id);
+#endif
+          var.pwszVal = app_id;
+          var.vt = VT_LPWSTR;  // VT_EMPTY should remove but has no effect
+          pps->lpVtbl->SetValue(pps,
+              &PKEY_AppUserModel_ID, &var);
+        }
+
+        pps->lpVtbl->Commit(pps);
+        pps->lpVtbl->Release(pps);
+      }
+    }
+  }
+#endif
+}
 
 
 #define usage __("Usage:")
@@ -3270,6 +3452,22 @@ main(int argc, char *argv[])
       }
     }
   }
+
+  char * exename = *argv;
+  const char * exebasename = strrchr(exename, '/');
+  if (exebasename)
+    exebasename ++;
+  else
+    exebasename = exename;
+  if (0 == strncmp(exebasename, "wsl", 3)) {
+    char * exearg = strchr(exebasename, '-');
+    if (exearg)
+      exearg ++;
+    int err = select_WSL(exearg);
+    if (err)
+      option_error(__("WSL distribution '%s' not found"), exearg ?: _("(Default)"), err);
+  }
+
   copy_config("main after -o", &file_cfg, &cfg);
   if (*cfg.colour_scheme)
     load_scheme(cfg.colour_scheme);
@@ -3277,13 +3475,23 @@ main(int argc, char *argv[])
     load_theme(cfg.theme_file);
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
-  if (!wdpresent) {
-    if (support_wsl) {
-      chdir(getenv("LOCALAPPDATA"));
-      chdir("Temp");
+  if (!wdpresent) {  // shortcut start directory is empty
+    WCHAR cd[MAX_PATH + 1];
+    WCHAR wd[MAX_PATH + 1];
+    GetCurrentDirectoryW(MAX_PATH, cd);		// C:\WINDOWS\System32 ?
+    GetSystemDirectoryW(wd, MAX_PATH);		// C:\WINDOWS\system32
+    //GetSystemWindowsDirectoryW(wd, MAX_PATH);	// C:\WINDOWS
+    int l = wcslen(wd);
+    if (0 == wcsncasecmp(cd, wd, l)) {
+      // current directory is within Windows system directory
+      // and shortcut start directory is empty
+      if (support_wsl) {
+        chdir(getenv("LOCALAPPDATA"));
+        chdir("Temp");
+      }
+      else
+        chdir(home);
     }
-    else
-      chdir(home);
   }
 #endif
 
@@ -3694,8 +3902,19 @@ main(int argc, char *argv[])
           // but window size hopefully adjusted already
           if (border_style) {
             // workaround for caption-less window exceeding borders (#733)
-            win_adjust_borders(cell_width * cfg.cols, cell_height * cfg.rows);
-            win_adapt_term_size(true, false);
+            RECT wr;
+            GetWindowRect(wnd, &wr);
+            int w = wr.right - wr.left;
+            int h = wr.bottom - wr.top;
+            MONITORINFO mi;
+            get_my_monitor_info(&mi);
+            RECT ar = mi.rcWork;
+            if (maxwidth && ar.right - ar.left < w)
+              w = ar.right - ar.left;
+            if (maxheight && ar.bottom - ar.top < h)
+              h = ar.bottom - ar.top;
+            SetWindowPos(wnd, null, 0, 0, w, h,
+                         SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
           }
         }
         else {

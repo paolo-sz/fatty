@@ -1481,25 +1481,41 @@ match_emoji(termchar * d, int maxlen)
 	1	X FE0E		variation seq: strip; normal display
 	1	X FE0F		variation seq: emoji display
 	1	X [Emoji_Presentation]	emoji display
-	1	X [Extended_Pictographic]	if not in variation seq
+	1	X [Extended_Pictographic]	if not a variation (none)
        */
       if ((tags & EM_text) && combchr == 0xFE0E) {
-        // strip VARIATION SELECTOR-15, display text style
-        d->cc_next = 0;
+        // VARIATION SELECTOR-15: display text style
         emoji.len = 0;
       }
       else if ((tags & EM_emoj) && combchr == 0xFE0F) {
-        // strip VARIATION SELECTOR-16, display emoji style
-        d->cc_next = 0;
+        // VARIATION SELECTOR-16: display emoji style
       }
-      else if ((tags & EM_pres) && !combchr) {
+      else if (combchr) {
+        emoji.len = 0;  // suppress emoji style with combining
+      }
+      else if (tags & EM_pres) {
         // display presentation
       }
-      else if ((tags & EM_pict) && !(tags & (EM_text | EM_emoj)) && !combchr) {
-        // display pictographic
+      else if ((tags & (EM_emoj | EM_pres | EM_pict)) && (d->attr.attr & ATTR_FRAMED)) {
+        // with explicit attribute, display pictographic
       }
-      else
+#ifdef support_only_pictographics
+      else if ((tags & EM_pict) && !(tags & (EM_text | EM_emoj))) {
+        // we could support this group to display pictographic,
+        // however, there are no emoji graphics for them anyway, so:
         emoji.len = 0;
+      }
+#endif
+#ifdef support_other_pictographics
+      else if ((tags & EM_pict) && (tags & (EM_text | EM_emoj))) {
+        // we could support this group to display pictographic,
+        // however, Unicode specifies them for explicit variations,
+        // so let's default to text style
+        emoji.len = 0;
+      }
+#endif
+      else
+        emoji.len = 0;  // display text style
     }
     if (!emoji.len) {
       // not found another match; if we had a "longest match" before, 
@@ -1651,9 +1667,6 @@ term_paint(struct term* term)
         tattr.attr &= ~ATTR_BLINK2;
       }
 
-#ifdef handle_emojis_in_loop_1
-      ... active code below
-#endif
      /* Match emoji sequences
       * and replace by emoji indicators
       */
@@ -1675,7 +1688,7 @@ term_paint(struct term* term)
           // check whether all emoji components have the same attributes
           bool equalattrs = true;
           for (int i = 1; i < e.len && equalattrs; i++) {
-#           define IGNATTR (ATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING)
+# define IGNATTR (ATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING)
             if ((d[i].attr.attr & ~IGNATTR) != (d->attr.attr & ~IGNATTR)
                || d[i].attr.truebg != d->attr.truebg
                )
@@ -1687,14 +1700,19 @@ term_paint(struct term* term)
 
           // modify character data to trigger later emoji display
           if (ok && equalattrs) {
-            d->attr.attr &= ~ ATTR_FGMASK;
+            d->attr.attr &= ~ATTR_FGMASK;
             d->attr.attr |= TATTR_EMOJI | e.len;
+
             //d->attr.truefg = (uint)e;
             struct emoji * ee = &e;
             uint em = *(uint *)ee;
             d->attr.truefg = em;
+
+            // refresh cashed copy
+            tattr = d->attr;
+            // inhibit subsequent emoji sequence components
             for (int i = 1; i < e.len; i++) {
-              d[i].attr.attr &= ~ ATTR_FGMASK;
+              d[i].attr.attr &= ~ATTR_FGMASK;
               d[i].attr.attr |= TATTR_EMOJI;
               d[i].attr.truefg = em;
             }
@@ -1818,12 +1836,6 @@ term_paint(struct term* term)
     bool firstdirtyitalic = false;
     bool dirtyrect = false;
     for (int j = 0; j < term->cols; j++) {
-#ifdef handle_emojis_in_loop_2
-      termchar *d = chars + j;
-      cattr tattr = newchars[j].attr;
-      ... code from above
-#endif
-
       if (dispchars[j].attr.attr & DATTR_STARTRUN) {
         laststart = j;
         dirtyrect = false;
@@ -1868,6 +1880,13 @@ term_paint(struct term* term)
    /*
     * Finally, loop once more and actually do the drawing.
     */
+    // control line overlay; as opposed to character overlay implemented 
+    // by the "pending overlay" buffer below, this works by repeating 
+    // the last line loop and only drawing the overlay characters this time
+    bool overlaying = false;
+    overlay:;
+    bool do_overlay = false;
+
     int maxtextlen = max(term->cols, 16);
     wchar text[maxtextlen];
     cattr textattr[maxtextlen];
@@ -1925,17 +1944,23 @@ term_paint(struct term* term)
         eattr.attr &= ~(ATTR_WIDE | TATTR_COMBINING);
         wchar esp[] = W("        ");
         if (elen) {
-          win_text(x, y, esp, elen, eattr, textattr, lattr | LATTR_DISP1, has_rtl);
+          if (!overlaying) {
+            win_text(x, y, esp, elen, eattr, textattr, lattr | LATTR_DISP1, has_rtl);
+            flush_text();
+          }
 #ifdef debug_emojis
           eattr.attr &= ~(ATTR_BGMASK | ATTR_FGMASK);
           eattr.attr |= 6 << ATTR_BGSHIFT | 4;
           esp[0] = '0' + elen;
           win_text(x, y, esp, elen, eattr, textattr, lattr | LATTR_DISP2, has_rtl);
 #endif
-
-          //struct emoji e = (struct emoji) eattr.truefg;
-          struct emoji * ee = (void *)&eattr.truefg;
-          emoji_show(x, y, *ee, elen, eattr, lattr);
+          if (cfg.emoji_placement == EMPL_FULL && !overlaying)
+            do_overlay = true;  // display in overlaying loop
+          else {
+            //struct emoji e = (struct emoji) eattr.truefg;
+            struct emoji * ee = (void *)&eattr.truefg;
+            emoji_show(x, y, *ee, elen, eattr, lattr);
+          }
         }
 #ifdef debug_emojis
         else {
@@ -1945,6 +1970,9 @@ term_paint(struct term* term)
           win_text(x, y, esp, 1, eattr, textattr, lattr | LATTR_DISP2, has_rtl);
         }
 #endif
+      }
+      else if (overlaying) {
+        return;
       }
       else if (attr.attr & (ATTR_ITALIC | TATTR_COMBDOUBL)) {
         win_text(x, y, text, len, attr, textattr, lattr | LATTR_DISP1, has_rtl);
@@ -1958,18 +1986,30 @@ term_paint(struct term* term)
         ovl_lattr = lattr;
         ovl_has_rtl = has_rtl;
       }
-      else
+      else {
         win_text(x, y, text, len, attr, textattr, lattr, has_rtl);
+        flush_text();
+      }
     }
 
+   /*
+    * Third loop, for actual drawing.
+    */
     for (int j = 0; j < term->cols; j++) {
       termchar *d = chars + j;
       cattr tattr = newchars[j].attr;
       wchar tchar = newchars[j].chr;
-      //wchar tchar2 = j + 1 < term.cols ? d[1].chr : 0;
-
-#ifdef handle_emojis_in_loop_3
-      ... code from above
+      // Note: newchars[j].cc_next is always 0; use chars[]
+      xchar xtchar = tchar;
+#ifdef proper_non_BMP_classification
+      // this is the correct way to later check for the bidi_class
+      // but for unclear reason it spoils non-BMP right-to-left display
+      // so let's not touch non-BMP here for now
+      if (is_high_surrogate(tchar) && chars[j].cc_next) {
+        termchar *t1 = &chars[j + chars[j].cc_next];
+        if (is_low_surrogate(t1->chr))
+          xtchar = combine_surrogates(tchar, t1->chr);
+      }
 #endif
 
       if ((dispchars[j].attr.attr ^ tattr.attr) & ATTR_WIDE)
@@ -2003,6 +2043,16 @@ term_paint(struct term* term)
         trace_run("cc"), break_run = true;
 
 #ifdef keep_non_BMP_characters_together_in_one_chunk
+      // this was expected to speed up non-BMP display 
+      // but the effect is not significant, if any
+      // also, this spoils two other issues about non-BMP display:
+#warning non-BMP RTL will be in wrong order
+#warning some non-BMP ranges (e.g. Egyptian Hieroglyphs) are not cell-adjusted
+     /*
+      * Break when exceeding output buffer length.
+      */
+      if (is_high_surrogate(d->chr) && textlen + 2 >= maxtextlen)
+        trace_run("max"), break_run = true;
      /*
       * Break when switching BMP/non-BMP.
       */
@@ -2024,15 +2074,7 @@ term_paint(struct term* term)
           trace_run("len"), break_run = true;
       }
 
-      uchar tbc = bidi_class(tchar);
-#ifdef dont_break_at_non_BMP
-#warning would need buffer overflow handling!
-#warning has no effect this way, and does not seem to be needed...
-      if ((tchar & 0xFC00) == 0xD800 && (tchar2 & 0xFC00) == 0xDC00)
-        tbc = bidi_class(((ucschar) (tchar - 0xD7C0) << 10) | (tchar2 & 0x03FF));
-      else
-        tbc = bidi_class(tchar);
-#endif
+      uchar tbc = bidi_class(xtchar);
 
       if (textlen && tbc != bc) {
         if (!is_sep_class(tbc) && !is_sep_class(bc))
@@ -2046,7 +2088,7 @@ term_paint(struct term* term)
       bc = tbc;
 
       if (break_run) {
-        if (dirty_run && textlen)
+        if ((dirty_run && textlen) || overlaying)
           out_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
         start = j;
         textlen = 0;
@@ -2089,17 +2131,24 @@ term_paint(struct term* term)
           wchar prev = dd->chr;
 #endif
           dd += dd->cc_next;
+
+          // mark combining unless pseudo-combining surrogates
+          if (!is_low_surrogate(dd->chr)) {
+            if (tattr.attr & TATTR_EMOJI)
+              break;
+            attr.attr |= TATTR_COMBINING;
+          }
           if (combiningdouble(dd->chr))
             attr.attr |= TATTR_COMBDOUBL;
+
           textattr[textlen] = dd->attr;
-          // hide bidi isolate mark glyphs (if handled zero-width)
-          if (dd->chr >= 0x2066 && dd->chr <= 0x2069)
+          if (cfg.emojis && dd->chr == 0xFE0E)
+            ; // skip text style variation selector
+          else if (dd->chr >= 0x2066 && dd->chr <= 0x2069)
+            // hide bidi isolate mark glyphs (if handled zero-width)
             text[textlen++] = 0x200B;  // zero width space
           else
             text[textlen++] = dd->chr;
-          // mark combining unless pseudo-combining surrogates
-          if ((dd->chr & 0xFC00) != 0xDC00)
-            attr.attr |= TATTR_COMBINING;
 #ifdef debug_surrogates
           ucschar comb = 0xFFFFF;
           if ((prev & 0xFC00) == 0xD800 && (dd->chr & 0xFC00) == 0xDC00)
@@ -2134,8 +2183,20 @@ term_paint(struct term* term)
     }
     if (dirty_run && textlen)
       out_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
-    flush_text();
+    if (!overlaying)
+      flush_text();
 
+   /*
+    * Draw any pending overlay characters in one more loop.
+    */
+    if (do_overlay && !overlaying) {
+      overlaying = true;
+      goto overlay;
+    }
+
+   /*
+    * Release the line data fetched from the screen or scrollback buffer.
+    */
     release_line(line);
   }
 
