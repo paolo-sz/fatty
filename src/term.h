@@ -595,4 +595,6 @@ extern void term_update_search(struct term* term);
 extern void term_clear_results(struct term* term);
 extern void term_clear_search(struct term* term);
 
+extern char * get_emoji_description(termchar *);
+
 #endif
