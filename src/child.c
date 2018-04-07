@@ -674,8 +674,11 @@ setup_sync()
   }
 }
 
+/*
+  Called from Alt+F2 (or session launcher via child_launch).
+ */
 void
-child_fork(struct child* child, int argc, char *argv[], int moni)
+do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch)
 {
   setup_sync();
 
@@ -731,7 +734,9 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
       }
 
       chdir(set_dir);
-      setenv("PWD", set_dir, true);
+      setenv("PWD", set_dir, true);  // avoid softlink resolution
+      if (!launch)
+        setenv("CHERE_INVOKING", "fatty", true);
 
       if (support_wsl)
         delete(set_dir);
@@ -799,6 +804,18 @@ child_fork(struct child* child, int argc, char *argv[], int moni)
   reset_fork_mode();
 }
 
+/*
+  Called from Alt+F2.
+ */
+void
+child_fork(struct child* child, int argc, char *argv[], int moni)
+{
+  do_child_fork(child, argc, argv, moni, false);
+}
+
+/*
+  Called from session launcher.
+ */
 void
 child_launch(struct child* child, int n, int argc, char * argv[], int moni)
 {
@@ -836,7 +853,7 @@ child_launch(struct child* child, int n, int argc, char * argv[], int moni)
           }
         }
         new_argv[argc] = 0;
-        child_fork(child, argc, new_argv, moni);
+        do_child_fork(child, argc, new_argv, moni, true);
         free(new_argv);
         break;
       }
