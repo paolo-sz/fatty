@@ -19,6 +19,8 @@
 #define TERM_CMD_BUF_INC_STEP 128
 #define TERM_CMD_BUF_MAX_SIZE (1024 * 1024)
 
+#define SUB_PARS (1 << (sizeof(*term->csi_argv) * 8 - 1))
+
 /* This combines two characters into one value, for the purpose of pairing
  * any modifier byte and the final byte in escape sequences.
  */
@@ -174,7 +176,7 @@ write_backspace(struct term* term)
   int term_top = curs->origin ? term->marg_top : 0;
   if (curs->x == 0 && (curs->y == term_top || !curs->autowrap
                        || (!cfg.old_wrapmodes && !curs->rev_wrap)))
-   /* do nothing */ ;
+    /* skip */;
   else if (curs->x == 0 && curs->y > term_top)
     curs->x = term->cols - 1, curs->y--;
   else if (curs->wrapnext) {
@@ -245,7 +247,8 @@ write_primary_da(struct child* child)
 static wchar last_high = 0;
 static wchar last_char = 0;
 static int last_width = 0;
-cattr last_attr = {.attr = ATTR_DEFAULT, .truefg = 0, .truebg = 0};
+cattr last_attr = {.attr = ATTR_DEFAULT,
+                   .truefg = 0, .truebg = 0, .ulcolr = (colour)-1};
 
 static void
 write_char(struct term* term, wchar c, int width)
@@ -618,6 +621,20 @@ do_sgr(struct term* term)
   cattr attr = term->curs.attr;
   uint prot = attr.attr & ATTR_PROTECTED;
   for (uint i = 0; i < argc; i++) {
+    // support colon-separated sub parameters as specified in
+    // ISO/IEC 8613-6 (ITU Recommendation T.416)
+    int sub_pars = 0;
+    // count sub parameters and clear their SUB_PARS flag 
+    // (the last one does not have it)
+    // but not the SUB_PARS flag of the main parameter
+    if (term->csi_argv[i] & SUB_PARS)
+      for (uint j = i + 1; j < argc; j++) {
+        sub_pars++;
+        if (term->csi_argv[j] & SUB_PARS)
+          term->csi_argv[j] &= ~SUB_PARS;
+        else
+          break;
+      }
     switch (term->csi_argv[i]) {
       when 0:
         attr = CATTR_DEFAULT;
@@ -625,20 +642,41 @@ do_sgr(struct term* term)
       when 1: attr.attr |= ATTR_BOLD;
       when 2: attr.attr |= ATTR_DIM;
       when 3: attr.attr |= ATTR_ITALIC;
-      when 4: attr.attr |= ATTR_UNDER;
+      when 4:
+        attr.attr &= ~UNDER_MASK;
+        attr.attr |= ATTR_UNDER;
+      when 4 | SUB_PARS:
+        if (i + 1 < argc)
+          switch (term->csi_argv[i + 1]) {
+            when 0:
+              attr.attr &= ~UNDER_MASK;
+            when 1:
+              attr.attr &= ~UNDER_MASK;
+              attr.attr |= ATTR_UNDER;
+            when 2:
+              attr.attr &= ~UNDER_MASK;
+              attr.attr |= ATTR_DOUBLYUND;
+            when 3:
+              attr.attr &= ~UNDER_MASK;
+              attr.attr |= ATTR_CURLYUND;
+            when 4:
+              attr.attr &= ~UNDER_MASK;
+              attr.attr |= ATTR_BROKENUND;
+            when 5:
+              attr.attr &= ~UNDER_MASK;
+              attr.attr |= ATTR_BROKENUND | ATTR_DOUBLYUND;
+          }
       when 5: attr.attr |= ATTR_BLINK;
       when 6: attr.attr |= ATTR_BLINK2;
       when 7: attr.attr |= ATTR_REVERSE;
       when 8: attr.attr |= ATTR_INVISIBLE;
       when 9: attr.attr |= ATTR_STRIKEOUT;
       when 10 ... 11: {  // ... 12 disabled
-        // mode 10 is the configured Character set
+        // mode 10 is the configured character set
         // mode 11 is the VGA character set (CP437 + control range graphics)
-        // mode 12 is a weird feature from the Linux console,
-        // cloning the VGA character set (CP437) into the ASCII range;
-        // disabled (not supported by cygwin console);
-        // modes 11 (and 12) are overridden by alternate font setting
-        // if configured
+        // mode 12 (VT520, Linux console, not cygwin console) 
+        // clones VGA characters into the ASCII range; disabled;
+        // modes 11 (and 12) are overridden by alternative font if configured
           uchar arg_10 = term->csi_argv[i] - 10;
           if (arg_10 && *cfg.fontfams[arg_10].name) {
             attr.attr &= ~FONTFAM_MASK;
@@ -655,13 +693,15 @@ do_sgr(struct term* term)
         attr.attr &= ~FONTFAM_MASK;
         attr.attr |= (cattrflags)(term->csi_argv[i] - 10) << ATTR_FONTFAM_SHIFT;
       //when 21: attr.attr &= ~ATTR_BOLD;
-      when 21: attr.attr |= ATTR_DOUBLYUND;
+      when 21:
+        attr.attr &= ~UNDER_MASK;
+        attr.attr |= ATTR_DOUBLYUND;
       when 22: attr.attr &= ~(ATTR_BOLD | ATTR_DIM);
       when 23:
         attr.attr &= ~ATTR_ITALIC;
         if (((attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT) + 10 == 20)
           attr.attr &= ~FONTFAM_MASK;
-      when 24: attr.attr &= ~(ATTR_UNDER | ATTR_DOUBLYUND);
+      when 24: attr.attr &= ~UNDER_MASK;
       when 25: attr.attr &= ~(ATTR_BLINK | ATTR_BLINK2);
       when 27: attr.attr &= ~ATTR_REVERSE;
       when 28: attr.attr &= ~ATTR_INVISIBLE;
@@ -678,7 +718,7 @@ do_sgr(struct term* term)
       when 90 ... 97: /* bright foreground */
         attr.attr &= ~ATTR_FGMASK;
         attr.attr |= ((term->csi_argv[i] - 90 + 8 + ANSI0) << ATTR_FGSHIFT);
-      when 38: /* 256-colour foreground */
+      when 38: /* palette/true-colour foreground */
         if (i + 2 < argc && term->csi_argv[i + 1] == 5) {
           // set foreground to palette colour
           attr.attr &= ~ATTR_FGMASK;
@@ -695,6 +735,39 @@ do_sgr(struct term* term)
           attr.truefg = make_colour(r, g, b);
           i += 4;
         }
+      when 38 | SUB_PARS: /* ISO/IEC 8613-6 foreground colour */
+        if (sub_pars >= 2 && term->csi_argv[i + 1] == 5) {
+          // set foreground to palette colour
+          attr.attr &= ~ATTR_FGMASK;
+          attr.attr |= ((term->csi_argv[i + 2] & 0xFF) << ATTR_FGSHIFT);
+        }
+        else if (sub_pars >= 4 && term->csi_argv[i + 1] == 2) {
+          // set foreground to RGB
+          uint pi = sub_pars >= 5;
+          attr.attr &= ~ATTR_FGMASK;
+          attr.attr |= TRUE_COLOUR << ATTR_FGSHIFT;
+          uint r = term->csi_argv[i + pi + 2];
+          uint g = term->csi_argv[i + pi + 3];
+          uint b = term->csi_argv[i + pi + 4];
+          attr.truefg = make_colour(r, g, b);
+        }
+        else if ((sub_pars >= 5 && term->csi_argv[i + 1] == 3) ||
+                 (sub_pars >= 6 && term->csi_argv[i + 1] == 4)) {
+          // set foreground to CMY(K)
+          ulong f = term->csi_argv[i + 2];
+          ulong c = term->csi_argv[i + 3];
+          ulong m = term->csi_argv[i + 4];
+          ulong y = term->csi_argv[i + 5];
+          ulong k = term->csi_argv[i + 1] == 4 ? term->csi_argv[i + 6] : 0;
+          if (c <= f && m <= f && y <= f && k <= f) {
+            uint r = (f - c) * (f - k) / f * 255 / f;
+            uint g = (f - m) * (f - k) / f * 255 / f;
+            uint b = (f - y) * (f - k) / f * 255 / f;
+            attr.attr &= ~ATTR_FGMASK;
+            attr.attr |= TRUE_COLOUR << ATTR_FGSHIFT;
+            attr.truefg = make_colour(r, g, b);
+          }
+        }
       when 39: /* default foreground */
         attr.attr &= ~ATTR_FGMASK;
         attr.attr |= ATTR_DEFFG;
@@ -704,7 +777,7 @@ do_sgr(struct term* term)
       when 100 ... 107: /* bright background */
         attr.attr &= ~ATTR_BGMASK;
         attr.attr |= ((term->csi_argv[i] - 100 + 8 + ANSI0) << ATTR_BGSHIFT);
-      when 48: /* 256-colour background */
+      when 48: /* palette/true-colour background */
         if (i + 2 < argc && term->csi_argv[i + 1] == 5) {
           // set background to palette colour
           attr.attr &= ~ATTR_BGMASK;
@@ -721,10 +794,79 @@ do_sgr(struct term* term)
           attr.truebg = make_colour(r, g, b);
           i += 4;
         }
+      when 48 | SUB_PARS: /* ISO/IEC 8613-6 background colour */
+        if (sub_pars >= 2 && term->csi_argv[i + 1] == 5) {
+          // set background to palette colour
+          attr.attr &= ~ATTR_BGMASK;
+          attr.attr |= ((term->csi_argv[i + 2] & 0xFF) << ATTR_BGSHIFT);
+        }
+        else if (sub_pars >= 4 && term->csi_argv[i + 1] == 2) {
+          // set background to RGB
+          uint pi = sub_pars >= 5;
+          attr.attr &= ~ATTR_BGMASK;
+          attr.attr |= TRUE_COLOUR << ATTR_BGSHIFT;
+          uint r = term->csi_argv[i + pi + 2];
+          uint g = term->csi_argv[i + pi + 3];
+          uint b = term->csi_argv[i + pi + 4];
+          attr.truebg = make_colour(r, g, b);
+        }
+        else if ((sub_pars >= 5 && term->csi_argv[i + 1] == 3) ||
+                 (sub_pars >= 6 && term->csi_argv[i + 1] == 4)) {
+          // set background to CMY(K)
+          ulong f = term->csi_argv[i + 2];
+          ulong c = term->csi_argv[i + 3];
+          ulong m = term->csi_argv[i + 4];
+          ulong y = term->csi_argv[i + 5];
+          ulong k = term->csi_argv[i + 1] == 4 ? term->csi_argv[i + 6] : 0;
+          if (c <= f && m <= f && y <= f && k <= f) {
+            uint r = (f - c) * (f - k) / f * 255 / f;
+            uint g = (f - m) * (f - k) / f * 255 / f;
+            uint b = (f - y) * (f - k) / f * 255 / f;
+            attr.attr &= ~ATTR_BGMASK;
+            attr.attr |= TRUE_COLOUR << ATTR_BGSHIFT;
+            attr.truebg = make_colour(r, g, b);
+          }
+        }
       when 49: /* default background */
         attr.attr &= ~ATTR_BGMASK;
         attr.attr |= ATTR_DEFBG;
+      when 58 | SUB_PARS: /* ISO/IEC 8613-6 format underline colour */
+        if (sub_pars >= 2 && term->csi_argv[i + 1] == 5) {
+          // set foreground to palette colour
+          attr.attr |= ATTR_ULCOLOUR;
+          attr.ulcolr = colours[term->csi_argv[i + 2] & 0xFF];
+        }
+        else if (sub_pars >= 4 && term->csi_argv[i + 1] == 2) {
+          // set foreground to RGB
+          uint pi = sub_pars >= 5;
+          uint r = term->csi_argv[i + pi + 2];
+          uint g = term->csi_argv[i + pi + 3];
+          uint b = term->csi_argv[i + pi + 4];
+          attr.attr |= ATTR_ULCOLOUR;
+          attr.ulcolr = make_colour(r, g, b);
+        }
+        else if ((sub_pars >= 5 && term->csi_argv[i + 1] == 3) ||
+                 (sub_pars >= 6 && term->csi_argv[i + 1] == 4)) {
+          // set foreground to CMY(K)
+          ulong f = term->csi_argv[i + 2];
+          ulong c = term->csi_argv[i + 3];
+          ulong m = term->csi_argv[i + 4];
+          ulong y = term->csi_argv[i + 5];
+          ulong k = term->csi_argv[i + 1] == 4 ? term->csi_argv[i + 6] : 0;
+          if (c <= f && m <= f && y <= f && k <= f) {
+            uint r = (f - c) * (f - k) / f * 255 / f;
+            uint g = (f - m) * (f - k) / f * 255 / f;
+            uint b = (f - y) * (f - k) / f * 255 / f;
+            attr.attr |= ATTR_ULCOLOUR;
+            attr.ulcolr = make_colour(r, g, b);
+          }
+        }
+      when 59: /* default underline colour */
+        attr.attr &= ~ATTR_ULCOLOUR;
+        attr.ulcolr = (colour)-1;
     }
+    // skip sub parameters
+    i += sub_pars;
   }
   term->curs.attr = attr;
   term->erase_char.attr = attr;
@@ -780,9 +922,18 @@ set_modes(struct term* term, bool state)
         when 9:  /* X10_MOUSE */
           term->mouse_mode = state ? MM_X10 : 0;
           win_update_mouse();
+        when 12: /* AT&T 610 blinking cursor */
+          term->cursor_blinks = state;
+          term->cursor_invalid = true;
+          term_schedule_cblink(term);
         when 25: /* DECTCEM: enable/disable cursor */
           term->cursor_on = state;
           // Should we set term.cursor_invalid or call term_invalidate ?
+        when 30: /* Show/hide scrollbar */
+          if (state != term->show_scrollbar) {
+            term->show_scrollbar = state;
+            win_update_scrollbar(false);
+          }
         when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
           term->deccolm_allowed = state;
         when 42: /* DECNRCM: national replacement character sets */
@@ -826,6 +977,10 @@ set_modes(struct term* term, bool state)
             term_switch_screen(term, state, true);
             term->disptop = 0;
           }
+        when 1046:       /* enable/disable alternate screen switching */
+          if (term->on_alt_screen && !state)
+            term_switch_screen(term, false, false);
+          cfg.disable_alternate_screen = !state;
         when 1048:       /* save/restore cursor */
           if (!cfg.disable_alternate_screen) {
             if (state)
@@ -865,10 +1020,9 @@ set_modes(struct term* term, bool state)
              off(default): sixel scrolling moves cursor to left of graphics */
           term->sixel_scrolls_left = state;
         when 7766:       /* 'B': Show/hide scrollbar (if enabled in config) */
-          if (state != term->show_scrollbar) {
+          if (cfg.scrollbar && state != term->show_scrollbar) {
             term->show_scrollbar = state;
-            if (cfg.scrollbar)
-              win_update_scrollbar();
+            win_update_scrollbar(true);
           }
         when 7767:       /* 'C': Changed font reporting */
           term->report_font_changed = state;
@@ -903,6 +1057,15 @@ set_modes(struct term* term, bool state)
           term->echoing = !state;
         when 20: /* LNM: Return sends ... */
           term->newline_mode = state;
+        when 33: /* WYSTCURM: steady Wyse cursor */
+          term->cursor_blinks = !state;
+          term->cursor_invalid = true;
+          term_schedule_cblink(term);
+        when 34: /* WYULCURM: Wyse underline cursor */
+          term->cursor_type = state;
+          term->cursor_blinks = false;
+          term->cursor_invalid = true;
+          term_schedule_cblink(term);
       }
     }
   }
@@ -943,8 +1106,12 @@ get_mode(struct term* term, bool privatemode, int arg)
         return 3; // ignored
       when 9:  /* X10_MOUSE */
         return 2 - (term->mouse_mode == MM_X10);
+      when 12: /* AT&T 610 blinking cursor */
+        return 2 - term->cursor_blinks;
       when 25: /* DECTCEM: enable/disable cursor */
         return 2 - term->cursor_on;
+      when 30: /* Show/hide scrollbar */
+        return 2 - term->show_scrollbar;
       when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
         return 2 - term->deccolm_allowed;
       when 42: /* DECNRCM: national replacement character sets */
@@ -1029,6 +1196,13 @@ get_mode(struct term* term, bool privatemode, int arg)
         return 2 - term->echoing;
       when 20: /* LNM: Return sends ... */
         return 2 - term->newline_mode;
+      when 33: /* WYSTCURM: steady Wyse cursor */
+        return 2 - (!term->cursor_blinks);
+      when 34: /* WYULCURM: Wyse underline cursor */
+        if (term->cursor_type <= 1)
+          return 2 - (term->cursor_type == 1);
+        else
+          return 0;
       otherwise:
         return 0;
     }
@@ -1588,25 +1762,28 @@ do_dcs(struct term* term)
       } else {
         for (cur = term->imgs.first; cur; cur = cur->next) {
           if (cur->pixelwidth == cur->width * st->grid_width &&
-              cur->pixelheight == cur->height * st->grid_height) {
+              cur->pixelheight == cur->height * st->grid_height)
+          {
             if (img->top == cur->top && img->left == cur->left &&
                 img->width == cur->width &&
-                img->height == cur->height) {
-                memcpy(cur->pixels, img->pixels, img->pixelwidth * img->pixelheight * 4);
-                winimg_destroy(img);
-                return;
+                img->height == cur->height)
+            {
+              memcpy(cur->pixels, img->pixels, img->pixelwidth * img->pixelheight * 4);
+              winimg_destroy(img);
+              return;
             }
             if (img->top >= cur->top && img->left >= cur->left &&
                 img->left + img->width <= cur->left + cur->width &&
-                img->top + img->height <= cur->top + cur->height) {
-                for (y = 0; y < img->pixelheight; ++y)
-                  memcpy(cur->pixels +
-                           ((img->top - cur->top) * st->grid_height + y) * cur->pixelwidth * 4 +
-                           (img->left - cur->left) * st->grid_width * 4,
-                         img->pixels + y * img->pixelwidth * 4,
-                         img->pixelwidth * 4);
-                winimg_destroy(img);
-                return;
+                img->top + img->height <= cur->top + cur->height)
+            {
+              for (y = 0; y < img->pixelheight; ++y)
+                memcpy(cur->pixels +
+                         ((img->top - cur->top) * st->grid_height + y) * cur->pixelwidth * 4 +
+                         (img->left - cur->left) * st->grid_width * 4,
+                       img->pixels + y * img->pixelwidth * 4,
+                       img->pixelwidth * 4);
+              winimg_destroy(img);
+              return;
             }
           }
         }
@@ -1638,7 +1815,7 @@ do_dcs(struct term* term)
     switch (term->state) {
     when DCS_ESCAPE:
       if (!strcmp(s, "m")) { // SGR
-        char buf[72], *p = buf;
+        char buf[76], *p = buf;
         p += sprintf(p, "\eP1$r0");
 
         if (attr.attr & ATTR_BOLD)
@@ -1647,8 +1824,17 @@ do_dcs(struct term* term)
           p += sprintf(p, ";2");
         if (attr.attr & ATTR_ITALIC)
           p += sprintf(p, ";3");
-        if (attr.attr & ATTR_UNDER)
+
+        if (attr.attr & ATTR_BROKENUND)
+          if (attr.attr & ATTR_DOUBLYUND)
+            p += sprintf(p, ";4:5");
+          else
+            p += sprintf(p, ";4:4");
+        else if ((attr.attr & UNDER_MASK) == ATTR_CURLYUND)
+          p += sprintf(p, ";4:3");
+        else if (attr.attr & ATTR_UNDER)
           p += sprintf(p, ";4");
+
         if (attr.attr & ATTR_BLINK)
           p += sprintf(p, ";5");
         if (attr.attr & ATTR_BLINK2)
@@ -1659,7 +1845,7 @@ do_dcs(struct term* term)
           p += sprintf(p, ";8");
         if (attr.attr & ATTR_STRIKEOUT)
           p += sprintf(p, ";9");
-        if (attr.attr & ATTR_DOUBLYUND)
+        if ((attr.attr & UNDER_MASK) == ATTR_DOUBLYUND)
           p += sprintf(p, ";21");
         if (attr.attr & ATTR_FRAMED)
           p += sprintf(p, ";51;52");
@@ -1677,23 +1863,34 @@ do_dcs(struct term* term)
         uint fg = (attr.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
         if (fg != FG_COLOUR_I) {
           if (fg >= TRUE_COLOUR)
-            p += sprintf(p, ";38;2;%u;%u;%u", attr.truefg & 0xFF, 
+            //p += sprintf(p, ";38;2;%u;%u;%u", attr.truefg & 0xFF, 
+            //             (attr.truefg >> 8) & 0xFF, (attr.truefg >> 16) & 0xFF);
+            p += sprintf(p, ";38:2::%u:%u:%u", attr.truefg & 0xFF, 
                          (attr.truefg >> 8) & 0xFF, (attr.truefg >> 16) & 0xFF);
           else if (fg < 16)
             p += sprintf(p, ";%u", (fg < 8 ? 30 : 90) + (fg & 7));
           else
-            p += sprintf(p, ";38;5;%u", fg);
+            //p += sprintf(p, ";38;5;%u", fg);
+            p += sprintf(p, ";38:5:%u", fg);
         }
 
         uint bg = (attr.attr & ATTR_BGMASK) >> ATTR_BGSHIFT;
         if (bg != BG_COLOUR_I) {
           if (bg >= TRUE_COLOUR)
-            p += sprintf(p, ";48;2;%u;%u;%u", attr.truebg & 0xFF, 
+            //p += sprintf(p, ";48;2;%u;%u;%u", attr.truebg & 0xFF, 
+            //             (attr.truebg >> 8) & 0xFF, (attr.truebg >> 16) & 0xFF);
+            p += sprintf(p, ";48:2::%u:%u:%u", attr.truebg & 0xFF, 
                          (attr.truebg >> 8) & 0xFF, (attr.truebg >> 16) & 0xFF);
           else if (bg < 16)
             p += sprintf(p, ";%u", (bg < 8 ? 40 : 100) + (bg & 7));
           else
-            p += sprintf(p, ";48;5;%u", bg);
+            //p += sprintf(p, ";48;5;%u", bg);
+            p += sprintf(p, ";48:5:%u", bg);
+        }
+
+        if (attr.attr & ATTR_ULCOLOUR) {
+          p += sprintf(p, ";58:2::%u:%u:%u", attr.ulcolr & 0xFF, 
+                       (attr.ulcolr >> 8) & 0xFF, (attr.ulcolr >> 16) & 0xFF);
         }
 
         p += sprintf(p, "m\e\\");  // m for SGR, followed by ST
@@ -2138,9 +2335,12 @@ term_write(struct term* term, const char *buf, uint len)
             && win_char_width(wc) < 2
             // ensure symmetric handling of matching brackets
             && win_char_width(wc ^ 1) < 2)
-            term->curs.attr.attr |= ATTR_EXPAND;
+        {
+          term->curs.attr.attr |= ATTR_EXPAND;
+        }
 
-        wchar NRC(wchar * map) {
+        wchar NRC(wchar * map)
+        {
           static char * rpl = "#@[\\]^_`{|}~";
           char * match = strchr(rpl, c);
           if (match)
@@ -2261,6 +2461,14 @@ term_write(struct term* term, const char *buf, uint len)
         if (c < 0x20)
           do_ctrl(term, c);
         else if (c == ';') {
+          if (term->csi_argc < lengthof(term->csi_argv))
+            term->csi_argc++;
+        }
+        else if (c == ':') {
+          // support colon-separated sub parameters as specified in
+          // ISO/IEC 8613-6 (ITU Recommendation T.416)
+          uint i = term->csi_argc - 1;
+          term->csi_argv[i] |= SUB_PARS;
           if (term->csi_argc < lengthof(term->csi_argv))
             term->csi_argc++;
         }

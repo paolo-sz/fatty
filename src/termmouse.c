@@ -133,7 +133,7 @@ sel_spread_half(struct term* term, pos p, bool forward)
           p.y--;
         }
       }
-    default:
+    otherwise:
      /* Shouldn't happen. */
       break;
   }
@@ -146,6 +146,16 @@ sel_spread(struct term* term)
   term->sel_start = sel_spread_half(term, term->sel_start, false);
   term->sel_end = sel_spread_half(term, term->sel_end, true);
   incpos(term->sel_end);
+}
+
+static bool
+hover_spread(struct term* term)
+{
+  term->hover_start = sel_spread_word(term, term->hover_start, false);
+  term->hover_end = sel_spread_word(term, term->hover_end, true);
+  bool eq = term->hover_start.y == term->hover_end.y && term->hover_start.x == term->hover_end.x;
+  incpos(term->hover_end);
+  return eq;
 }
 
 static void
@@ -476,6 +486,7 @@ term_mouse_release(struct term* term, mouse_button b, mod_keys mods, pos p)
     when MS_OPENING:
       term_open(term);
       term->selected = false;
+      term->hovering = false;
       win_update();
     when MS_SEL_CHAR or MS_SEL_WORD or MS_SEL_LINE: {
       // Finish selection.
@@ -538,7 +549,7 @@ term_mouse_release(struct term* term, mouse_button b, mod_keys mods, pos p)
       moved_previously = true;
       last_dest = dest;
     }
-    default:
+    otherwise:
       if (is_app_mouse(term, &mods)) {
         if (term->mouse_mode >= MM_VT200)
           send_mouse_event(term, MA_RELEASE, b, mods, box_pos(term, p));
@@ -589,6 +600,17 @@ term_mouse_move(struct term* term, mod_keys mods, pos p)
   else {
     if (term->mouse_mode == MM_ANY_EVENT)
       send_mouse_event(term, MA_MOVE, 0, mods, bp);
+  }
+
+  if (mods == MDK_CTRL) {
+    p = get_selpoint(term, box_pos(term, p));
+    term->hover_start = term->hover_end = p;
+    if (!hover_spread(term)) {
+      term->hovering = true;
+      win_update();
+    }
+    else
+      term->hovering = false;
   }
 }
 

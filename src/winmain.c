@@ -1573,19 +1573,38 @@ win_update_transparency(bool opaque)
 }
 
 void
-win_update_scrollbar(void)
+win_update_scrollbar(bool inner)
 {
   int scrollbar = win_active_terminal()->show_scrollbar ? cfg.scrollbar : 0;
+
   LONG style = GetWindowLong(wnd, GWL_STYLE);
   SetWindowLong(wnd, GWL_STYLE,
                 scrollbar ? style | WS_VSCROLL : style & ~WS_VSCROLL);
+
+  default_size_token = true;  // prevent font zooming after Ctrl+Shift+O
   LONG exstyle = GetWindowLong(wnd, GWL_EXSTYLE);
   SetWindowLong(wnd, GWL_EXSTYLE,
                 scrollbar < 0 ? exstyle | WS_EX_LEFTSCROLLBAR
                               : exstyle & ~WS_EX_LEFTSCROLLBAR);
-  SetWindowPos(wnd, null, 0, 0, 0, 0,
-               SWP_NOACTIVATE | SWP_NOMOVE |
-               SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+
+  default_size_token = true;  // prevent font zooming after Ctrl+Shift+O
+  if (inner || IsZoomed(wnd))
+    SetWindowPos(wnd, null, 0, 0, 0, 0,
+                 SWP_NOACTIVATE | SWP_NOMOVE |
+                 SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
+  else {
+    RECT wr;
+    GetWindowRect(wnd, &wr);
+    if (scrollbar && !(style & WS_VSCROLL))
+      wr.right += GetSystemMetrics(SM_CXVSCROLL);
+    else if (!scrollbar && (style & WS_VSCROLL))
+      wr.right -= GetSystemMetrics(SM_CXVSCROLL);
+    SetWindowPos(wnd, null, 0, 0, wr.right - wr.left, wr.bottom - wr.top,
+                 SWP_NOACTIVATE | SWP_NOMOVE |
+                 SWP_NOZORDER | SWP_FRAMECHANGED);
+  }
+
+  win_fix_position();
 }
 
 void
@@ -1610,7 +1629,7 @@ font_cs_reconfig(bool font_changed)
     trace_resize((" (font_cs_reconfig -> win_adapt_term_size)\n"));
     win_adapt_term_size(true, false);
   }
-  win_update_scrollbar();
+  win_update_scrollbar(true); // assume "inner", shouldn't change anyway
   win_update_transparency(cfg.opaque_when_focused);
   win_update_mouse();
 
@@ -1896,6 +1915,9 @@ static struct {
           else {
             default_size();
           }
+        when IDM_SCROLLBAR:
+          term->show_scrollbar = !term->show_scrollbar;
+          win_update_scrollbar(false);
         when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM:
           if ((wp & ~0xF) == IDM_FULLSCREEN_ZOOM)
             zoom_token = 4;  // override cfg.zoom_font_with_window == 0

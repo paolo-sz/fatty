@@ -468,6 +468,12 @@ win_update_menus(void)
     alt_fn ? W("Alt+F10") : ct_sh ? W("Ctrl+Shift+D") : null
   );
 
+  uint scrollbar_checked = term->show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
+  //__ Context menu:
+  modify_menu(ctxmenu, IDM_SCROLLBAR, scrollbar_checked, _W("Scroll&bar"),
+    null
+  );
+
   uint fullscreen_checked = win_is_fullscreen ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_FULLSCREEN_ZOOM, fullscreen_checked, _W("&Full Screen"),
@@ -545,6 +551,7 @@ win_init_ctxmenu(bool extended_menu, bool user_commands)
   }
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_DEFSIZE_ZOOM, 0);
+  AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_SCROLLBAR, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FULLSCREEN_ZOOM, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FLIPSCREEN, 0);
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
@@ -752,6 +759,11 @@ static pos last_pos = {-1, -1};
 static int button_state = 0;
 
 bool click_focus_token = false;
+static mouse_button last_button = -1;
+static mod_keys last_mods;
+static pos last_click_pos;
+static bool last_skipped = false;
+static bool mouse_state = false;
 
 static pos
 get_mouse_pos(LPARAM lp)
@@ -771,13 +783,11 @@ static bool tab_bar_click(LPARAM lp) {
 void
 win_mouse_click(mouse_button b, LPARAM lp)
 {
+  mouse_state = true;
   bool click_focus = click_focus_token;
   click_focus_token = false;
 
-  static mouse_button last_button;
   static uint last_time, count;
-  static pos last_click_pos;
-  static bool last_skipped = false;
 
   win_show_mouse();
   if (tab_bar_click(lp)) return;
@@ -811,6 +821,7 @@ win_mouse_click(mouse_button b, LPARAM lp)
   last_click_pos = p;
   last_time = t;
   last_button = b;
+  last_mods = mods;
 
   if (alt_state > ALT_NONE)
     alt_state = ALT_CANCELLED;
@@ -830,7 +841,7 @@ win_mouse_click(mouse_button b, LPARAM lp)
 void
 win_mouse_release(mouse_button b, LPARAM lp)
 {
-  if (tab_bar_click(lp)) return;
+  mouse_state = false;
   term_mouse_release(win_active_terminal(), b, get_mods(), get_mouse_pos(lp));
   ReleaseCapture();
   switch (b) {
@@ -857,6 +868,13 @@ win_mouse_move(bool nc, LPARAM lp)
   pos p = get_mouse_pos(lp);
   if (nc || (p.x == last_pos.x && p.y == last_pos.y))
     return;
+  if (last_skipped && last_button == MBT_LEFT && mouse_state
+      && abs(p.x - last_click_pos.x) + abs(p.y - last_click_pos.y) > 1
+     )
+  {
+    // allow focus-selection if sufficient distance spanned
+    term_mouse_click(win_active_terminal(), last_button, last_mods, last_click_pos, 1);
+  }
 
   if (p.y < 0) {
     set_app_cursor(true);
@@ -909,9 +927,10 @@ win_get_locator_info(int *x, int *y, int *buttons, bool by_pixels)
 static void
 toggle_scrollbar(void)
 {
-  cfg.scrollbar = !cfg.scrollbar;
-  win_active_terminal()->show_scrollbar = cfg.scrollbar;
-  win_update_scrollbar();
+  if (cfg.scrollbar) {
+  win_active_terminal()->show_scrollbar = !win_active_terminal()->show_scrollbar;
+    win_update_scrollbar(true);
+  }
 }
 
 static int previous_transparency;
@@ -1958,6 +1977,11 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
       cycle_transparency();
     if (!transparency_pending && cfg.opaque_when_focused)
       win_update_transparency(true);
+  }
+
+  if (key == VK_CONTROL && active_term->hovering) {
+    active_term->hovering = false;
+    win_update();
   }
 
   if (wp != VK_MENU)

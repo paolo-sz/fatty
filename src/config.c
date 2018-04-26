@@ -44,6 +44,7 @@ const config default_cfg = {
   .cursor_colour = 0xBFBFBF,
   .underl_colour = (colour)-1,
   .underl_manual = false,
+  .hover_colour = (colour)-1,
   .sel_fg_colour = (colour)-1,
   .sel_bg_colour = (colour)-1,
   .search_fg_colour = 0x000000,
@@ -150,6 +151,7 @@ const config default_cfg = {
   // "Hidden"
   .bidi = 2,
   .disable_alternate_screen = false,
+  .input_clears_selection = true,
   .charwidth = 0,
   .emojis = 0,
   .emoji_placement = 0,
@@ -229,6 +231,7 @@ options[] = {
   {"BoldColour", OPT_COLOUR, offcfg(bold_colour)},
   {"CursorColour", OPT_COLOUR, offcfg(cursor_colour)},
   {"UnderlineColour", OPT_COLOUR, offcfg(underl_colour)},
+  {"HoverColour", OPT_COLOUR, offcfg(hover_colour)},
   {"UnderlineManual", OPT_BOOL, offcfg(underl_manual)},
   {"HighlightBackgroundColour", OPT_COLOUR, offcfg(sel_bg_colour)},
   {"HighlightForegroundColour", OPT_COLOUR, offcfg(sel_fg_colour)},
@@ -370,6 +373,7 @@ options[] = {
   // "Hidden"
   {"Bidi", OPT_INT, offcfg(bidi)},
   {"NoAltScreen", OPT_BOOL, offcfg(disable_alternate_screen)},
+  {"ClearSelectionOnInput", OPT_BOOL, offcfg(input_clears_selection)},
   {"Charwidth", OPT_CHARWIDTH, offcfg(charwidth)},
   {"Emojis", OPT_EMOJIS, offcfg(emojis)},
   {"EmojiPlacement", OPT_EMOJI_PLACEMENT, offcfg(emoji_placement)},
@@ -668,6 +672,7 @@ bool
 parse_colour(string s, colour *cp)
 {
   uint r, g, b;
+  float c, m, y, k = 0;
   if (sscanf(s, "%u,%u,%u", &r, &g, &b) == 3)
     ;
   else if (sscanf(s, "#%2x%2x%2x", &r, &g, &b) == 3)
@@ -675,7 +680,17 @@ parse_colour(string s, colour *cp)
   else if (sscanf(s, "rgb:%2x/%2x/%2x", &r, &g, &b) == 3)
     ;
   else if (sscanf(s, "rgb:%4x/%4x/%4x", &r, &g, &b) == 3)
-    r >>=8, g >>= 8, b >>= 8;
+    r >>= 8, g >>= 8, b >>= 8;
+  else if (sscanf(s, "cmy:%f/%f/%f", &c, &m, &y) == 3
+        || sscanf(s, "cmyk:%f/%f/%f/%f", &c, &m, &y, &k) == 4
+          )
+    if (c >= 0 && c <= 1 && m >= 0 && m <= 1 && y >= 0 && y <= 1 && k >= 0 && k <= 1) {
+      r = (1 - c) * (1 - k) * 255;
+      g = (1 - m) * (1 - k) * 255;
+      b = (1 - y) * (1 - k) * 255;
+    }
+    else
+      return false;
   else {
     int coli = -1;
     int len = strlen(s);

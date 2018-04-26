@@ -119,6 +119,8 @@ enum {
   ATTR_STRIKEOUT  = 0x04000000u,
   ATTR_DOUBLYUND  = 0x08000000u,
   ATTR_OVERL      = 0x10000000u,
+  ATTR_BROKENUND  = 0x0000000800000000u,
+  ATTR_ULCOLOUR   = 0x0020000000000000u,
 
   ATTR_PROTECTED  = 0x20000000u,
   ATTR_WIDE       = 0x40000000u,
@@ -133,6 +135,9 @@ enum {
 
   FONTFAM_MASK    = 0x000F000000000000u,
   ATTR_FONTFAM_SHIFT = 48,
+
+  ATTR_CURLYUND   = ATTR_UNDER | ATTR_DOUBLYUND,
+  UNDER_MASK      = ATTR_UNDER | ATTR_DOUBLYUND | ATTR_BROKENUND,
 
   TATTR_COMBINING = 0x0000000200000000u, /* combining characters */
   TATTR_COMBDOUBL = 0x0000000400000000u, /* combining double characters */
@@ -151,8 +156,6 @@ enum {
   DATTR_MASK      = TATTR_RIGHTCURS | TATTR_PASCURS | TATTR_ACTCURS
                     | DATTR_STARTRUN
   // unassigned bits:
-  //                0x0000000800000000u
-  //                0x0020000000000000u
   //                0x0040000000000000u
   //                0x0080000000000000u
   //                0x2000000000000000u
@@ -192,6 +195,7 @@ typedef struct {
   cattrflags attr;
   uint truefg;
   uint truebg;
+  colour ulcolr;
 } cattr;
 
 extern const cattr CATTR_DEFAULT;
@@ -231,13 +235,7 @@ typedef struct {
   termchar *chars;
 } termline;
 
-typedef termline *termlines;
-
-typedef struct {
-  int width;
-  termchar *chars;
-  int *forward, *backward;      /* the permutations of line positions */
-} bidi_cache_entry;
+typedef termline * termlines;
 
 extern termline *newline(int cols, termchar erase_char);
 extern void freeline(termline *);
@@ -248,20 +246,11 @@ extern int sblines(struct term* term);
 extern termline *fetch_line(struct term* term, int y);
 extern void release_line(termline *);
 
-extern int termchars_equal(termchar *a, termchar *b);
-extern int termchars_equal_override(termchar *a, termchar *b, uint bchr, cattr battr);
-extern int termattrs_equal_fg(cattr * a, cattr * b);
-
-extern void copy_termchar(termline *destline, int x, termchar *src);
-extern void move_termchar(termline *line, termchar *dest, termchar *src);
-
-extern void add_cc(termline *, int col, wchar chr, cattr attr);
-extern void clear_cc(termline *, int col);
-
-extern uchar *compressline(termline *);
-extern termline *decompressline(uchar *, int *bytes_used);
-
-extern termchar *term_bidi_line(struct term* term, termline *, int scr_y);
+typedef struct {
+  int width;
+  termchar *chars;
+  int *forward, *backward;      /* the permutations of line positions */
+} bidi_cache_entry;
 
 /* Traditional terminal character sets */
 typedef enum {
@@ -301,7 +290,6 @@ enum {
   FULL_UPDATE = 2,
   DISABLE_UPDATE = 3
 };
-
 typedef struct {
   termline ** buf;
   int start;
@@ -326,20 +314,6 @@ typedef struct {
   int update_type;
 } termresults;
 
-typedef struct {
-  short x, y;
-  cattr attr;
-  bool origin;
-  bool autowrap;  // switchable (xterm Wraparound Mode (DECAWM Auto Wrap))
-  bool wrapnext;
-  bool rev_wrap;  // switchable (xterm Reverse-wraparound Mode)
-  short gl, gr;
-  term_cset csets[4];
-  term_cset cset_single;
-  uchar oem_acs;
-  bool utf;
-  bool decnrc_enabled;    /* DECNRCM sequence to enable NRC? */
-} term_cursor;
 
 typedef struct {
   void *fp;
@@ -377,6 +351,21 @@ typedef struct {
 struct mode_entry {
   int mode, val;
 };
+
+typedef struct {
+  short x, y;
+  cattr attr;
+  bool origin;
+  bool autowrap;  // switchable (xterm Wraparound Mode (DECAWM Auto Wrap))
+  bool wrapnext;
+  bool rev_wrap;  // switchable (xterm Reverse-wraparound Mode)
+  short gl, gr;
+  term_cset csets[4];
+  term_cset cset_single;
+  uchar oem_acs;
+  bool utf;
+  bool decnrc_enabled;    /* DECNRCM sequence to enable NRC? */
+} term_cursor;
 
 struct term {
   bool on_alt_screen;     /* On alternate screen? */
@@ -518,8 +507,10 @@ struct term {
   bool locator_rectangle;
   int locator_top, locator_left, locator_bottom, locator_right;
 
-  bool sel_rect, selected;
+  bool selected, sel_rect;
   pos sel_start, sel_end, sel_anchor;
+  bool hovering;
+  pos hover_start, hover_end;
 
  /* Scroll steps during selection when cursor out of window. */
   int sel_scroll;

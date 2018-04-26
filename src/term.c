@@ -16,13 +16,20 @@
 #include "child.h"
 #include "winsearch.h"
 
-const cattr CATTR_DEFAULT =
-            {.attr = ATTR_DEFAULT, .truefg = 0, .truebg = 0};
 
-termchar basic_erase_char = {.cc_next = 0, .chr = ' ',
-                    /* CATTR_DEFAULT */
-                    .attr = {.attr = ATTR_DEFAULT, .truefg = 0, .truebg = 0}
-                    };
+
+
+const cattr CATTR_DEFAULT =
+            {.attr = ATTR_DEFAULT,
+             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1};
+
+termchar basic_erase_char =
+   {.cc_next = 0, .chr = ' ',
+            /* CATTR_DEFAULT */
+    .attr = {.attr = ATTR_DEFAULT,
+             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1}
+   };
+
 
 static bool
 vt220(string term)
@@ -237,6 +244,7 @@ term_reset(struct term* term, bool full)
 
   if (full) {
     term->selected = false;
+    term->hovering = false;
     term->on_alt_screen = false;
     term_print_finish(term);
     if (term->lines) {
@@ -306,11 +314,12 @@ term_free(struct term* term)
 }
 
 static void
-show_screen(struct term* term, bool other_screen)
+show_screen(struct term* term, bool other_screen, bool flip)
 {
   term->show_other_screen = other_screen;
   term->disptop = 0;
-  term->selected = false;
+  if (flip || cfg.input_clears_selection)
+    term->selected = false;
 
   // Reset cursor blinking.
   if (!other_screen) {
@@ -325,14 +334,14 @@ show_screen(struct term* term, bool other_screen)
 void
 term_reset_screen(struct term* term)
 {
-  show_screen(term, false);
+  show_screen(term, false, false);
 }
 
 /* Switch display to other screen and reset scrollback */
 void
 term_flip_screen(struct term* term)
 {
-  show_screen(term, !term->show_other_screen);
+  show_screen(term, !term->show_other_screen, true);
 }
 
 /* Apply changed settings */
@@ -1403,7 +1412,7 @@ fallback:;
       return false;
   }
   char * en = strdup(pre);
-  char ec[6];
+  char ec[7];
   if (e.seq) {
     for (uint i = 0; i < lengthof(emoji_seqs->chs) && ed(emoji_seqs[e.idx].chs[i]); i++) {
       xchar xc = ed(emoji_seqs[e.idx].chs[i]);
@@ -1416,7 +1425,7 @@ fallback:;
     }
   }
   else {
-    sprintf(ec, "%04x", emoji_bases[e.idx].ch);
+    snprintf(ec, 7, "%04x", emoji_bases[e.idx].ch);
     strappend(en, ec);
   }
   strappend(en, suf);
@@ -1738,6 +1747,16 @@ term_paint(struct term* term)
           tattr.attr ^= ATTR_REVERSE;
       }
 
+      if (term->hovering &&
+          posle(term->hover_start, scrpos) && poslt(scrpos, term->hover_end)) {
+        tattr.attr &= ~UNDER_MASK;
+        tattr.attr |= ATTR_UNDER;
+        if (cfg.hover_colour != (colour)-1) {
+          tattr.attr |= ATTR_ULCOLOUR;
+          tattr.ulcolr = cfg.hover_colour;
+        }
+      }
+
       bool flashchar = term->in_vbell &&
                        ((cfg.bell_flash_style & FLASH_FULL)
                         ||
@@ -1970,6 +1989,7 @@ term_paint(struct term* term)
           && (dispchars[j].chr != newchars[j].chr
               || (dispchars[j].attr.truefg != newchars[j].attr.truefg)
               || (dispchars[j].attr.truebg != newchars[j].attr.truebg)
+              || (dispchars[j].attr.ulcolr != newchars[j].attr.ulcolr)
               || (dispchars[j].attr.attr & ~DATTR_STARTRUN) != newchars[j].attr.attr
               || (prevdirtyitalic && (dispchars[j].attr.attr & DATTR_STARTRUN))
              ))
@@ -2151,8 +2171,9 @@ term_paint(struct term* term)
 #endif
 
       bool break_run = (tattr.attr != attr.attr)
-                       || (tattr.truefg != attr.truefg)
-                       || (tattr.truebg != attr.truebg);
+                    || (tattr.truefg != attr.truefg)
+                    || (tattr.truebg != attr.truebg)
+                    || (tattr.ulcolr != attr.ulcolr);
 
       inline bool has_comb(termchar * tc)
       {
