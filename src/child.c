@@ -477,18 +477,21 @@ foreground_cwd(struct child* child)
       return 0;
   }
 
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
   int fg_pid = foreground_pid(child);
   if (fg_pid > 0) {
     char proc_cwd[32];
     sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
     return realpath(proc_cwd, 0);
   }
+#endif
   return 0;
 }
 
 char *
 foreground_prog(struct child* child)
 {
+#if CYGWIN_VERSION_DLL_MAJOR >= 1005
   int fg_pid = foreground_pid(child);
   if (fg_pid > 0) {
     char exename[32];
@@ -507,6 +510,7 @@ foreground_prog(struct child* child)
       return strdup(exebase);
     }
   }
+#endif
   return 0;
 }
 

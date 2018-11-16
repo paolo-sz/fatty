@@ -874,12 +874,14 @@ static struct charnameentry {
 } * charnametable = null;
 static int charnametable_len = 0;
 static int charnametable_alloced = 0;
+static bool charnametable_init = false;
 
 static void
 init_charnametable()
 {
-  if (charnametable)
+  if (charnametable_init)
     return;
+  charnametable_init = true;
 
   void add_charname(uint cc, char * cn) {
     if (charnametable_len >= charnametable_alloced) {
@@ -1645,9 +1647,6 @@ load_background_brush(HDC dc)
   // but let's rather handle this autonomously here
   RECT cr;
   GetClientRect(wnd, &cr);
-#ifdef debug_gdiplus
-  //printf("loading brush <%ls> %d %d %d %d (tiled %d)\n", cfg.background, cr.left, cr.top, cr.right - cr.left, cr.bottom - cr.top, tiled);
-#endif
   if (cr.right - cr.left == w && cr.bottom - cr.top == h)
     return;  // keep brush
 
@@ -1677,9 +1676,12 @@ load_background_brush(HDC dc)
     bf = bfexp;
   }
   else if (*bf != '/') {
-    char * bfexp = asform("%s/%s", foreground_cwd(win_active_terminal()->child), bf);
-    free(bf);
-    bf = bfexp;
+    char * fgd = foreground_cwd(win_active_terminal()->child);
+    if (fgd) {
+      char * bfexp = asform("%s/%s", fgd, bf);
+      free(bf);
+      bf = bfexp;
+    }
   }
   // try to extract an alpha value from file spec
   char * salpha = strchr(bf, ',');
@@ -1689,7 +1691,20 @@ load_background_brush(HDC dc)
     if (sscanf(salpha, "%u%c", &alpha, &(char){0}) != 1)
       alpha = -1;
   }
+
+  if (support_wsl) {
+    wchar * wbf = cs__utftowcs(bf);
+    wchar * wdewbf = dewsl(wbf);  // free(wbf)
+    char * dewbf = cs__wcstoutf(wdewbf);
+    free(wdewbf);
+    free(bf);
+    bf = dewbf;
+  }
+
   bgfn = path_posix_to_win_w(bf);
+#ifdef debug_gdiplus
+  printf("loading brush <%ls> <%s> <%ls>\n", cfg.background, bf, bgfn);
+#endif
   free(bf);
 
   HBITMAP
