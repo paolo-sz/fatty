@@ -116,6 +116,11 @@ wstring wsl_basepath = W("");
 static char * wsl_guid = 0;
 static bool wsl_launch = false;
 static bool start_home = false;
+#ifdef WSLTTY_APPX
+static bool wsltty_appx = true;
+#else
+static bool wsltty_appx = false;
+#endif
 
 
 static HBITMAP caretbm;
@@ -2945,7 +2950,6 @@ select_WSL(char * wsl)
   wstring wsl_icon;
   // set --rootfs implicitly
   int err = getlxssinfo(wslname, &wsl_guid, &wsl_basepath, &wsl_icon);
-  free(wslname);
   if (!err) {
     // set --icon if WSL specific icon exists
     if (wsl_icon) {
@@ -2958,7 +2962,10 @@ select_WSL(char * wsl)
     support_wsl = true;
     set_arg_option("Locale", strdup("C"));
     set_arg_option("Charset", strdup("UTF-8"));
+    if (!*cfg.app_id)
+      set_arg_option("AppID", asform("%s.%s", APPNAME, wsl ?: "WSL"));
   }
+  free(wslname);
   return err;
 }
 
@@ -3385,15 +3392,12 @@ main(int argc, char *argv[])
     int err = select_WSL(exearg);
     if (err)
       option_error(__("WSL distribution '%s' not found"), exearg ?: _("(Default)"), err);
-    else
+    else {
       wsl_launch = true;
+      wsltty_appx = true;
+    }
   }
-#endif
 
-  // Load config files
-  // try global config file
-  load_config("/etc/fattyrc", true);
-#ifdef WSLTTY_APPX
   char * getlocalappdata(void)
   {
     // get appx-redirected system dir, as investigated by Biswapriyo Nath
@@ -3401,20 +3405,29 @@ main(int argc, char *argv[])
 #define KF_FLAG_FORCE_APP_DATA_REDIRECTION 0x00080000
 #endif
     HMODULE shell = load_sys_library("shell32.dll");
-    HRESULT (WINAPI *pSHGetKnownFolderPath)(GUID, DWORD, HANDLE, wchar**) =
+    HRESULT (WINAPI *pSHGetKnownFolderPath)(const GUID*, DWORD, HANDLE, wchar**) =
       (void *)GetProcAddress(shell, "SHGetKnownFolderPath");
     if (!pSHGetKnownFolderPath)
       return 0;
-    wchar * lappdata;
-    long hres = pSHGetKnownFolderPath(FOLDERID_LocalAppData, KF_FLAG_FORCE_APP_DATA_REDIRECTION, 0, &lappdata);
+    wchar * wlappdata;
+    long hres = pSHGetKnownFolderPath(&FOLDERID_LocalAppData, KF_FLAG_FORCE_APP_DATA_REDIRECTION, 0, &wlappdata);
     if (hres)
       return 0;
     else
-      return path_win_w_to_posix(lappdata);
+      return path_win_w_to_posix(wlappdata);
   }
+
+  char * lappdata = 0;
+  if (wsltty_appx)
+    lappdata = getlocalappdata();
+#endif
+
+  // Load config files
+  // try global config file
+  load_config("/etc/fattyrc", true);
+#if CYGWIN_VERSION_API_MINOR >= 74
   // try Windows APPX local config location (wsltty.appx#3)
-  char * lappdata = getlocalappdata();
-  if (lappdata && *lappdata) {
+  if (wsltty_appx && lappdata && *lappdata) {
     string rc_file = asform("%s/.fattyrc", lappdata);
     load_config(rc_file, 2);
     delete(rc_file);
@@ -3795,11 +3808,7 @@ main(int argc, char *argv[])
       //argc--;
       //argc++; // for "-l"
     }
-#ifdef WSLTTY_APPX
-    char ** new_argv = newn(char *, argc + 10 + start_home);
-#else
-    char ** new_argv = newn(char *, argc + 8 + start_home);
-#endif
+    char ** new_argv = newn(char *, argc + 8 + start_home + (wsltty_appx ? 2 : 0));
     char ** pargv = new_argv;
     if (login_dash) {
       *pargv++ = "-wslbridge";
@@ -3820,11 +3829,11 @@ main(int argc, char *argv[])
     if (start_home)
       *pargv++ = "-C~";
 
-#ifdef WSLTTY_APPX
+#if CYGWIN_VERSION_API_MINOR >= 74
     // provide wslbridge-backend in a reachable place for invocation
     bool copyfile(char * fn, char * tn, bool overwrite)
     {
-#ifdef copyfile_posix
+# ifdef copyfile_posix
       int f = open(fn, O_BINARY | O_RDONLY);
       if (!f)
         return false;
@@ -3846,16 +3855,17 @@ main(int argc, char *argv[])
       close(f);
       close(t);
       return res;
-#else
+# else
       wchar * src = path_posix_to_win_w(fn);
       wchar * dst = path_posix_to_win_w(tn);
       bool ok = CopyFileW(src, dst, !overwrite);
       free(dst);
       free(src);
       return ok;
-#endif
+# endif
     }
-    if (lappdata && *lappdata) {
+
+    if (wsltty_appx && lappdata && *lappdata) {
       char * wslbridge_backend = asform("%s/wslbridge-backend", lappdata);
 
       bool ok = copyfile("/bin/wslbridge-backend", wslbridge_backend, true);
