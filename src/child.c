@@ -36,6 +36,10 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 #include <winuser.h>
 #endif
 
+// exit code to use for failure of `exec` (changed from 255, see #745)
+// http://www.tldp.org/LDP/abs/html/exitcodes.html
+#define mexit 126
+
 bool clone_size_token = true;
 
 bool logging = false;
@@ -299,7 +303,7 @@ child_create(struct child* child, struct term* term,
     usleep(200000);
 #endif
 
-    exit_fatty(255);
+    exit_fatty(mexit);
   }
   else { // Parent process.
 #ifdef __midipix__
@@ -704,7 +708,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
     clone = fork();
     if (clone < 0) {
-      exit_fatty(255);
+      exit_fatty(mexit);
     }
     if (clone > 0) {  // new parent / previous child
       exit_fatty(0);  // exit and make the grandchild a daemon
@@ -799,7 +803,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
     }
     execvp(path, argv);
 #endif
-    exit_fatty(255);
+    exit_fatty(mexit);
   }
   reset_fork_mode();
 }
