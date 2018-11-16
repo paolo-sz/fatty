@@ -549,7 +549,8 @@ term_mouse_release(struct term* term, mouse_button b, mod_keys mods, pos p)
       moved_previously = true;
       last_dest = dest;
     }
-    otherwise:
+    break;
+    default:
       if (is_app_mouse(term, &mods)) {
         if (term->mouse_mode >= MM_VT200)
           send_mouse_event(term, MA_RELEASE, b, mods, box_pos(term, p));

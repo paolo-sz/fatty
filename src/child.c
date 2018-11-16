@@ -366,13 +366,13 @@ child_is_parent(struct child* child)
   if (!d)
     return false;
   bool res = false;
-  struct dirent * e;
+  struct dirent *e;
+  char fn[280] = "/proc/";
   while ((e = readdir(d))) {
     char * pn = e->d_name;
     if (isdigit((uchar)*pn) && strlen(pn) <= 6) {
-      char * fn = asform("/proc/%s/ppid", pn);
-      FILE * f = fopen(fn, "r");
-      free(fn);
+      snprintf(fn + 6, 280-6, "%s/ppid", pn);
+      FILE *f = fopen(fn, "r");
       if (!f)
         continue;
       pid_t ppid = 0;
