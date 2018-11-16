@@ -1,4 +1,4 @@
-﻿// wininput.c (part of FaTTY)
+// wininput.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
 // Licensed under the terms of the GNU General Public License v3 or later.
@@ -1754,6 +1754,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       else
         ctrl_ch(active_term->backspace_sends_bs ? CDEL : CTRL('_'));
     when VK_TAB:
+#ifdef handle_alt_tab
       if (alt) {
         if (cfg.switch_shortcuts) {
           // does not work as Alt+TAB is not passed here anyway;
@@ -1765,10 +1766,11 @@ win_key_down(WPARAM wp, LPARAM lp)
         else
           return false;
       }
+#endif
       if (!ctrl)
         shift ? csi('Z') : ch('\t');
       else if (cfg.switch_shortcuts) {
-        win_switch(shift, false);
+        win_switch(shift, lctrl & rctrl);
         return true;
       }
       else

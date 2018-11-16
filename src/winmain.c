@@ -315,9 +315,39 @@ set_per_monitor_dpi_aware(void)
 
 static struct tabinfo {
   unsigned long tag;
+  HWND wnd;
   wchar * title;
 } * tabinfo = 0;
 int ntabinfo = 0;
+
+static HWND
+get_prev_tab(bool all)
+{
+  HWND prev = 0;
+  for (int w = 0; w < ntabinfo; w++)
+    if (tabinfo[w].wnd != wnd) {
+      if (all || !IsIconic(tabinfo[w].wnd))
+        prev = tabinfo[w].wnd;
+    }
+    else if (prev)
+      return prev;
+  return prev;
+}
+
+static HWND
+get_next_tab(bool all)
+{
+  HWND next = 0;
+  for (int w = ntabinfo - 1; w >= 0; w--)
+    if (tabinfo[w].wnd != wnd) {
+      if (all || !IsIconic(tabinfo[w].wnd)) {
+        next = tabinfo[w].wnd;
+      }
+    }
+    else if (next)
+      return next;
+  return next;
+}
 
 static void
 clear_tabinfo()
@@ -333,12 +363,13 @@ clear_tabinfo()
 }
 
 static void
-add_tabinfo(unsigned long tag, wchar * title)
+add_tabinfo(unsigned long tag, HWND wnd, wchar * title)
 {
   struct tabinfo * newtabinfo = renewn(tabinfo, ntabinfo + 1);
   if (newtabinfo) {
     tabinfo = newtabinfo;
     tabinfo[ntabinfo].tag = tag;
+    tabinfo[ntabinfo].wnd = wnd;
     tabinfo[ntabinfo].title = wcsdup(title);
     ntabinfo++;
   }
@@ -401,7 +432,7 @@ refresh_tab_titles(bool trace)
         FILETIME cr_time, dummy;
         if (GetProcessTimes(ph, &cr_time, &dummy, &dummy, &dummy)) {
           unsigned long long crtime = ((unsigned long long)cr_time.dwHighDateTime << 32) | cr_time.dwLowDateTime;
-          add_tabinfo(crtime, title);
+          add_tabinfo(crtime, curr_wnd, title);
           if (trace) {
 #ifdef debug_tabbar
             SYSTEMTIME start_time;
@@ -416,7 +447,7 @@ refresh_tab_titles(bool trace)
         CloseHandle(ph);
       }
       else
-        add_tabinfo((unsigned long)curr_wnd, title);
+        add_tabinfo((unsigned long)curr_wnd, curr_wnd, title);
 
     }
     return true;
@@ -425,6 +456,10 @@ refresh_tab_titles(bool trace)
   clear_tabinfo();
   EnumWindows(wnd_enum_tabs, 0);
   sort_tabinfo();
+#if defined(debug_tabbar) || defined(debug_win_switch)
+  for (int w = 0; w < ntabinfo; w++)
+    printf("[%d] %p eq %d iconic %d <%ls>\n", w, tabinfo[w].wnd, tabinfo[w].wnd == wnd, IsIconic(tabinfo[w].wnd), tabinfo[w].title);
+#endif
 }
 
 /*
@@ -461,10 +496,16 @@ update_tab_titles()
 void
 win_set_title(wchar *wtitle)
 {
-    if (cfg.title_settable) {
+  if (cfg.title_settable) {
+    // check current title to suppress unnecessary update_tab_titles()
+    int len = GetWindowTextLengthW(wnd);
+    wchar oldtitle[len + 1];
+    GetWindowTextW(wnd, oldtitle, len + 1);
+    if (0 != wcscmp(wtitle, oldtitle)) {
       SetWindowTextW(wnd, wtitle);
       update_tab_titles();
     }
+  }
 }
 
 void
@@ -522,9 +563,12 @@ win_to_top(HWND top_wnd)
     ShowWindow(top_wnd, SW_RESTORE);
 }
 
-static HWND first_wnd, last_wnd;
-
 #define dont_debug_sessions 1
+
+#ifdef old_win_switch
+static HWND first_wnd, last_wnd;
+static HWND prev_wnd, next_wnd;
+static bool wnd_passed;
 
 static BOOL CALLBACK
 wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp))
@@ -543,18 +587,29 @@ wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp))
            curr_wnd, title);
   }
 #endif
-  if (curr_wnd != wnd && !IsIconic(curr_wnd)) {
+  if (curr_wnd == wnd)
+    wnd_passed = true;
+  else if (!IsIconic(curr_wnd)) {
     WINDOWINFO curr_wnd_info;
     curr_wnd_info.cbSize = sizeof(WINDOWINFO);
     GetWindowInfo(curr_wnd, &curr_wnd_info);
     if (class_atom == curr_wnd_info.atomWindowType) {
       first_wnd = first_wnd ?: curr_wnd;
       last_wnd = curr_wnd;
+      if (!wnd_passed)
+        prev_wnd = curr_wnd;
+      else
+        if (!next_wnd)
+          next_wnd = curr_wnd;
     }
   }
   return true;
 }
+#endif
 
+/*
+   Cycle mintty windows. Skip iconized windows, unless second parameter true.
+ */
 void
 win_switch(bool back, bool alternate)
 {
@@ -562,17 +617,29 @@ win_switch(bool back, bool alternate)
   // but do it below, not here (wsltty#47)
   //SetWindowPos(wnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
 
+#ifdef old_win_switch
+  (void)get_next_tab; (void)get_prev_tab;
+
 #if defined(debug_sessions) && debug_sessions > 1
-  first_wnd = 0, last_wnd = 0;
+  first_wnd = 0, last_wnd = 0, prev_wnd = 0, next_wnd = 0, wnd_passed = false;
   EnumChildWindows(0, wnd_enum_proc, 1);
-  first_wnd = 0, last_wnd = 0;
+  first_wnd = 0, last_wnd = 0, prev_wnd = 0, next_wnd = 0, wnd_passed = false;
   EnumDesktopWindows(0, wnd_enum_proc, 8);
 #endif
 
-  first_wnd = 0, last_wnd = 0;
+  first_wnd = 0, last_wnd = 0, prev_wnd = 0, next_wnd = 0, wnd_passed = false;
   EnumWindows(wnd_enum_proc, 0);
+  if (!prev_wnd)
+    prev_wnd = last_wnd;
+  if (!next_wnd)
+    next_wnd = first_wnd;
+
   if (first_wnd) {
     if (back)
+      first_wnd = prev_wnd;
+    else if (true)
+      first_wnd = next_wnd;
+    else if (back)
       first_wnd = last_wnd;
     else {
       // avoid being pushed behind other windows (#652)
@@ -582,6 +649,10 @@ win_switch(bool back, bool alternate)
     }
     win_to_top(first_wnd);
   }
+#else
+  refresh_tab_titles(false);
+  win_to_top(back ? get_prev_tab(alternate) : get_next_tab(alternate));
+#endif
 }
 
 
@@ -3649,14 +3720,15 @@ main(int argc, char *argv[])
       //argc++; // for "-l"
     }
 #ifdef WSLTTY_APPX
-    char ** new_argv = newn(char *, argc + 8 + start_home);
+    char ** new_argv = newn(char *, argc + 10 + start_home);
 #else
-    char ** new_argv = newn(char *, argc + 6 + start_home);
+    char ** new_argv = newn(char *, argc + 8 + start_home);
 #endif
     char ** pargv = new_argv;
     if (login_dash) {
       *pargv++ = "-wslbridge";
 #ifdef wslbridge_supports_l
+#warning redundant option wslbridge -l not needed
       *pargv++ = "-l";
 #endif
     }
@@ -3667,6 +3739,8 @@ main(int argc, char *argv[])
       *pargv++ = wsl_guid;
     }
     *pargv++ = "-t";
+    *pargv++ = "-e";
+    *pargv++ = "APPDATA";
     if (start_home)
       *pargv++ = "-C~";
 
