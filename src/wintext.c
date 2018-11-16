@@ -1143,19 +1143,88 @@ do_update(void)
   win_set_timer(do_update_cb, null, 16);
 }
 
+static void
+sel_update(bool update_sel_tip)
+{
+  struct term* term = win_active_terminal();
+  static bool selection_tip_active = false;
+  //printf("sel_update tok %d sel %d act %d\n", tip_token, term.selected, selection_tip_active);
+  if (term->selected && update_sel_tip) {
+    int cols, rows;
+    if (term->sel_rect) {
+      rows = abs(term->sel_end.y - term->sel_start.y) + 1;
+      cols = abs(term->sel_end.x - term->sel_start.x);
+    }
+    else {
+      rows = term->sel_end.y - term->sel_start.y + 1;
+      if (rows == 1)
+        cols = term->sel_end.x - term->sel_start.x;
+      else
+        cols = term->cols;
+    }
+    RECT wr;
+    GetWindowRect(wnd, &wr);
+    int x = wr.left
+          + PADDING + last_pos.x * cell_width;
+    int y = wr.top + GetSystemMetrics(SM_CYCAPTION)
+          + PADDING + last_pos.y * cell_height;
+#ifdef debug_selection_show_size 
+    cfg.selection_show_size = cfg.selection_show_size % 12 + 1;
+#endif
+    int w = 15, h = 18;
+    int dx = 0, dy = 0;
+    switch (cfg.selection_show_size) {
+      when  1: dx += cell_width + w / 4;
+               dy -= h * 2 / 3;
+      when  2: dx += cell_width + w / 3;
+               dy += cell_height / 3 - h / 2;
+      when  3: dx += cell_width + w / 2;
+               dy += cell_height / 2 - h / 3;
+      when  4: dx += cell_width + w / 3;
+               dy += cell_height * 2 / 3;
+      when  5: dx += cell_width + w / 4;
+               dy += cell_height;
+      when  6: dx += cell_width / 2 - w / 2;
+               dy += cell_height + h / 3;
+      when  7: dx -= w + w / 4;
+               dy += cell_height;
+      when  8: dx -= w + w / 3;
+               dy += cell_height * 2 / 3;
+      when  9: dx -= w + w / 2;
+               dy += cell_height / 2 - h / 3;
+      when 10: dx -= w + w / 3;
+               dy += cell_height / 3 - h / 2;
+      when 11: dx -= w + w / 4;
+               dy -= h * 2 / 3;
+      when 12: dx += cell_width / 2 - w / 2;
+               dy -= h;
+      otherwise: return;
+    }
+    win_show_tip(x + dx, y + dy, cols, rows);
+    selection_tip_active = true;
+    //printf("selection_show_size %d -> %d %d\n", cfg.selection_show_size, dx, dy);
+  }
+  else if (!term->selected && selection_tip_active) {
+    win_destroy_tip();
+    selection_tip_active = false;
+  }
+}
+
 void
-win_update(void)
+win_update(bool update_sel_tip)
 {
   trace_resize(("----- win_update\n"));
   if (update_state == UPDATE_IDLE)
     do_update();
   else
     update_state = UPDATE_PENDING;
+
+  sel_update(update_sel_tip);
 }
 
-void win_update_term(struct term* term)
+void win_update_term(struct term* term, bool update_sel_tip)
 {
-  if (win_active_terminal() == term) win_update();
+  if (win_active_terminal() == term) win_update(update_sel_tip);
 }
 
 void
@@ -1227,7 +1296,7 @@ win_set_ime_open(bool open)
   if (open != ime_open) {
     ime_open = open;
     win_active_terminal()->cursor_invalid = true;
-    win_update();
+    win_update(false);
   }
 }
 
@@ -1237,8 +1306,62 @@ win_set_ime_open(bool open)
  */
 
 static bool tiled = false;
+static int alpha = -1;
 static LONG w = 0, h = 0;
 static HBRUSH bgbrush_bmp = 0;
+
+static BOOL (WINAPI *pAlphaBlend)(HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION) = 0;
+
+static HBITMAP
+alpha_blend_bg(int alpha, HDC dc, HBITMAP hbm, int bw, int bh, colour bg)
+{
+  // load GDI function
+  if (!pAlphaBlend) {
+    pAlphaBlend = load_library_func("msimg32.dll", "AlphaBlend");
+  }
+  if (!pAlphaBlend)
+    return hbm;
+
+  // take size from hbm if not passed explicitly
+  if (!bw || !bh) {
+    BITMAP bm0;
+    if (!GetObject(hbm, sizeof(BITMAP), &bm0))
+      return hbm;
+    bw = bm0.bmWidth;
+    bh = bm0.bmHeight;
+  }
+
+  // prepare source memory DC and select the source bitmap into it
+  HDC dc0 = CreateCompatibleDC(dc);
+  HBITMAP oldhbm0 = SelectObject(dc0, hbm);
+
+  // prepare destination memory DC, 
+  // create and select the destination bitmap into it
+  HDC dc1 = CreateCompatibleDC(dc);
+  HBITMAP hbm1 = CreateCompatibleBitmap(dc0, bw, bh);
+  HBITMAP oldhbm1 = SelectObject(dc1, hbm1);
+
+  HBRUSH bgb = CreateSolidBrush(bg);
+  FillRect(dc1, &(RECT){0, 0, bw, bh}, bgb);
+  DeleteObject(bgb);
+
+  BYTE alphafmt = alpha == 255 ? AC_SRC_ALPHA : 0;
+  BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, alpha, alphafmt};
+  int ok = pAlphaBlend(dc1, 0, 0, bw, bh, dc0, 0, 0, bw, bh, bf);
+
+  // release everything
+  SelectObject(dc1, oldhbm1);
+  SelectObject(dc0, oldhbm0);
+  DeleteDC(dc1);
+  DeleteDC(dc0);
+
+  if (ok) {
+    DeleteObject(hbm);
+    return hbm1;
+  }
+  else
+    return hbm;
+}
 
 #if CYGWIN_VERSION_API_MINOR >= 74
 
@@ -1249,7 +1372,7 @@ static HBRUSH bgbrush_bmp = 0;
 static GpBrush * bgbrush_img = 0;
 static GpGraphics * bg_graphics = 0;
 
-#define debug_gdiplus
+#define dont_debug_gdiplus
 
 #ifdef debug_gdiplus
 static void
@@ -1317,35 +1440,34 @@ load_background_image_brush(HDC dc, wstring fn)
   gpcheck("bitmap from file", s);
 
   if (s == Ok && gbm) {
+    HBITMAP hbm = 0;
+    s = GdipCreateHBITMAPFromBitmap(gbm, &hbm, 0);
+    gpcheck("convert bitmap", s);
+
     if (!tiled) {
-#ifdef gdip_bitmap_zoom
-      // this zooming method does not work, especially when scaling up, 
-      // GdipCloneBitmapArea[I] fails with OutOfMemory
-      GpGraphics * gr;
-      s = GdipCreateFromHDC(dc, &gr);
-      gpcheck("create gr", s);
-      GpBitmap * gbmfull;
-      s = GdipCreateBitmapFromGraphics(w, h, gr, &gbmfull);
-      gpcheck("create bitmap", s);
-      s = GdipDeleteGraphics(gr);
-      gpcheck("delete graphics", s);
-      s = GdipCloneBitmapAreaI(0, 0, w, h, 0, gbm, &gbmfull);
-      gpcheck("clone bitmap", s);
-      gbm = 0;
-      if (s == Ok && gbmfull)
-        gbm = gbmfull;
-#else
-// https://www.experts-exchange.com/questions/28594399/Whats-the-best-way-to-scale-a-windows-bitmap.html
-      HBITMAP hbm = 0;
-      s = GdipCreateHBITMAPFromBitmap(gbm, &hbm, 0);
-      gpcheck("convert bitmap", s);
+      // scale the bitmap; 
+      // wtf is this a complex task @ braindamaged Windows API
+      // https://www.experts-exchange.com/questions/28594399/Whats-the-best-way-to-scale-a-windows-bitmap.html
+
+      uint bw, bh;
+      GpStatus stsz = GdipGetImageWidth(gbm, &bw);
+      gpcheck("get size", s);
+      if (stsz == Ok) {
+        stsz = GdipGetImageHeight(gbm, &bh);
+        gpcheck("get size", s);
+      }
+
       s = GdipDisposeImage(gbm);
       gpcheck("dispose bitmap", s);
       gbm = 0;
 
-      BITMAP bm0;
-      if (!GetObject(hbm, sizeof(BITMAP), &bm0))
-        return;
+      if (stsz != Ok) {
+        BITMAP bm0;
+        if (!GetObject(hbm, sizeof(BITMAP), &bm0))
+          return;
+        bw = bm0.bmWidth;
+        bh = bm0.bmHeight;
+      }
 
       // prepare source memory DC and select the source bitmap into it
       HDC dc0 = CreateCompatibleDC(dc);
@@ -1357,54 +1479,68 @@ load_background_image_brush(HDC dc, wstring fn)
       HBITMAP hbm1 = CreateCompatibleBitmap(dc0, w, h);
       HBITMAP oldhbm1 = SelectObject(dc1, hbm1);
 
-      // set half-tone stretch-blit mode for better scaling quality
-      SetStretchBltMode(dc1, HALFTONE);
+      if (alpha >= 0 && !pAlphaBlend) {
+        pAlphaBlend = load_library_func("msimg32.dll", "AlphaBlend");
+      }
 
-      // draw the bitmap scaled into the destination memory DC
-      StretchBlt(dc1, 0, 0, w, h, dc0, 0, 0, bm0.bmWidth, bm0.bmHeight, SRCCOPY);
+      if (alpha < 0 || !pAlphaBlend) {
+        // set half-tone stretch-blit mode for scaling quality
+        SetStretchBltMode(dc1, HALFTONE);
+        // draw the bitmap scaled into the destination memory DC
+        StretchBlt(dc1, 0, 0, w, h, dc0, 0, 0, bw, bh, SRCCOPY);
 
-      // release everything
-      SelectObject(dc0, oldhbm0);
-      SelectObject(dc1, oldhbm1);
-      DeleteDC(dc0);
-      DeleteDC(dc1);
+        DeleteObject(hbm);
+        hbm = hbm1;
+      }
+      else {
+        HBRUSH oldbrush = SelectObject(dc1, CreateSolidBrush(win_get_colour(BG_COLOUR_I)));
+        Rectangle(dc1, 0, 0, w, h);
+        DeleteObject(SelectObject(dc1, oldbrush));
 
-      // now we have the scaled bitmap in 'hbm1'
-      if (hbm1) {
-        bgbrush_bmp = CreatePatternBrush(hbm1);
-        DeleteObject(hbm1);
-        if (bgbrush_bmp) {
-          RECT cr;
-          GetClientRect(wnd, &cr);
-          FillRect(dc, &cr, bgbrush_bmp);
-          drop_background_image_brush();
-          return;
+        BYTE alphafmt = alpha == 255 ? AC_SRC_ALPHA : 0;
+        BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, alpha, alphafmt};
+        if (pAlphaBlend(dc1, 0, 0, w, h, dc0, 0, 0, bw, bh, bf)) {
+          DeleteObject(hbm);
+          hbm = hbm1;
         }
       }
-#endif
+
+      // release everything
+      SelectObject(dc1, oldhbm1);
+      SelectObject(dc0, oldhbm0);
+      DeleteDC(dc1);
+      DeleteDC(dc0);
     }
     else {  // tiled
-      HBITMAP hbm1 = 0;
-      s = GdipCreateHBITMAPFromBitmap(gbm, &hbm1, 0);
-      gpcheck("convert bitmap", s);
+      if (alpha >= 0) {
+        uint bw = 0, bh = 0;
+        s = GdipGetImageWidth(gbm, &bw);
+        gpcheck("get size", s);
+        s = GdipGetImageHeight(gbm, &bh);
+        gpcheck("get size", s);
+        hbm = alpha_blend_bg(alpha, dc, hbm, bw, bh, win_get_colour(BG_COLOUR_I));
+      }
+
       s = GdipDisposeImage(gbm);
       gpcheck("dispose bitmap", s);
       gbm = 0;
+    }
 
-      if (hbm1) {
-        bgbrush_bmp = CreatePatternBrush(hbm1);
-        DeleteObject(hbm1);
-        if (bgbrush_bmp) {
-          RECT cr;
-          GetClientRect(wnd, &cr);
-          FillRect(dc, &cr, bgbrush_bmp);
-          drop_background_image_brush();
-          return;
-        }
+    // now we have the (scaled or to-be-tiled) bitmap in 'hbm'
+    if (hbm) {
+      bgbrush_bmp = CreatePatternBrush(hbm);
+      DeleteObject(hbm);
+      if (bgbrush_bmp) {
+        RECT cr;
+        GetClientRect(wnd, &cr);
+        FillRect(dc, &cr, bgbrush_bmp);
+        drop_background_image_brush();
+        return;
       }
     }
   }
 
+#ifdef use_gdiplus_brush_fallback
   DWORD win_version = GetVersion();
   win_version = ((win_version & 0xff) << 8) | ((win_version >> 8) & 0xff);
   if (win_version > 0x0601)  // not Windows 7 or XP
@@ -1432,6 +1568,7 @@ load_background_image_brush(HDC dc, wstring fn)
   gpcheck("dispose img", s);
 
   bgbrush_img = gt;
+#endif
 }
 
 static bool
@@ -1481,6 +1618,7 @@ win_flush_background(bool clearbg)
   w = 0; h = 0;
   tiled = false;
   if (clearbg) {
+    alpha = -1;
     // TODO: save redundant image reloading (and brush creation)
   }
 
@@ -1543,6 +1681,14 @@ load_background_brush(HDC dc)
     free(bf);
     bf = bfexp;
   }
+  // try to extract an alpha value from file spec
+  char * salpha = strchr(bf, ',');
+  if (salpha) {
+    *salpha = 0;
+    salpha++;
+    if (sscanf(salpha, "%u%c", &alpha, &(char){0}) != 1)
+      alpha = -1;
+  }
   bgfn = path_posix_to_win_w(bf);
   free(bf);
 
@@ -1562,6 +1708,14 @@ load_background_brush(HDC dc)
                                   IMAGE_BITMAP, w, h,
                                   LR_LOADFROMFILE);
     }
+
+    if (bm && alpha >= 0) {
+      if (tiled)
+        bm = alpha_blend_bg(alpha, dc, bm, 0, 0, win_get_colour(BG_COLOUR_I));
+      else
+        bm = alpha_blend_bg(alpha, dc, bm, w, h, win_get_colour(BG_COLOUR_I));
+    }
+
     return bm;
   }
 
@@ -1570,8 +1724,9 @@ load_background_brush(HDC dc)
     if (bm) {
       bgbrush_bmp = CreatePatternBrush(bm);
       DeleteObject(bm);
-      if (bgbrush_bmp)
+      if (bgbrush_bmp) {
         FillRect(dc, &cr, bgbrush_bmp);
+      }
     }
   }
 
@@ -3326,7 +3481,9 @@ win_paint(void)
 
   win_paint_tabs(0, p.rcPaint.right - p.rcPaint.left);
 
-  if (//!*cfg.background &&
+  if (// do not just check whether a background was configured
+      //!*cfg.background &&
+      // check whether a configured background was successfully loaded
       !bgbrush_bmp &&
 #if CYGWIN_VERSION_API_MINOR >= 74
       !bgbrush_img &&
