@@ -94,7 +94,7 @@ void win_process_timer_message(WPARAM message) {
 }
 
 static void invalidate_tabs() {
-    win_invalidate_all();
+    win_invalidate_all(false);
 }
 
 term* win_active_terminal() {
@@ -138,7 +138,7 @@ static void set_active_tab(unsigned int index) {
     }
 
     update_window_state();
-    win_invalidate_all();
+    win_invalidate_all(false);
     term->results.update_type = NO_UPDATE;
 }
 
@@ -245,7 +245,7 @@ void win_tab_clean() {
         else
             set_active_tab(active_tab);
         set_tab_bar_visibility(tabs.size() > 1);
-        win_invalidate_all();
+        win_invalidate_all(false);
     }
 }
 
@@ -321,7 +321,7 @@ static void set_tab_bar_visibility(bool b) {
     tab_bar_visible = b;
     g_render_tab_height = win_tab_height();
     win_adapt_term_size(false, false);
-    win_invalidate_all();
+    win_invalidate_all(false);
 }
 int win_tab_height() { return tab_bar_visible ? tabheight() : 0; }
 

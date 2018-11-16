@@ -1,4 +1,4 @@
-// winmain.c (part of FaTTY)
+﻿// winmain.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by 2008-13 Andy Koppe, 2015-2018 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
@@ -1295,10 +1295,11 @@ win_bell(struct term* term, config * conf)
 }
 
 void
-win_invalidate_all(void)
+win_invalidate_all(bool clearbg)
 {
   InvalidateRect(wnd, null, true);
   win_for_each_term(term_paint);
+  win_flush_background(clearbg);
 }
 
 
@@ -1416,7 +1417,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     win_fix_position();
     trace_winsize("win_adapt_term_size > win_fix_position");
 
-    win_invalidate_all();
+    win_invalidate_all(false);
     return;
   }
 
@@ -1481,7 +1482,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     struct winsize ws = {rows, cols, cols * cell_width, rows * cell_height};
     child_resize(term->child, &ws);
   }
-  win_invalidate_all();
+  win_invalidate_all(false);
 
   win_update_search();
   term_schedule_search_update(term);

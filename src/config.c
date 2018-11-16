@@ -1,5 +1,5 @@
 // config.c (part of FaTTY)
-// Copyright 2008-13 Andy Koppe, 2015-2016 Thomas Wolff
+// Copyright 2008-13 Andy Koppe, 2015-2017 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -51,6 +51,7 @@ const config default_cfg = {
   .search_bg_colour = 0x00DDDD,
   .search_current_colour = 0x0099DD,
   .theme_file = W(""),
+  .background = W(""),
   .colour_scheme = "",
   .transparency = 0,
   .blurred = false,
@@ -239,6 +240,7 @@ options[] = {
   {"SearchBackgroundColour", OPT_COLOUR, offcfg(search_bg_colour)},
   {"SearchCurrentColour", OPT_COLOUR, offcfg(search_current_colour)},
   {"ThemeFile", OPT_WSTRING, offcfg(theme_file)},
+  {"Background", OPT_WSTRING, offcfg(background)},
   {"ColourScheme", OPT_STRING, offcfg(colour_scheme)},
   {"Transparency", OPT_TRANS, offcfg(transparency)},
 #ifdef support_blurred

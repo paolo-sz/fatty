@@ -457,7 +457,7 @@ foreground_pid(struct child* child)
   return (child->pty_fd >= 0) ? tcgetpgrp(child->pty_fd) : 0;
 }
 
-static char *
+char *
 foreground_cwd(struct child* child)
 {
   // if working dir is communicated interactively, use it
