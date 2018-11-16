@@ -15,7 +15,7 @@
 help() {
 	echo "Usage:"
 	echo "  `basename $0` [-d] [-h|-f|-l|-q] [theme|themefile]"
-	echo "  `basename $0` -q > themefile"
+	echo "  `basename $0` [-d] -q > themefile"
 	echo "List/set/query fatty themes in current fatty window."
 	echo "A theme is a colour scheme to configure the 8 ANSI colours, their "
 	echo "bright versions, and optionally the foreground/background/cursor colours."
