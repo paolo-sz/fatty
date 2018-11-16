@@ -168,7 +168,7 @@ fi
 }
 
 showthemes() {
-	for confdir in ~/.mintty ~/.config/mintty "$APPDATA"/mintty /usr/share/mintty
+	for confdir in ~/.fatty ~/.config/fatty "$APPDATA"/fatty /usr/share/fatty
 	do	if [ -d "$confdir/themes" -a -x "$confdir/themes"  -a -r "$confdir/themes" ]
 		then	echo "[4;53;7mthemes in '$confdir':[m"
 			(

@@ -5,7 +5,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: mintty\n"
+"Project-Id-Version: fatty\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2018-04-21 07:09+0200\n"
 "PO-Revision-Date: 2018-06-24 00:19-0300\n"
@@ -815,7 +815,7 @@ msgstr "A&dicionar às cores personalizadas"
 msgid "Options"
 msgstr "Opções"
 
-#. __ Options: dialog title: "mintty <release> available (for download)"
+#. __ Options: dialog title: "fatty <release> available (for download)"
 #: windialog.c:245
 msgid "available"
 msgstr "disponível"
@@ -1105,8 +1105,8 @@ msgid "Syntax error in geometry argument '%s'"
 msgstr "Erro de sintaxe no argumento de geometria '%s'"
 
 #: winmain.c:3629
-msgid "Mintty could not detach from caller, starting anyway"
-msgstr "O Mintty não pôde se desanexar do chamador, iniciando mesmo assim"
+msgid "Fatty could not detach from caller, starting anyway"
+msgstr "O Fatty não pôde se desanexar do chamador, iniciando mesmo assim"
 
 #: winmain.c:3814
 msgid "Using default title due to invalid characters in program name"
@@ -1166,12 +1166,12 @@ msgstr "Não há garantia, na medida permitida por lei."
 #: appinfo.h:66
 msgid ""
 "Please report bugs or request enhancements through the issue tracker on the "
-"mintty project page located at\n"
+"fatty project page located at\n"
 "%s.\n"
 "See also the Wiki there for further hints, thanks and credits."
 msgstr ""
 "Informe bugs ou sugira melhorias no gerenciador de issues na página do "
-"projeto do Mintty no endereço\n"
+"projeto do Fatty no endereço\n"
 "%s.\n"
 "Veja por lá também a Wiki do projeto para maiores dicas, agradecimentos e "
 "créditos."
