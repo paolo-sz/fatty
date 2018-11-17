@@ -591,6 +591,6 @@ extern void term_clear_search(struct term* term);
 
 extern char * get_emoji_description(termchar *);
 
-extern void term_export_html(void);
+extern void term_export_html(bool do_open);
 
 #endif
