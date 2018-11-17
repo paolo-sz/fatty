@@ -237,8 +237,8 @@ term_reset(struct term* term, bool full)
   term->sixel_scrolls_left = 0;
 
   term->cursor_type = -1;
+  term->cursor_blinks = -1;
   if (full) {
-    term->cursor_blinks = -1;  // not reset by xterm
     term->blink_is_real = cfg.allow_blinking;
   }
 
