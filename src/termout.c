@@ -1277,16 +1277,24 @@ do_winop(struct term* term)
       // Ps = 9 ; 1  -> Maximize window (i.e., resize to screen size).
       // Ps = 9 ; 2  -> Maximize window vertically.
       // Ps = 9 ; 3  -> Maximize window horizontally.
+      int rows0 = term->rows, cols0 = term->cols;
       if (arg1 == 2) {
         // maximize window vertically
         win_set_geom(0, -1, 0, -1);
+        term->rows0 = rows0; term->cols0 = cols0;
       }
       else if (arg1 == 3) {
         // maximize window horizontally
         win_set_geom(-1, 0, -1, 0);
+        term->rows0 = rows0; term->cols0 = cols0;
       }
-      else if (arg1 == 1 || arg1 == 0)
-        win_maximise(arg1);
+      else if (arg1 == 1) {
+        win_maximise(1);
+      }
+      else if (arg1 == 0) {
+        win_maximise(0);
+        win_set_chars(term->rows0, term->cols0);
+      }
     }
     when 10:
       if (term->csi_argc != 2)
@@ -1938,6 +1946,10 @@ do_dcs(struct term* term)
         child_printf(term->child, "\eP1$r%u q\e\\", 
                      (term->cursor_type >= 0 ? term->cursor_type * 2 : 0) + 1
                      + !(term->cursor_blinks & 1));
+      } else if (!strcmp(s, "t") && term->rows >= 24) {  // DECSLPP (lines)
+        child_printf(term->child, "\eP1$r%ut\e\\", term->rows);
+      } else if (!strcmp(s, "$|")) {  // DECSCPP (columns)
+        child_printf(term->child, "\eP1$r%u$|\e\\", term->cols);
       } else {
         child_printf(term->child, "\eP0$r%s\e\\", s);
       }

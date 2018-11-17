@@ -931,6 +931,8 @@ term_resize(struct term* term, int newrows, int newcols)
 
   term->rows = newrows;
   term->cols = newcols;
+  term->rows0 = newrows;
+  term->cols0 = newcols;
 
   term_switch_screen(term, on_alt_screen, false);
 }
