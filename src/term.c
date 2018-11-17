@@ -1085,6 +1085,11 @@ disp_do_scroll(int topscroll, int botscroll, int scrolllines)
 void
 term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
 {
+  if (term->hovering) {
+    term->hovering = false;
+    win_update_term(term, true);
+  }
+
 #ifdef use_display_scrolling
   int scrolllines = lines;
 #endif
@@ -1196,6 +1201,20 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
   term_cursor *curs = &term->curs;
   pos start, end;
 
+  // avoid clearing a "pending wrap" position, where the cursor is 
+  // held back on the previous character if it's the last of the line
+  if (curs->wrapnext) {
+#if 0
+    if (!from_begin && to_end)
+      return;  // simple approach
+#else
+    static term_cursor c;
+    c = term->curs;
+    incpos(c);
+    curs = &c;
+#endif
+  }
+
   if (from_begin)
     start = (pos){.y = line_only ? curs->y : 0, .x = 0};
   else
@@ -1248,6 +1267,7 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
     }
   }
 }
+
 
 #define EM_pres 1
 #define EM_pict 2
@@ -2416,6 +2436,11 @@ term_invalidate(struct term* term, int left, int top, int right, int bottom)
 void
 term_scroll(struct term* term, int rel, int where)
 {
+  if (term->hovering) {
+    term->hovering = false;
+    win_update_term(term, true);
+  }
+
   int sbtop = -sblines(term);
   int sbbot = term_last_nonempty_line(term);
   bool do_schedule_update = false;
@@ -2454,10 +2479,14 @@ term_scroll(struct term* term, int rel, int where)
 void
 term_set_focus(struct term* term, bool has_focus, bool may_report)
 {
+  if (!has_focus)
+    term->hovering = false;
+
   if (has_focus != term->has_focus) {
     term->has_focus = has_focus;
     term_schedule_cblink(term);
   }
+
   if (has_focus != term->focus_reported && may_report) {
     term->focus_reported = has_focus;
     if (term->report_focus)

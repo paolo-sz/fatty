@@ -28,6 +28,7 @@ extern LOGFONT lfont;
 
 extern int font_size;  // logical font size, as configured (< 0: pixel size)
 extern int cell_width, cell_height;  // includes spacing
+extern int line_scale;
 extern int PADDING;
 extern bool show_charinfo;
 extern void toggle_charinfo(void);
@@ -86,7 +87,7 @@ extern wstring wslicon(wchar * params);
 extern char * foreground_cwd(struct child* child);
 
 extern void win_switch(bool back, bool alternate);
-extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, bool get_primary, MONITORINFO *mip);
+extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MONITORINFO *mip);
 
 extern void win_set_ime_open(bool);
 

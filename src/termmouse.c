@@ -161,6 +161,7 @@ hover_spread(struct term* term)
 static void
 sel_drag(struct term* term, pos selpoint)
 {
+  //printf("sel_drag %d+%d/2 (anchor %d+%d/2)\n", selpoint.x, selpoint.r, term.sel_anchor.x, term.sel_anchor.r);
   term->selected = true;
   if (!term->sel_rect) {
    /*
@@ -170,10 +171,26 @@ sel_drag(struct term* term, pos selpoint)
     if (poslt(selpoint, term->sel_anchor)) {
       term->sel_start = selpoint;
       term->sel_end = term->sel_anchor;
+      if (cfg.elastic_mouse && !term->mouse_mode) {
+        if (selpoint.r) {
+          incpos(term->sel_start);
+        }
+        if (!term->sel_anchor.r) {
+          decpos(term->sel_end);
+        }
+      }
     }
     else {
       term->sel_start = term->sel_anchor;
       term->sel_end = selpoint;
+      if (cfg.elastic_mouse && !term->mouse_mode) {
+        if (term->sel_anchor.r) {
+          incpos(term->sel_start);
+        }
+        if (!selpoint.r) {
+          decpos(term->sel_end);
+        }
+      }
     }
     sel_spread(term);
   }
@@ -193,6 +210,7 @@ sel_drag(struct term* term, pos selpoint)
 static void
 sel_extend(struct term* term, pos selpoint)
 {
+  //printf("sel_extend %d+%d/2 (anchor %d+%d/2)\n", selpoint.x, selpoint.r, term.sel_anchor.x, term.sel_anchor.r);
   if (term->selected) {
     if (!term->sel_rect) {
      /*
@@ -344,7 +362,7 @@ box_pos(struct term* term, pos p)
 static pos
 get_selpoint(struct term* term, const pos p)
 {
-  pos sp = { .y = p.y + term->disptop, .x = p.x };
+  pos sp = { .y = p.y + term->disptop, .x = p.x, .r = p.r };
   termline *line = fetch_line(term, sp.y);
   if ((line->lattr & LATTR_MODE) != LATTR_NORM)
     sp.x /= 2;
@@ -391,6 +409,11 @@ is_app_mouse(struct term* term, mod_keys *mods_p)
 void
 term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int count)
 {
+  if (term->hovering) {
+    term->hovering = false;
+    win_update_term(term, true);
+  }
+
   if (is_app_mouse(term, &mods)) {
     if (term->mouse_mode == MM_X10)
       mods = 0;
@@ -573,20 +596,24 @@ sel_scroll_cb(void* data)
 void
 term_mouse_move(struct term* term, mod_keys mods, pos p)
 {
+  //printf("mouse_move %d+%d/2\n", p.x, p.r);
   pos bp = box_pos(term, p);
+
   if (term_selecting(term)) {
     if (p.y < 0 || p.y >= term->rows) {
-      if (!term->sel_scroll) 
-        win_set_timer(sel_scroll_cb, (void*)term, 200);
+      if (!term->sel_scroll)
+        win_set_timer(sel_scroll_cb, (void *)term, 200);
       term->sel_scroll = p.y < 0 ? p.y : p.y - term->rows + 1;
       term->sel_pos = bp;
     }
     else {
       term->sel_scroll = 0;
       if (p.x < 0 && p.y + term->disptop > term->sel_anchor.y)
-        bp = (pos){.y = p.y - 1, .x = term->cols - 1};
+        bp = (pos){.y = p.y - 1, .x = term->cols - 1, .r = p.r};
     }
+
     sel_drag(term, get_selpoint(term, bp));
+
     win_update(true);
   }
   else if (term->mouse_state == MS_OPENING) {
@@ -610,14 +637,21 @@ term_mouse_move(struct term* term, mod_keys mods, pos p)
       term->hovering = true;
       win_update(true);
     }
-    else
+    else if (term->hovering) {
       term->hovering = false;
+      win_update_term(term, true);
+    }
   }
 }
 
 void
 term_mouse_wheel(struct term* term, int delta, int lines_per_notch, mod_keys mods, pos p)
 {
+  if (term->hovering) {
+    term->hovering = false;
+    win_update_term(term, true);
+  }
+
   enum { NOTCH_DELTA = 120 };
 
   static int accu;

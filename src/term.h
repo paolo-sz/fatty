@@ -279,6 +279,7 @@ typedef enum {
 
 typedef struct {
   int y, x;
+  bool r;
 } pos;
 
 typedef enum {
@@ -588,5 +589,7 @@ extern void term_clear_results(struct term* term);
 extern void term_clear_search(struct term* term);
 
 extern char * get_emoji_description(termchar *);
+
+extern void term_export_html(void);
 
 #endif
