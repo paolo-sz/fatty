@@ -1853,6 +1853,26 @@ confirm_multi_tab(void)
          );
 }
 
+void
+win_close(void)
+{
+  struct term* term = 0;
+  if (term_initialized) term = win_active_terminal();
+  if (win_tab_count() > 1) {
+    switch (confirm_multi_tab()) {
+      when IDNO:
+        if (!cfg.confirm_exit || confirm_tab_exit()) {
+          child_terminate(term->child);
+        }
+        return;
+      when IDCANCEL:
+        return;
+    }
+  }
+  if (!cfg.confirm_exit || confirm_exit())
+    child_kill();
+}
+
 #define dont_debug_messages
 #define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
@@ -1869,7 +1889,7 @@ static struct {
 };
   char * wm_name = "WM_?";
   for (uint i = 0; i < lengthof(wm_names); i++)
-    if (message == wm_names[i].wm_) {
+    if (message == wm_names[i].wm_ && !strstr(wm_names[i].wm_name, "FIRST")) {
       wm_name = wm_names[i].wm_name;
       break;
     }
@@ -1915,19 +1935,7 @@ static struct {
     }
 
     when WM_CLOSE:
-      if (win_tab_count() > 1) {
-        switch (confirm_multi_tab()) {
-          when IDNO:
-            if (!cfg.confirm_exit || confirm_tab_exit()) {
-              child_terminate(term->child);
-            }
-            return 0;
-          when IDCANCEL:
-            return 0;
-        }
-      }
-      if (!cfg.confirm_exit || confirm_exit())
-        child_kill();
+      win_close();
       return 0;
 
 #ifdef show_icon_via_callback

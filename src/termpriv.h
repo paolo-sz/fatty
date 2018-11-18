@@ -51,4 +51,6 @@ extern termline *decompressline(uchar *, int *bytes_used);
 
 extern termchar *term_bidi_line(struct term* term, termline *, int scr_y);
 
+extern void print_screen(void);
+
 #endif

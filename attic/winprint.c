@@ -4,6 +4,8 @@
 #include <wingdi.h>
 #include <winspool.h>
 
+#include "charset.h"
+
 
 static HANDLE printer;
 
@@ -34,6 +36,18 @@ printer_write(char *data, uint len)
   if (printer) {
     DWORD written;
     WritePrinter(printer, data, len, &written);
+  }
+}
+
+void
+printer_wwrite(wchar * wdata, uint len)
+{
+  if (printer) {
+    char * data = cs__wcstombs(wdata);
+    uint mlen = len * sizeof(char);
+    DWORD written;
+    WritePrinter(printer, data, mlen, &written);
+    free(data);
   }
 }
 

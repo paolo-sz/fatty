@@ -745,3 +745,25 @@ term_export_html(bool do_open)
   free(htmlf);
 }
 
+#include "print.h"
+
+void
+print_screen(void)
+{
+  struct term * term = win_active_terminal();
+  if (*cfg.printer == '*')
+    printer_start_job(printer_get_default());
+  else if (*cfg.printer)
+    printer_start_job(cfg.printer);
+  else
+    return;
+
+  pos start = (pos){term->disptop, 0, false};
+  pos end = (pos){term->disptop + term->rows - 1, term->cols, false};
+  bool rect = false;
+  clip_workbuf * buf = get_selection(term, start, end, rect, false);
+  printer_wwrite(buf->text, buf->len);
+  printer_finish_job();
+  destroy_clip_workbuf(buf);
+}
+

@@ -119,5 +119,6 @@ void win_for_each_term(void (*cb)(struct term* term));
 void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool param);
 
 bool win_should_die();
+extern void win_close(void);
 
 #endif
