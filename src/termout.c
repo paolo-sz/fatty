@@ -377,9 +377,13 @@ write_char(struct term* term, wchar c, int width)
 static void
 write_error(struct term* term)
 {
-  // Write 'Medium Shade' character from vt100 linedraw set,
-  // which looks appropriately erroneous.
-  write_char(term, 0x2592, 1);
+  // Write one of REPLACEMENT CHARACTER or, if that does not exist,
+  // MEDIUM SHADE which looks appropriately erroneous.
+  wchar errch = 0xFFFD;
+  win_check_glyphs(&errch, 1);
+  if (!errch)
+    errch = 0x2592;
+  write_char(term, errch, 1);
 }
 
 /* Process control character, returning whether it has been recognised. */
@@ -2166,16 +2170,12 @@ do_cmd(struct term* term)
     when 104: do_colour_osc(term, true, 4, true);
     when 105: do_colour_osc(term, true, 5, true);
     when 10:  do_colour_osc(term, false, FG_COLOUR_I, false);
-    when 11:  if (*term->cmd_buf == '*') {
+    when 11:  if (strchr("*_%", *term->cmd_buf)) {
                 wchar * bn = cs__mbstowcs(term->cmd_buf);
                 wstrset(&cfg.background, bn);
                 free(bn);
-                win_invalidate_all(true);
-              }
-              else if (*term->cmd_buf == '_') {
-                wchar * bn = cs__mbstowcs(term->cmd_buf + 1);
-                wstrset(&cfg.background, bn);
-                free(bn);
+                if (*term->cmd_buf == '%')
+                  scale_to_image_ratio();
                 win_invalidate_all(true);
               }
               else
@@ -2856,3 +2856,4 @@ term_write(struct term* term, const char *buf, uint len)
     term->printbuf_pos = 0;
   }
 }
+
