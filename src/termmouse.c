@@ -612,6 +612,8 @@ term_mouse_move(struct term* term, mod_keys mods, pos p)
         bp = (pos){.y = p.y - 1, .x = term->cols - 1, .r = p.r};
     }
 
+    bool alt = mods & MDK_ALT;
+    term->sel_rect = alt;
     sel_drag(term, get_selpoint(term, bp));
 
     win_update(true);

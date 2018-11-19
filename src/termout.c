@@ -468,19 +468,20 @@ do_esc(struct term* term, uchar c)
   // ESC)%5	FF 29 25 35
   // 94-character set designation as G0...G3: ()*+
   // 96-character set designation as G1...G3:  -./
-  if (term->esc_mod == 0xFF)
-    term->esc_mod = esc_mod0;
+  uchar designator = term->esc_mod == 0xFF ? esc_mod0 : term->esc_mod;
   uchar csmask = 0;
   int gi;
-  void check_designa(char * designa, uchar cstype) {
-    char * csdesigna = strchr(designa, term->esc_mod);
-    if (csdesigna) {
-      csmask = cstype;
-      gi = csdesigna - designa + cstype - 1;
+  if (designator) {
+    void check_designa(char * designa, uchar cstype) {
+      char * csdesigna = strchr(designa, designator);
+      if (csdesigna) {
+        csmask = cstype;
+        gi = csdesigna - designa + cstype - 1;
+      }
     }
+    check_designa("()*+", 1);  // 94-character set designation?
+    check_designa("-./", 2);  // 96-character set designation?
   }
-  check_designa("()*+", 1);  // 94-character set designation?
-  check_designa("-./", 2);  // 96-character set designation?
   if (csmask) {
     static struct {
       ushort design;
@@ -1482,7 +1483,7 @@ do_csi(struct term* term, uchar c)
            curs->origin ? 2 : 0);
     when 'I':  /* CHT: move right N TABs */
       for (int i = 0; i < arg0_def1; i++)
-       write_tab(term);
+        write_tab(term);
     when 'J' or CPAIR('?', 'J'): { /* ED/DECSED: (selective) erase in display */
       if (arg0 == 3 && !term->esc_mod) { /* Erase Saved Lines (xterm) */
         term_clear_scrollback(term);
@@ -2354,6 +2355,8 @@ term_do_write(struct term* term, const char *buf, uint len)
   term->cblinker = 1;
   term_schedule_cblink(term);
 
+  short oldy = term->curs.y;
+
   uint pos = 0;
   while (pos < len) {
     uchar c = buf[pos++];
@@ -2940,6 +2943,11 @@ term_do_write(struct term* term, const char *buf, uint len)
           do_esc(term, c);
         }
     }
+  }
+
+  if (cfg.ligatures_support > 1) {
+    // refresh ligature rendering in old cursor line
+    term_invalidate(term, 0, oldy, term->cols - 1, oldy);
   }
 
   // Update search match highlighting

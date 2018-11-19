@@ -122,6 +122,7 @@ typedef struct {
   string term;
   wstring answerback;
   bool old_wrapmodes;
+  bool enable_deccolm_init;
   bool bell_sound;
   int bell_type;
   wstring bell_file;
