@@ -916,7 +916,7 @@ paste_unicode_text(HANDLE data)
 {
   wchar *s = GlobalLock(data);
   uint l = wcslen(s);
-  term_paste(win_active_terminal(), s, l);
+  term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
   GlobalUnlock(data);
 }
 
@@ -928,7 +928,7 @@ paste_text(HANDLE data)
   wchar s[l];
   MultiByteToWideChar(CP_ACP, 0, cs, -1, s, l);
   GlobalUnlock(data);
-  term_paste(win_active_terminal(), s, l);
+  term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
 }
 
 void
