@@ -282,6 +282,7 @@ write_char(struct term* term, wchar c, int width)
 
   if (curs->wrapnext && curs->autowrap && width > 0) {
     line->lattr |= LATTR_WRAPPED;
+    line->wrappos = curs->x;
     if (curs->y == term->marg_bot)
       term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
     else if (curs->y < term->rows - 1)
@@ -318,6 +319,7 @@ write_char(struct term* term, wchar c, int width)
       if (curs->x == term->cols - 1) {
         line->chars[curs->x] = term->erase_char;
         line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
+        line->wrappos = curs->x;
         if (curs->y == term->marg_bot)
           term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
         else if (curs->y < term->rows - 1)

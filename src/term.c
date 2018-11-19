@@ -218,7 +218,6 @@ term_reset(struct term* term, bool full)
     term->wheel_reporting = true;
     term->echoing = false;
     term->bracketed_paste = false;
-    term->show_scrollbar = true;  // enable_scrollbar not reset by xterm
     term->wide_indic = false;
     term->wide_extra = false;
     term->disable_bidi = false;
