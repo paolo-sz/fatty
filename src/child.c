@@ -556,8 +556,15 @@ user_command(struct child* child, int n)
       }
       n--;
 
-      if (sepp)
+      if (sepp) {
         cmdp = sepp + 1;
+        // check for multi-line separation
+        if (*cmdp == '\\' && cmdp[1] == '\n') {
+          cmdp += 2;
+          while (isspace(*cmdp))
+            cmdp++;
+        }
+      }
       else
         break;
     }
@@ -867,8 +874,15 @@ child_launch(struct child* child, int n, int argc, char * argv[], int moni)
       }
       n--;
 
-      if (sepp)
+      if (sepp) {
         cmdp = sepp + 1;
+        // check for multi-line separation
+        if (*cmdp == '\\' && cmdp[1] == '\n') {
+          cmdp += 2;
+          while (isspace(*cmdp))
+            cmdp++;
+        }
+      }
       else
         break;
     }
