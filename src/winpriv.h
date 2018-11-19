@@ -32,6 +32,8 @@ extern int line_scale;
 extern int PADDING;
 extern bool show_charinfo;
 extern void toggle_charinfo(void);
+extern void toggle_vt220();
+extern void toggle_vt220_term(struct term* term);
 extern char * fontpropinfo(void);
 
 extern int g_render_tab_height; // current tab height in pixels

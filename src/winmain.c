@@ -1716,7 +1716,11 @@ win_update_transparency(bool opaque)
 void
 win_update_scrollbar(bool inner)
 {
-  int scrollbar = win_active_terminal()->show_scrollbar ? cfg.scrollbar : 0;
+  // enforce outer scrollbar if switched on
+  int scrollbar = win_active_terminal()->show_scrollbar ? (cfg.scrollbar || !inner) : 0;
+  // keep config consistent with enforced scrollbar
+  if (scrollbar && !cfg.scrollbar)
+    cfg.scrollbar = 1;
 
   LONG style = GetWindowLong(wnd, GWL_STYLE);
   SetWindowLong(wnd, GWL_STYLE,
@@ -2046,6 +2050,7 @@ static struct {
         when IDM_TOGLOG: toggle_logging();
         when IDM_HTML: term_export_html(GetKeyState(VK_SHIFT) & 0x80);
         when IDM_TOGCHARINFO: toggle_charinfo();
+        when IDM_TOGVT220KB: toggle_vt220_term(term);
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(term); win_update(false);
         when IDM_RESET: winimgs_clear(term); term_reset(term, true); win_update(false);

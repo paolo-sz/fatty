@@ -456,6 +456,12 @@ win_update_menus(void)
     null
   );
 
+  uint vt220kb = term->vt220_keys ? MF_CHECKED : MF_UNCHECKED;
+  //__ Context menu:
+  modify_menu(ctxmenu, IDM_TOGVT220KB, vt220kb, _W("VT220 Keyboard"),
+    null
+  );
+
   //__ Context menu:
   modify_menu(ctxmenu, IDM_RESET, 0, _W("&Reset"),
     alt_fn ? W("Alt+F8") : ct_sh ? W("Ctrl+Shift+R") : null
@@ -470,8 +476,10 @@ win_update_menus(void)
   );
 
   uint scrollbar_checked = term->show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
+#ifdef allow_disabling_scrollbar
   if (!cfg.scrollbar)
     scrollbar_checked |= MF_GRAYED;
+#endif
   //__ Context menu:
   modify_menu(ctxmenu, IDM_SCROLLBAR, scrollbar_checked, _W("Scroll&bar"),
     null
@@ -548,6 +556,7 @@ win_init_ctxmenu(bool extended_menu, bool user_commands)
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_HTML, _W("HTML Screen Dump"));
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGLOG, 0);
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGCHARINFO, 0);
+    AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGVT220KB, 0);
   }
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_RESET, 0);
   if (extended_menu) {
@@ -1130,6 +1139,18 @@ window_min()
   win_set_iconic(true);
 }
 
+void
+toggle_vt220(void)
+{
+  toggle_vt220_term(win_active_terminal());;
+}
+
+void
+toggle_vt220_term(struct term * term)
+{
+  term->vt220_keys = !term->vt220_keys;
+}
+
 /*
    Simplified variant of term_cmd().
  */
@@ -1236,6 +1257,7 @@ static struct {
   {"toggle-char-info", {IDM_TOGCHARINFO}},
   {"export-html", {IDM_HTML}},
   {"print-screen", {.fct = print_screen}},
+  {"toggle-vt220", {.fct = toggle_vt220}},
 };
 
 bool
