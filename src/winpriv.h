@@ -66,6 +66,7 @@ extern void * load_library_func(string lib, string func);
 extern void update_available_version(bool ok);
 extern void set_dpi_auto_scaling(bool on);
 extern void win_update_transparency(bool opaque);
+extern void win_set_icon(char * s, int icon_index);
 
 extern void win_show_tip(int x, int y, int cols, int rows);
 extern void win_destroy_tip(void);

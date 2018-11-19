@@ -278,6 +278,8 @@ write_char(struct term* term, wchar c, int width)
     clear_cc(line, curs->x);
     line->chars[curs->x].chr = c;
     line->chars[curs->x].attr = curs->attr;
+    if (cfg.ligatures_support)
+      term_invalidate(term, 0, curs->y, curs->x, curs->y);
   }
 
   if (curs->wrapnext && curs->autowrap && width > 0) {
@@ -2201,6 +2203,7 @@ do_cmd(struct term* term)
 {
   char *s = term->cmd_buf;
   s[term->cmd_len] = 0;
+  //printf("OSC %d <%s>\n", term.cmd_num, s);
 
   if (*cfg.suppress_osc && contains(cfg.suppress_osc, term->cmd_num))
     // skip suppressed OSC command
@@ -2258,6 +2261,19 @@ do_cmd(struct term* term)
         cs_set_locale(s);
     when 7721:  // Copy window title to clipboard.
         win_copy_title();
+    when 7773: {  // Change icon.
+      uint icon_index = 0;
+      char *comma = strrchr(s, ',');
+      if (comma) {
+        char *start = comma + 1, *end;
+        icon_index = strtoul(start, &end, 0);
+        if (start != end && !*end)
+          *comma = 0;
+        else
+          icon_index = 0;
+      }
+      win_set_icon(s, icon_index);
+    }
     when 7770:  // Change font size.
       if (!strcmp(s, "?"))
         child_printf(term->child, "\e]7770;%u\e\\", win_get_font_size());
@@ -2691,6 +2707,15 @@ term_do_write(struct term* term, const char *buf, uint len)
           when 'R':  /* Linux palette reset */
             win_reset_colours();
             term->state = NORMAL;
+          when 'I':  /* OSC set icon file (dtterm, shelltool) */
+            term->cmd_num = 7773;
+            term->state = OSC_NUM;
+          when 'L':  /* OSC set icon label (dtterm, shelltool) */
+            term->cmd_num = 1;
+            term->state = OSC_NUM;
+          when 'l':  /* OSC set window title (dtterm, shelltool) */
+            term->cmd_num = 2;
+            term->state = OSC_NUM;
           when '0' ... '9':  /* OSC command number */
             term->cmd_num = c - '0';
             term->state = OSC_NUM;
@@ -2889,11 +2914,13 @@ term_do_write(struct term* term, const char *buf, uint len)
 void
 term_flush(struct term* term)
 {
-  term_do_write(term, term->inbuf, term->inbuf_pos);
-  free(term->inbuf);
-  term->inbuf = 0;
-  term->inbuf_pos = 0;
-  term->inbuf_size = 0;
+  if (term->suspbuf) {
+    term_do_write(term, term->suspbuf, term->suspbuf_pos);
+    free(term->suspbuf);
+    term->suspbuf = 0;
+    term->suspbuf_pos = 0;
+    term->suspbuf_size = 0;
+  }
 }
 
 void
@@ -2906,44 +2933,24 @@ term_write(struct term* term, const char *buf, uint len)
     can grow up to a moderate size.
   */
   if (term_selecting(term)) {
-#ifdef buffer_problems
-# ifdef patch_799
-    uint min_size = term->inbuf_pos + len;
-    if (min_size < term->inbuf_pos)
-      return;
-    /* min_size verified to not wrap-around, but term.inbuf_size*2 might */
-    if (min_size > term->inbuf_size) {
-      term->inbuf_size = max(term->inbuf_size * 2, max(4096, min_size));
-      term->inbuf = renewn(term->inbuf, term->inbuf_size);
-    }
-# else
-    if (term->inbuf_pos + len > term->inbuf_size) {
-      term->inbuf_size = max(term->inbuf_pos, term->inbuf_size * 4 + 4096);
-      term->inbuf = renewn(term->inbuf, term->inbuf_size);
-    }
-# endif
-    memcpy(term->inbuf + term->inbuf_pos, buf, len);
-    term->inbuf_pos += len;
-    return;
-#else
-    if (term->inbuf_pos + len > term->inbuf_size) {
-      term->inbuf_size = term->inbuf_size + 10 * len;
-      term->inbuf = renewn(term->inbuf, term->inbuf_size);
-    }
-    memcpy(term->inbuf + term->inbuf_pos, buf, len);
-    term->inbuf_pos += len;
-    if (term->inbuf_pos < 33) {
-      // hold back output in buffer and skip actual output for now
-printf("suspend buf len %d\n", term->inbuf_pos);
-      return;
-    }
-    else {
-      // flush output buffer
-printf("suspend buf len %d, flushing\n", term->inbuf_pos);
+#define suspmax 88800
+#define suspdelta 888
+    // if buffer size would be exceeded, flush; prevent uint overflow
+    if (len > suspmax - term->suspbuf_pos)
       term_flush(term);
+    // if buffer length does not exceed max size, append output
+    if (len <= suspmax - term->suspbuf_pos) {
+      // make sure buffer is large enough
+      if (term->suspbuf_pos + len > term->suspbuf_size) {
+        term->suspbuf_size += suspdelta;
+        term->suspbuf = renewn(term->suspbuf, term->suspbuf_size);
+      }
+      memcpy(term->suspbuf + term->suspbuf_pos, buf, len);
+      term->suspbuf_pos += len;
       return;
     }
-#endif
+    // if we cannot buffer, output directly;
+    // in this case, we've either flushed already or didn't need to
   }
 
   term_do_write(term, buf, len);

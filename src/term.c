@@ -287,7 +287,7 @@ term_free(struct term* term)
 
   term_clear_scrollback(term);
 
-  free(term->inbuf);
+  free(term->suspbuf);
 
   free(term->printbuf);
 
