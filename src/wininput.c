@@ -412,9 +412,9 @@ win_update_menus(void)
   );
 
   //__ System menu:
-  modify_menu(sysmenu, IDM_NEW, 0, _W("Ne&w"),
-    alt_fn ? W("Alt+F2") : ct_sh ? W("Ctrl+Shift+N") : null
-  );
+//  modify_menu(sysmenu, IDM_NEW, 0, _W("Ne&w"),
+//    alt_fn ? W("Alt+F2") : ct_sh ? W("Ctrl+Shift+N") : null
+//  );
 
   uint switch_move_enabled = win_tab_count() == 1;
   EnableMenuItem(ctxmenu, IDM_PREVTAB, switch_move_enabled);
@@ -602,7 +602,7 @@ win_init_menus(void)
   InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_COPYTITLE, _W("Copy &Title"));
   //__ System menu:
   InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_OPTIONS, _W("&Options..."));
-  InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_NEW, 0);
+//  InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_NEW, 0);
   InsertMenuW(sysmenu, SC_CLOSE, MF_SEPARATOR, 0, 0);
 }
 
@@ -1006,11 +1006,13 @@ cycle_pointer_style()
 
 /* Keyboard handling */
 
+/*
 static void
 send_syscommand2(WPARAM cmd, LPARAM p)
 {
   SendMessage(wnd, WM_SYSCOMMAND, cmd, p);
 }
+*/
 
 static void
 send_syscommand(WPARAM cmd)
@@ -1245,8 +1247,8 @@ static struct {
 #endif
 #ifdef support_other
 #warning these do not work properly
-  {"new-window", {IDM_NEW}},
-  {"new-monitor", {IDM_NEW_MONI}},
+//  {"new-window", {IDM_NEW}},
+//  {"new-monitor", {IDM_NEW_MONI}},
   {"fullscreen-zoom", {IDM_FULLSCREEN_ZOOM}},
   {"default-size-zoom", {IDM_DEFSIZE_ZOOM}},
 #endif
@@ -1678,16 +1680,16 @@ win_key_down(WPARAM wp, LPARAM lp)
     if (cfg.alt_fn_shortcuts && alt && !altgr && VK_F1 <= key && key <= VK_F24) {
       if (!ctrl) {
         switch (key) {
-          when VK_F2:
-            // defer send_syscommand(IDM_NEW) until key released
-            // monitor cursor keys to collect parameters meanwhile
-            newwin_key = key;
-            newwin_pending = true;
-            newwin_home = false; newwin_monix = 0; newwin_moniy = 0;
-            if (mods & MDK_SHIFT)
-              newwin_shifted = true;
-            else
-              newwin_shifted = false;
+//          when VK_F2:
+//            // defer send_syscommand(IDM_NEW) until key released
+//            // monitor cursor keys to collect parameters meanwhile
+//            newwin_key = key;
+//            newwin_pending = true;
+//            newwin_home = false; newwin_monix = 0; newwin_moniy = 0;
+//            if (mods & MDK_SHIFT)
+//              newwin_shifted = true;
+//            else
+//              newwin_shifted = false;
           when VK_F3:  send_syscommand(IDM_SEARCH);
           when VK_F4:  send_syscommand(SC_CLOSE);
           when VK_F8:  send_syscommand(IDM_RESET);
@@ -1708,7 +1710,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'C': term_copy(active_term);
         when 'V': win_paste();
         when 'I': open_popup_menu(true, "ls", mods);
-        when 'N': send_syscommand(IDM_NEW);
+//        when 'N': send_syscommand(IDM_NEW);
         when 'R': send_syscommand(IDM_RESET);
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(IDM_FULLSCREEN);
@@ -2389,6 +2391,7 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
       comp_state = COMP_ACTIVE;
   }
 
+/*
   if (newwin_pending) {
     if (key == newwin_key) {
       inline bool is_key_down(uchar vk) { return GetKeyState(vk) & 0x80; }
@@ -2430,6 +2433,7 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
       send_syscommand2(IDM_NEW_MONI, moni);
     }
   }
+*/
   if (transparency_pending) {
     transparency_pending--;
 #ifdef debug_transparency
