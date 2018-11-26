@@ -182,7 +182,7 @@ term_open(struct term* term)
   while (iswspace(*p))
     p++;
   if (*p)
-    win_open(wcsdup(buf->text));  // win_open frees its argument
+    win_open(wcsdup(buf->text), true);  // win_open frees its argument
 
   destroy_clip_workbuf(buf);
 }
@@ -423,6 +423,10 @@ term_cmd(struct term * term, char * cmdpat)
   char * cmd = cmdpat;
 #endif
 
+  char * path0 = getenv("PATH");
+  char * path1 = strdup("/bin:");
+  path1 = renewn(path1, strlen(path1) + strlen(path0) + 1);
+  strcat(path1, path0);
   FILE * cmdf = popen(cmd, "r");
   unsetenv("FATTY_TITLE");
   unsetenv("FATTY_OUTPUT");
@@ -443,6 +447,7 @@ term_cmd(struct term * term, char * cmdpat)
     if (term->bracketed_paste)
       child_write(term->child, "\e[201~", 6);
   }
+  free(path1);
 }
 
 #include <time.h>
@@ -506,7 +511,7 @@ term_create_html(struct term * term, FILE * hf)
     "    padding: %dpx;\n"
     "    line-height: %d%%;\n"
     "    font-size: %dpt;\n"
-    "    font-family: '%s', 'Lucida Console ', 'Consolas';\n"
+    "    font-family: '%s', 'Lucida Console ', 'Consolas', monospace;\n"
                             // ? 'Lucida Sans Typewriter', 'Courier New', 'Courier'
     "    color: #%02X%02X%02X;\n",
     PADDING, line_scale, font_size, font_name,
@@ -528,13 +533,13 @@ term_create_html(struct term * term, FILE * hf)
     }
 
     if (alpha >= 0) {
-      hprintf(hf, "    }\n");
-      hprintf(hf, "    #vt100 pre {\n");
-      hprintf(hf, "      background-color: rgba(%d, %d, %d, %.3f);\n",
+      hprintf(hf, "  }\n");
+      hprintf(hf, "  #vt100 pre {\n");
+      hprintf(hf, "    background-color: rgba(%d, %d, %d, %.3f);\n",
               red(bg_colour), green(bg_colour), blue(bg_colour),
               (255.0 - alpha) / 255);
-      hprintf(hf, "    }\n");
-      hprintf(hf, "    td {\n");
+      hprintf(hf, "  }\n");
+      hprintf(hf, "  .background {\n");
     }
 
     hprintf(hf, "    background-image: url('%s');\n", bg);
@@ -550,7 +555,7 @@ term_create_html(struct term * term, FILE * hf)
     hprintf(hf, "    background-color: #%02X%02X%02X;\n",
             red(bg_colour), green(bg_colour), blue(bg_colour));
   }
-  hprintf(hf, "    }\n");
+  hprintf(hf, "  }\n");
   hprintf(hf, "  .bd { font-weight: bold }\n");
   hprintf(hf, "  .it { font-style: italic }\n");
   hprintf(hf, "  .ul { text-decoration-line: underline }\n");
@@ -597,8 +602,8 @@ term_create_html(struct term * term, FILE * hf)
   hprintf(hf, "  </script>\n");
   hprintf(hf, "</head>\n\n");
   hprintf(hf, "<body onload='setup();'>\n");
-  hprintf(hf, "  <table border=0 cellpadding=0 cellspacing=0><tr><td xbackground=>\n");
-  hprintf(hf, "  <div id='vt100'>\n");
+  //hprintf(hf, "  <table border=0 cellpadding=0 cellspacing=0><tr><td>\n");
+  hprintf(hf, "  <div class=background id='vt100'>\n");
   hprintf(hf, "   <pre>");
 
   clip_workbuf * buf = get_selection(term, start, end, rect, true);
@@ -618,12 +623,6 @@ term_create_html(struct term * term, FILE * hf)
     {
       // flush chunk with equal attributes
       hprintf(hf, "<span class='%s", odd ? "od" : "ev");
-
-      // retrieve chunk
-      wchar save = buf->text[i];
-      buf->text[i] = 0;
-      char * s = cs__wcstoutf(&buf->text[i0]);
-      buf->text[i] = save;
 
       cattr * ca = &buf->cattrs[i0];
       int fgi = (ca->attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
@@ -769,8 +768,44 @@ term_create_html(struct term * term, FILE * hf)
           hprintf(hf, "' name='blink");
       }
 
-      // write chunk
-      hprintf(hf, "'>%s</span>", s);
+      // retrieve chunk of text from buffer
+      wchar save = buf->text[i];
+      buf->text[i] = 0;
+      char * s = cs__wcstoutf(&buf->text[i0]);
+      buf->text[i] = save;
+
+      // write chunk, apply HTML escapes
+      char * s1 = strpbrk(s, "<&");
+      if (s1) {
+        hprintf(hf, "'>");
+        char * s0 = s;
+        do {
+          if (*s0 == '<') {
+            hprintf(hf, "&lt;");
+            s0 ++;
+          }
+          else if (*s0 == '&') {
+            hprintf(hf, "&amp;");
+            s0 ++;
+          }
+          else {
+            char c = s1 ? *s1 : 0;
+            if (s1)
+              *s1 = 0;
+            hprintf(hf, "%s", s0);
+            if (s1) {
+              *s1 = c;
+              s0 = s1;
+            }
+            else
+              s0 += strlen(s0);
+          }
+          s1 = strpbrk(s0, "<&");
+        } while (*s0);
+        hprintf(hf, "</span>");
+      }
+      else
+        hprintf(hf, "'>%s</span>", s);
       free(s);
 
       // forward chunk pointer
@@ -793,7 +828,7 @@ term_create_html(struct term * term, FILE * hf)
 
   hprintf(hf, "</pre>\n");
   hprintf(hf, "  </div>\n");
-  hprintf(hf, "  </td></tr></table>\n");
+  //hprintf(hf, "  </td></tr></table>\n");
   hprintf(hf, "</body>\n");
 
   return hbuf;
@@ -831,7 +866,7 @@ term_export_html(bool do_open)
 
   if (do_open) {
     wchar * browse = cs__mbstowcs(htmlf);
-    win_open(browse);  // frees browse
+    win_open(browse, false);  // win_open frees its argument
   }
   free(htmlf);
 }

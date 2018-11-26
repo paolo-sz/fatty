@@ -576,7 +576,7 @@ user_command(struct child* child, int n)
    used by win_open
 */
 wstring
-child_conv_path(struct child* child, wstring wpath)
+child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
 {
   int wlen = wcslen(wpath);
   int len = wlen * cs_cur_max;
@@ -584,22 +584,22 @@ child_conv_path(struct child* child, wstring wpath)
   len = cs_wcntombn(path, wpath, len, wlen);
   path[len] = 0;
 
-  char *exp_path;  // expanded path
+  char * exp_path;  // expanded path
   if (*path == '~') {
     // Tilde expansion
-    char *name = path + 1;
-    char *rest = strchr(path, '/');
+    char * name = path + 1;
+    char * rest = strchr(path, '/');
     if (rest)
       *rest++ = 0;
     else
       rest = "";
-    char *base;
+    char * base;
     if (!*name)
       base = child->home;
     else {
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
       // Find named user's home directory
-      struct passwd *pw = getpwnam(name);
+      struct passwd * pw = getpwnam(name);
       base = (pw ? pw->pw_dir : 0) ?: "";
 #else
       // Pre-1.5 Cygwin simply copies HOME into pw_dir, which is no use here.
@@ -608,7 +608,7 @@ child_conv_path(struct child* child, wstring wpath)
     }
     exp_path = asform("%s/%s", base, rest);
   }
-  else if (*path != '/') {
+  else if (*path != '/' && adjust_dir) {
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
     // Handle relative paths. Finding the foreground process working directory
     // requires the /proc filesystem, which isn't available before Cygwin 1.5.
@@ -618,7 +618,7 @@ child_conv_path(struct child* child, wstring wpath)
     if (fg_pid <= 0)
       fg_pid = child->pid;
 
-    char *cwd = foreground_cwd(child);
+    char * cwd = foreground_cwd(child);
     exp_path = asform("%s/%s", cwd ?: child->home, path);
     if (cwd)
       free(cwd);
@@ -692,7 +692,7 @@ setup_sync()
 /*
   Called from Alt+F2 (or session launcher via child_launch).
  */
-void
+static void
 do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch)
 {
   setup_sync();
@@ -750,8 +750,16 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
       chdir(set_dir);
       setenv("PWD", set_dir, true);  // avoid softlink resolution
-      if (!launch)
+      // prevent shell startup from setting current directory to $HOME
+      // unless cloned/Alt+F2 (!launch)
+      if (!launch) {
         setenv("CHERE_INVOKING", "fatty", true);
+        // if cloned and then launched from Windows shortcut (!shortcut) 
+        // (by sanitizing taskbar icon grouping, #784, mintty/wsltty#96) 
+        // indicate to set proper directory
+        if (shortcut)
+          setenv("FATTY_PWD", set_dir, true);
+      }
 
       if (support_wsl)
         delete(set_dir);

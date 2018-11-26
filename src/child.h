@@ -40,7 +40,7 @@ extern bool child_is_parent(struct child* child);
 extern bool child_is_any_parent();
 extern char * foreground_prog(struct child* child);  // to be free()d
 extern void user_command(struct child* child, int n);
-extern wstring child_conv_path(struct child*, wstring);
+extern wstring child_conv_path(struct child* child, wstring, bool adjust_dir);
 extern void child_fork(struct child* child, int argc, char * argv[], int moni);
 extern void child_set_fork_dir(struct child* child, char *);
 extern void child_launch(struct child* child, int n, int argc, char * argv[], int moni);
