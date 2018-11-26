@@ -5,7 +5,9 @@
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include "termpriv.h"
-#include "winpriv.h"  // win_get_font, win_change_font
+#include "winpriv.h"  // win_get_font, win_change_font, win_led
+
+#include "win.h"
 #include "appinfo.h"
 #include "charset.h"
 #include "child.h"
@@ -1792,6 +1794,15 @@ do_csi(struct term* term, uchar c)
       term->locator_bottom = arg2 ?: y;
       term->locator_right = arg3 ?: x;
       term->locator_rectangle = true;
+    }
+    when 'q': {  /* DECLL: load keyboard LEDs */
+      if (arg0 > 20)
+        win_led(arg0 - 20, false);
+      else if (arg0)
+        win_led(arg0, true);
+      else {
+        win_led(0, false);
+      }
     }
   }
 }
