@@ -2225,7 +2225,7 @@ do_cmd(struct term* term)
     when 104: do_colour_osc(term, true, 4, true);
     when 105: do_colour_osc(term, true, 5, true);
     when 10:  do_colour_osc(term, false, FG_COLOUR_I, false);
-    when 11:  if (strchr("*_%", *term->cmd_buf)) {
+    when 11:  if (strchr("*_%=", *term->cmd_buf)) {
                 wchar * bn = cs__mbstowcs(term->cmd_buf);
                 wstrset(&cfg.background, bn);
                 free(bn);
