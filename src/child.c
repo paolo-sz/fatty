@@ -802,6 +802,14 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
     //setenv("FATTY_CHILD", "1", true);
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
+    if (shortcut) {
+      //show_info(asform("Starting <%s>", cs__wcstoutf(shortcut)));
+      shell_exec(shortcut);
+      //show_info("Started");
+      sleep(5);  // let starting settle, or it will fail; 1s normally enough
+      exit(0);
+    }
+
     execv("/proc/self/exe", argv);
 #else
     // /proc/self/exe isn't available before Cygwin 1.5, so use argv[0] instead.

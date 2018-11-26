@@ -87,6 +87,7 @@ extern bool win_key_up(WPARAM, LPARAM);
 extern void win_led(int led, bool set);
 
 extern wchar * dewsl(wchar * wpath);
+extern void shell_exec(wstring wpath);
 extern void win_init_drop_target(void);
 
 extern wstring wslicon(wchar * params);
@@ -99,6 +100,7 @@ extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_
 extern void win_set_ime_open(bool);
 
 extern void show_message(char * msg, UINT type);
+extern void show_info(char * msg);
 
 void win_process_timer_message(WPARAM message);
 

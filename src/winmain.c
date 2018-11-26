@@ -70,6 +70,7 @@ char *home;
 static char **main_argv;
 static int main_argc;
 static bool invoked_from_shortcut = false;
+wstring shortcut = 0;
 static bool invoked_with_appid = false;
 
 
@@ -297,10 +298,11 @@ set_dpi_auto_scaling(bool on)
 static int
 set_per_monitor_dpi_aware(void)
 {
+  int res = DPI_UNAWARE;
   // DPI handling V2: make EnableNonClientDpiScaling work, at last
-  if (pSetThreadDpiAwarenessContext &&
+  if (pSetThreadDpiAwarenessContext && cfg.handle_dpichanged == 2 &&
       pSetThreadDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2))
-    return DPI_AWAREV2;
+    res = DPI_AWAREV2;
   else if (cfg.handle_dpichanged == 1 &&
            pSetProcessDpiAwareness && pGetProcessDpiAwareness) {
     HRESULT hr = pSetProcessDpiAwareness(Process_Per_Monitor_DPI_Aware);
@@ -313,9 +315,12 @@ set_per_monitor_dpi_aware(void)
     int awareness = 0;
     if (SUCCEEDED(pGetProcessDpiAwareness(NULL, &awareness)) &&
         awareness == Process_Per_Monitor_DPI_Aware)
-      return DPI_AWAREV1;
+      res = DPI_AWAREV1;
   }
-  return DPI_UNAWARE;
+#ifdef debug_dpi
+  printf("dpi_awareness %d\n", res);
+#endif
+  return res;
 }
 
 /*
@@ -503,6 +508,10 @@ update_tab_titles()
   }
 }
 
+
+/*
+   Window title functions.
+ */
 
 void
 win_set_icon(char * s, int icon_index)
@@ -998,6 +1007,10 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
     return moni;  // number of monitors printed
 }
 
+
+/*
+   Window manipulation functions.
+ */
 
 /*
  * Minimise or restore the window in response to a server-side request.
@@ -1893,6 +1906,131 @@ win_close(void)
     child_kill();
 }
 
+
+/*
+   Diagnostic functions.
+ */
+
+void
+show_message(char * msg, UINT type)
+{
+  FILE * out = (type & (MB_ICONWARNING | MB_ICONSTOP)) ? stderr : stdout;
+  char * outmsg = cs__utftombs(msg);
+  if (fputs(outmsg, out) < 0 || fputs("\n", out) < 0 || fflush(out) < 0) {
+    wchar * wmsg = cs__utftowcs(msg);
+    message_box_w(0, wmsg, W(APPNAME), type, null);
+    delete(wmsg);
+  }
+  delete(outmsg);
+}
+
+void
+show_info(char * msg)
+{
+  show_message(msg, MB_OK);
+}
+
+static char *
+opterror_msg(string msg, bool utf8params, string p1, string p2)
+{
+  // Note: msg is in UTF-8,
+  // parameters are in current encoding unless utf8params is true
+  if (!utf8params) {
+    if (p1) {
+      wchar * w = cs__mbstowcs(p1);
+      p1 = cs__wcstoutf(w);
+      free(w);
+    }
+    if (p2) {
+      wchar * w = cs__mbstowcs(p2);
+      p2 = cs__wcstoutf(w);
+      free(w);
+    }
+  }
+
+  char * fullmsg;
+  int len = asprintf(&fullmsg, msg, p1, p2);
+  if (!utf8params) {
+    if (p1)
+      free((char *)p1);
+    if (p2)
+      free((char *)p2);
+  }
+
+  if (len > 0)
+    return fullmsg;
+  else
+    return null;
+}
+
+bool
+print_opterror(FILE * stream, string msg, bool utf8params, string p1, string p2)
+{
+  char * fullmsg = opterror_msg(msg, utf8params, p1, p2);
+  bool ok = false;
+  if (fullmsg) {
+    char * outmsg = cs__utftombs(fullmsg);
+    delete(fullmsg);
+    ok = fprintf(stream, "%s.\n", outmsg);
+    if (ok)
+      ok = fflush(stream);
+    delete(outmsg);
+  }
+  return ok;
+}
+
+static void
+print_error(string msg)
+{
+  print_opterror(stderr, msg, true, "", "");
+}
+
+static void
+option_error(char * msg, char * option, int err)
+{
+  finish_config();  // ensure localized message
+  // msg is in UTF-8, option is in current encoding
+  char * optmsg = opterror_msg(_(msg), false, option, null);
+  //char * fullmsg = asform("%s\n%s", optmsg, _("Try '--help' for more information"));
+  char * fullmsg = strdup(optmsg);
+  strappend(fullmsg, "\n");
+  if (err) {
+    strappend(fullmsg, asform("[Error info %d]\n", err));
+  }
+  strappend(fullmsg, _("Try '--help' for more information"));
+  show_message(fullmsg, MB_ICONWARNING);
+  exit_fatty(1);
+}
+
+static void
+show_iconwarn(wchar * winmsg)
+{
+  char * msg = _("Could not load icon");
+  char * in = cs__wcstoutf(cfg.icon);
+
+  char * fullmsg;
+  int len;
+  if (winmsg) {
+    char * wmsg = cs__wcstoutf(winmsg);
+    len = asprintf(&fullmsg, "%s '%s':\n%s", msg, in, wmsg);
+    free(wmsg);
+  }
+  else
+    len = asprintf(&fullmsg, "%s '%s'", msg, in);
+  free(in);
+  if (len > 0) {
+    show_message(fullmsg, MB_ICONWARNING);
+    free(fullmsg);
+  }
+  else
+    show_message(msg, MB_ICONWARNING);
+}
+
+
+/*
+   Message handling.
+ */
+
 #define dont_debug_messages
 #define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
@@ -2103,9 +2241,12 @@ static struct {
 //          HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
 //          int x, y;
 //          int moni = search_monitors(&x, &y, mon, true, 0);
-//          child_fork(term->child, main_argc, main_argv, moni);
+//          child_fork(main_argc, main_argv, moni);
 //        }
-//        when IDM_NEW_MONI: child_fork(term->child, main_argc, main_argv, (int)lp);
+//        when IDM_NEW_MONI: {
+//          int moni = lp;
+//          child_fork(main_argc, main_argv, moni);
+//        }
         when IDM_COPYTITLE: win_copy_title();
         when IDM_NEWTAB: win_tab_create();
         when IDM_KILLTAB: child_terminate(term->child);
@@ -2460,8 +2601,14 @@ static struct {
       }
     }
 
-    when WM_GETDPISCALEDSIZE:
+    when WM_GETDPISCALEDSIZE: {
       // here we could adjust the RECT passed to WM_DPICHANGED ...
+#ifdef debug_dpi
+      SIZE * sz = (SIZE *)lp;
+      printf("WM_GETDPISCALEDSIZE dpi %d w/h %d/%d\n", (int)wp, (int)sz->cx, (int)sz->cy);
+#endif
+      return 0;
+    }
 
     when WM_DPICHANGED: {
       if (!cfg.handle_dpichanged) {
@@ -2478,14 +2625,26 @@ static struct {
         LPRECT r = (LPRECT) lp;
 
 #ifdef debug_dpi
-        printf("WM_DPICHANGED %d -> %d (handled) (aware %d handle %d)\n", dpi, new_dpi, per_monitor_dpi_aware, cfg.handle_dpichanged);
+        printf("WM_DPICHANGED %d -> %d (handled) (aware %d handle %d) w/h %d/%d\n",
+               dpi, new_dpi, per_monitor_dpi_aware, cfg.handle_dpichanged,
+               (int)(r->right - r->left), (int)(r->bottom - r->top));
 #endif
         dpi = new_dpi;
 
+        int y = term->rows, x = term->cols;
         SetWindowPos(wnd, 0, r->left, r->top, r->right - r->left, r->bottom - r->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
 
         font_cs_reconfig(true);
+
+        // reestablish terminal size
+        if (term->rows != y || term->cols != x) {
+#ifdef debug_dpi
+          printf("term w/h %d/%d -> %d/%d, fixing\n", x, y, term->cols, term->rows);
+#endif
+          // win_fix_position also clips the window to desktop size
+          win_set_chars(y, x);
+        }
 
         is_in_dpi_change = false;
         return 0;
@@ -2561,121 +2720,6 @@ static struct {
   return DefWindowProcW(wnd, message, wp, lp);
 }
 
-
-void
-show_message(char * msg, UINT type)
-{
-  FILE * out = (type & (MB_ICONWARNING | MB_ICONSTOP)) ? stderr : stdout;
-  char * outmsg = cs__utftombs(msg);
-  if (fputs(outmsg, out) < 0 || fputs("\n", out) < 0 || fflush(out) < 0) {
-    wchar * wmsg = cs__utftowcs(msg);
-    message_box_w(0, wmsg, W(APPNAME), type, null);
-    delete(wmsg);
-  }
-  delete(outmsg);
-}
-
-static void
-show_info(char * msg)
-{
-  show_message(msg, MB_OK);
-}
-
-static char *
-opterror_msg(string msg, bool utf8params, string p1, string p2)
-{
-  // Note: msg is in UTF-8,
-  // parameters are in current encoding unless utf8params is true
-  if (!utf8params) {
-    if (p1) {
-      wchar * w = cs__mbstowcs(p1);
-      p1 = cs__wcstoutf(w);
-      free(w);
-    }
-    if (p2) {
-      wchar * w = cs__mbstowcs(p2);
-      p2 = cs__wcstoutf(w);
-      free(w);
-    }
-  }
-
-  char * fullmsg;
-  int len = asprintf(&fullmsg, msg, p1, p2);
-  if (!utf8params) {
-    if (p1)
-      free((char *)p1);
-    if (p2)
-      free((char *)p2);
-  }
-
-  if (len > 0)
-    return fullmsg;
-  else
-    return null;
-}
-
-bool
-print_opterror(FILE * stream, string msg, bool utf8params, string p1, string p2)
-{
-  char * fullmsg = opterror_msg(msg, utf8params, p1, p2);
-  bool ok = false;
-  if (fullmsg) {
-    char * outmsg = cs__utftombs(fullmsg);
-    delete(fullmsg);
-    ok = fprintf(stream, "%s.\n", outmsg);
-    if (ok)
-      ok = fflush(stream);
-    delete(outmsg);
-  }
-  return ok;
-}
-
-static void
-print_error(string msg)
-{
-  print_opterror(stderr, msg, true, "", "");
-}
-
-static void
-option_error(char * msg, char * option, int err)
-{
-  finish_config();  // ensure localized message
-  // msg is in UTF-8, option is in current encoding
-  char * optmsg = opterror_msg(_(msg), false, option, null);
-  //char * fullmsg = asform("%s\n%s", optmsg, _("Try '--help' for more information"));
-  char * fullmsg = strdup(optmsg);
-  strappend(fullmsg, "\n");
-  if (err) {
-    strappend(fullmsg, asform("[Error info %d]\n", err));
-  }
-  strappend(fullmsg, _("Try '--help' for more information"));
-  show_message(fullmsg, MB_ICONWARNING);
-  exit_fatty(1);
-}
-
-static void
-show_iconwarn(wchar * winmsg)
-{
-  char * msg = _("Could not load icon");
-  char * in = cs__wcstoutf(cfg.icon);
-
-  char * fullmsg;
-  int len;
-  if (winmsg) {
-    char * wmsg = cs__wcstoutf(winmsg);
-    len = asprintf(&fullmsg, "%s '%s':\n%s", msg, in, wmsg);
-    free(wmsg);
-  }
-  else
-    len = asprintf(&fullmsg, "%s '%s'", msg, in);
-  free(in);
-  if (len > 0) {
-    show_message(fullmsg, MB_ICONWARNING);
-    free(fullmsg);
-  }
-  else
-    show_message(msg, MB_ICONWARNING);
-}
 
 void
 report_pos(void)
@@ -3556,6 +3600,8 @@ main(int argc, char *argv[])
 
   bool wdpresent = true;
   if (invoked_from_shortcut) {
+    shortcut = wcsdup(sui.lpTitle);
+    setenv("MINTTY_SHORTCUT", path_win_w_to_posix(shortcut), true);
     wchar * icon = get_shortcut_icon_location(sui.lpTitle, &wdpresent);
 # ifdef debuglog
     fprintf(mtlog, "icon <%ls>\n", icon); fflush(mtlog);
@@ -3564,6 +3610,12 @@ main(int argc, char *argv[])
       cfg.icon = icon;
       icon_is_from_shortcut = true;
     }
+  }
+  else {
+    // We should check whether we've inherited a MINTTY_SHORTCUT setting
+    // from a previous invocation, and if so we should check whether the
+    // referred shortcut actually runs the same binary as we're running.
+    // If that's not the case, we should unset MINTTY_SHORTCUT here.
   }
 
   for (;;) {
