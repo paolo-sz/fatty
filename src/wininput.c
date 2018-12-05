@@ -770,7 +770,7 @@ translate_pos(int x, int y)
 {
   return (pos){
     .x = floorf((x - PADDING) / (float)cell_width),
-    .y = floorf((y - PADDING) / (float)cell_height),
+    .y = floorf((y - PADDING - win_tab_height()) / (float)cell_height),
     .r = (cfg.elastic_mouse && !win_active_terminal()->mouse_mode)
          ? (x - PADDING) % cell_width > cell_width / 2
          : 0
