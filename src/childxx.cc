@@ -4,6 +4,7 @@
 #include <stdio.h>
 #include <algorithm>
 
+#include <cygwin/version.h>
 #include <sys/cygwin.h>
 #include <unistd.h>
 #include <sys/wait.h>
@@ -13,6 +14,7 @@
 #include <utmp.h>
 #include <dirent.h>
 #include <sys/ioctl.h>
+#include <cygwin/version.h>
 
 int child_win_fd;
 int child_log_fd = -1;

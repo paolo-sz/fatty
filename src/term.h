@@ -581,6 +581,7 @@ extern void term_paint(struct term* term);
 extern void term_invalidate(struct term* term, int left, int top, int right, int bottom);
 extern void term_open(struct term* term);
 extern void term_copy(struct term* term);
+extern void term_copy_as(struct term* term, char what);
 extern void term_paste(struct term* term, wchar *, uint len, bool all);
 extern void term_send_paste(struct term* term);
 extern void term_cancel_paste(struct term* term);

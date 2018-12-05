@@ -149,7 +149,7 @@ sel_spread(struct term* term)
 }
 
 static bool
-hover_spread(struct term* term)
+hover_spread_empty(struct term* term)
 {
   term->hover_start = sel_spread_word(term, term->hover_start, false);
   term->hover_end = sel_spread_word(term, term->hover_end, true);
@@ -632,10 +632,10 @@ term_mouse_move(struct term* term, mod_keys mods, pos p)
       send_mouse_event(term, MA_MOVE, 0, mods, bp);
   }
 
-  if (mods == MDK_CTRL) {
+  if (mods == MDK_CTRL && term->has_focus) {
     p = get_selpoint(term, box_pos(term, p));
     term->hover_start = term->hover_end = p;
-    if (!hover_spread(term)) {
+    if (!hover_spread_empty(term)) {
       term->hovering = true;
       win_update(true);
     }

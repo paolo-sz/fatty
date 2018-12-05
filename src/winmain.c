@@ -418,7 +418,8 @@ refresh_tab_titles(bool trace)
 {
   BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
   {
-    (void)lp;
+    bool trace = (bool)lp;
+
     WINDOWINFO curr_wnd_info;
     curr_wnd_info.cbSize = sizeof(WINDOWINFO);
     GetWindowInfo(curr_wnd, &curr_wnd_info);
@@ -472,7 +473,7 @@ refresh_tab_titles(bool trace)
   }
 
   clear_tabinfo();
-  EnumWindows(wnd_enum_tabs, 0);
+  EnumWindows(wnd_enum_tabs, (LPARAM)trace);
   sort_tabinfo();
 #if defined(debug_tabbar) || defined(debug_win_switch)
   for (int w = 0; w < ntabinfo; w++)
@@ -777,7 +778,8 @@ win_synctabs(int level)
 {
   BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
   {
-    (void)lp;
+    int level = (int)lp;
+
     WINDOWINFO curr_wnd_info;
     curr_wnd_info.cbSize = sizeof(WINDOWINFO);
     GetWindowInfo(curr_wnd, &curr_wnd_info);
@@ -801,8 +803,9 @@ win_synctabs(int level)
     }
     return true;
   }
+
   if (cfg.geom_sync >= level)
-    EnumWindows(wnd_enum_tabs, 0);
+    EnumWindows(wnd_enum_tabs, (LPARAM)level);
 }
 
 
@@ -828,22 +831,33 @@ get_my_monitor_info(MONITORINFO *mip)
   GetMonitorInfo(mon, mip);
 }
 
+
 static void
 get_monitor_info(int moni, MONITORINFO *mip)
 {
   mip->cbSize = sizeof(MONITORINFO);
 
+  struct data_get_monitor_info {
+    int moni;
+    MONITORINFO *mip;
+  };
+
   BOOL CALLBACK
   monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
   {
-    (void)hdcMonitor, (void)monp, (void)dwData;
+    (void)hdcMonitor, (void)monp;
+    struct data_get_monitor_info * pdata = (struct data_get_monitor_info *)dwData;
 
-    GetMonitorInfo(hMonitor, mip);
+    GetMonitorInfo(hMonitor, pdata->mip);
 
-    return --moni > 0;
+    return --(pdata->moni) > 0;
   }
 
-  EnumDisplayMonitors(0, 0, monitor_enum, 0);
+  struct data_get_monitor_info data = {
+    .moni = moni,
+    .mip = mip
+  };
+  EnumDisplayMonitors(0, 0, monitor_enum, (LPARAM)&data);
 }
 
 #define dont_debug_display_monitors_mockup
@@ -927,27 +941,45 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
   }
 #endif
 
-  int moni = 0;
-  int moni_found = 0;
+  struct data_search_monitors {
+    HMONITOR lookup_mon;
+    int moni;
+    int moni_found;
+    int *minx, *miny;
+    RECT vscr;
+    HMONITOR refmon, curmon;
+    int get_primary;
+    bool print_monitors;
+  };
+
+  struct data_search_monitors data = {
+    .moni = 0,
+    .moni_found = 0,
+    .minx = minx,
+    .miny = miny,
+    .vscr = (RECT){0, 0, 0, 0},
+    .refmon = 0,
+    .curmon = lookup_mon ? 0 : MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST),
+    .get_primary = get_primary,
+    .print_monitors = !lookup_mon && !mip && get_primary
+  };
+
   * minx = 0;
   * miny = 0;
-  RECT vscr = (RECT){0, 0, 0, 0};
-  HMONITOR refmon = 0;
-  HMONITOR curmon = lookup_mon ? 0 : MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
-  bool print_monitors = !lookup_mon && !mip && get_primary;
 #ifdef debug_display_monitors
-  print_monitors = !lookup_mon;
+  data.print_monitors = !lookup_mon;
 #endif
 
   BOOL CALLBACK
   monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
   {
-    (void)hdcMonitor, (void)monp, (void)dwData;
+    struct data_search_monitors *data = (struct data_search_monitors *)dwData;
+    (void)hdcMonitor, (void)monp;
 
-    moni ++;
-    if (hMonitor == lookup_mon) {
+    (data->moni) ++;
+    if (hMonitor == data->lookup_mon) {
       // looking for index of specific monitor
-      moni_found = moni;
+      data->moni_found = data->moni;
       return FALSE;
     }
 
@@ -955,26 +987,26 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
     mi.cbSize = sizeof(MONITORINFO);
     GetMonitorInfo(hMonitor, &mi);
 
-    if (get_primary && (mi.dwFlags & MONITORINFOF_PRIMARY)) {
-      moni_found = moni;  // fallback to be overridden by monitor found later
-      refmon = hMonitor;
+    if (data->get_primary && (mi.dwFlags & MONITORINFOF_PRIMARY)) {
+      data->moni_found = data->moni;  // fallback to be overridden by monitor found later
+      data->refmon = hMonitor;
     }
 
     // determining smallest monitor width and height
     RECT fr = mi.rcMonitor;
-    if (*minx == 0 || *minx > fr.right - fr.left)
-      *minx = fr.right - fr.left;
-    if (*miny == 0 || *miny > fr.bottom - fr.top)
-      *miny = fr.bottom - fr.top;
-    vscr.top = min(vscr.top, fr.top);
-    vscr.left = min(vscr.left, fr.left);
-    vscr.right = max(vscr.right, fr.right);
-    vscr.bottom = max(vscr.bottom, fr.bottom);
+    if (*(data->minx) == 0 || *(data->minx) > fr.right - fr.left)
+      *(data->minx) = fr.right - fr.left;
+    if (*(data->miny) == 0 || *(data->miny) > fr.bottom - fr.top)
+      *(data->miny) = fr.bottom - fr.top;
+    data->vscr.top = min(data->vscr.top, fr.top);
+    data->vscr.left = min(data->vscr.left, fr.left);
+    data->vscr.right = max(data->vscr.right, fr.right);
+    data->vscr.bottom = max(data->vscr.bottom, fr.bottom);
 
-    if (print_monitors) {
+    if (data->print_monitors) {
       printf("Monitor %d %s %s width,height %4d,%4d (%4d,%4d...%4d,%4d)\n", 
-             moni,
-             hMonitor == curmon ? "current" : "       ",
+             data->moni,
+             hMonitor == data->curmon ? "current" : "       ",
              mi.dwFlags & MONITORINFOF_PRIMARY ? "primary" : "       ",
              (int)(fr.right - fr.left), (int)(fr.bottom - fr.top),
              (int)fr.left, (int)fr.top, (int)fr.right, (int)fr.bottom);
@@ -983,30 +1015,30 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
     return TRUE;
   }
 
-  EnumDisplayMonitors(0, 0, monitor_enum, 0);
+  EnumDisplayMonitors(0, 0, monitor_enum, (LPARAM)&data);
 
   if (!lookup_mon && !mip && !get_primary) {
-    *minx = vscr.right - vscr.left;
-    *miny = vscr.bottom - vscr.top;
-    return moni;
+    *minx = data.vscr.right - data.vscr.left;
+    *miny = data.vscr.bottom - data.vscr.top;
+    return data.moni;
   }
   else if (lookup_mon) {
-    return moni_found;
+    return data.moni_found;
   }
   else if (mip) {
-    if (!refmon)  // not detected primary monitor as requested?
+    if (!data.refmon)  // not detected primary monitor as requested?
       // determine current monitor
-      refmon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+      data.refmon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
     mip->cbSize = sizeof(MONITORINFO);
-    GetMonitorInfo(refmon, mip);
+    GetMonitorInfo(data.refmon, mip);
     if (get_primary == 2) {
-      *minx = vscr.left;
-      *miny = vscr.top;
+      *minx = data.vscr.left;
+      *miny = data.vscr.top;
     }
-    return moni;  // number of monitors
+    return data.moni;  // number of monitors
   }
   else
-    return moni;  // number of monitors printed
+    return data.moni;  // number of monitors printed
 }
 
 
@@ -2199,6 +2231,11 @@ static struct {
         when IDM_BREAK: child_break(term->child);
         when IDM_OPEN: term_open(term);
         when IDM_COPY: term_copy(term);
+        when IDM_COPY_TEXT: term_copy_as(term, 't');
+        when IDM_COPY_RTF: term_copy_as(term, 'r');
+        when IDM_COPY_HTXT: term_copy_as(term, 'h');
+        when IDM_COPY_HFMT: term_copy_as(term, 'f');
+        when IDM_COPY_HTML: term_copy_as(term, 'H');
         when IDM_COPASTE: term_copy(term); win_paste();
         when IDM_CLRSCRLBCK: term_clear_scrollback(term); term->disptop = 0;
         when IDM_TOGLOG: toggle_logging();

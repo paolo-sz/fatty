@@ -105,6 +105,7 @@ const config default_cfg = {
   // Mouse
   .copy_on_select = true,
   .copy_as_rtf = true,
+  .copy_as_html = 0,
   .clicks_place_cursor = false,
   .middle_click_action = MC_PASTE,
   .right_click_action = RC_MENU,
@@ -186,7 +187,7 @@ const config default_cfg = {
   .row_spacing = 0,
   .padding = 1,
   .ligatures_support = 0,
-  .handle_dpichanged = true,
+  .handle_dpichanged = 2,
   .check_version_update = 900,
   .word_chars = "",
   .word_chars_excl = "",
@@ -336,6 +337,7 @@ options[] = {
   // Mouse
   {"CopyOnSelect", OPT_BOOL, offcfg(copy_on_select)},
   {"CopyAsRTF", OPT_BOOL, offcfg(copy_as_rtf)},
+  {"CopyAsHTML", OPT_INT, offcfg(copy_as_html)},
   {"ClicksPlaceCursor", OPT_BOOL, offcfg(clicks_place_cursor)},
   {"MiddleClickAction", OPT_MIDDLECLICK, offcfg(middle_click_action)},
   {"RightClickAction", OPT_RIGHTCLICK, offcfg(right_click_action)},
@@ -424,7 +426,7 @@ options[] = {
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"Padding", OPT_INT, offcfg(padding)},
   {"LigaturesSupport", OPT_INT, offcfg(ligatures_support)},
-  {"HandleDPI", OPT_BOOL, offcfg(handle_dpichanged)},
+  {"HandleDPI", OPT_INT, offcfg(handle_dpichanged)},
   {"CheckVersionUpdate", OPT_INT, offcfg(check_version_update)},
   {"WordChars", OPT_STRING, offcfg(word_chars)},
   {"WordCharsExcl", OPT_STRING, offcfg(word_chars_excl)},
@@ -2480,44 +2482,51 @@ font_size_handler(control *ctrl, int event)
   }
 }
 
-void
-list_fonts(bool report)
+struct data_fontenum {
+  HDC dc;
+  bool report;
+  bool outer;
+};
+
+static int CALLBACK
+fontenum(const ENUMLOGFONTW *lpelf, const NEWTEXTMETRICW *lpntm, DWORD fontType, LPARAM lParam)
 {
-  HDC dc = GetDC(0);
+  const LOGFONTW * lfp = &lpelf->elfLogFont;
+  struct data_fontenum * pdata = (struct data_fontenum *)lParam;
+  (void)lpntm, (void)fontType;
 
-  int CALLBACK fontenum(const ENUMLOGFONTW *lpelf, const NEWTEXTMETRICW *lpntm, DWORD fontType, LPARAM lParam)
-  {
-    const LOGFONTW * lfp = &lpelf->elfLogFont;
-    (void)lpntm, (void)fontType;
+  if (pdata->outer) {
+    // here we recurse into the fonts of one font family
+    struct data_fontenum rdata = {
+      .dc = pdata->dc, .report = pdata->report, .outer = false
+    };
+    if ((lfp->lfPitchAndFamily & 3) == FIXED_PITCH && !lfp->lfCharSet)
+      EnumFontFamiliesW(pdata->dc, lfp->lfFaceName, (FONTENUMPROCW)fontenum, (LPARAM)&rdata);
+  }
+  else if (!lfp->lfItalic && !lfp->lfCharSet) {
+    if (lfp->lfFaceName[0] == '@')
+      // skip vertical font families
+      return 1;
 
-    if (lParam) {
-      if ((lfp->lfPitchAndFamily & 3) == FIXED_PITCH && !lfp->lfCharSet)
-        EnumFontFamiliesW(dc, lfp->lfFaceName, (FONTENUMPROCW)fontenum, 0);
-    }
-    else if (!lfp->lfItalic && !lfp->lfCharSet) {
-      if (lfp->lfFaceName[0] == '@')
-        // skip vertical font families
-        return 1;
-
-      wchar * tagsplit(wchar * fn, wstring style)
-      {
+    wchar * tagsplit(wchar * fn, wstring style)
+    {
 #if CYGWIN_VERSION_API_MINOR >= 74
-        wchar * tag = wcsstr(fn, style);
-        if (tag) {
-          int n = wcslen(style);
-          if (tag[n] <= ' ' && tag != fn && tag[-1] == ' ') {
-            tag[-1] = 0;
-            tag[n] = 0;
-            return tag;
-          }
+      wchar * tag = wcsstr(fn, style);
+      if (tag) {
+        int n = wcslen(style);
+        if (tag[n] <= ' ' && tag != fn && tag[-1] == ' ') {
+          tag[-1] = 0;
+          tag[n] = 0;
+          return tag;
         }
-#else
-        (void)fn; (void)style;
-#endif
-        return 0;
       }
+#else
+      (void)fn; (void)style;
+#endif
+      return 0;
+    }
 
-      /**
+    /**
 	Courier|
 	FreeMono|Medium
 	Inconsolata|Medium
@@ -2528,46 +2537,55 @@ list_fonts(bool report)
 	TIFAX|Alpha
 	HanaMinA|Regular
 	DejaVu Sans Mono|Book
-       */
-      wchar * fn = wcsdup(lfp->lfFaceName);
-      wchar * st = tagsplit(fn, W("Oblique"));
-      if ((st = tagsplit(fn, lpelf->elfStyle))) {
-        //   Source Code Pro ExtraLight|ExtraLight
-        //-> Source Code Pro|ExtraLight
-      }
-      else {
-        wchar * fnst = fn;
-#if CYGWIN_VERSION_API_MINOR >= 74
-        int digsi = wcscspn(fn, W("0123456789"));
-        int nodigsi = wcsspn(&fn[digsi], W("0123456789"));
-        if (nodigsi)
-          fnst = &fn[digsi + nodigsi];
-#endif
-        for (uint i = 0; i < lengthof(weights); i++)
-          if ((st = tagsplit(fnst, weights[i]))) {
-            //   Iosevka Term Slab Medium Obliqu|Regular
-            //-> Iosevka Term Slab|Medium
-            break;
-          }
-      }
-      if (!st || !*st)
-        st = (wchar *)lpelf->elfStyle;
-      if (!*st)
-        st = W("Regular");
-      st = wcsdup(st);
-      fn = renewn(fn, wcslen(fn) + 1);
-
-      if (report)
-        printf("%03ld %ls|%ls [2m[%ls|%ls][0m\n", (long int)lfp->lfWeight, fn, st, lfp->lfFaceName, lpelf->elfStyle);
-      else
-        enterfontlist(fn, lfp->lfWeight, st);
+     */
+    wchar * fn = wcsdup(lfp->lfFaceName);
+    wchar * st = tagsplit(fn, W("Oblique"));
+    if ((st = tagsplit(fn, lpelf->elfStyle))) {
+      //   Source Code Pro ExtraLight|ExtraLight
+      //-> Source Code Pro|ExtraLight
     }
+    else {
+      wchar * fnst = fn;
+#if CYGWIN_VERSION_API_MINOR >= 74
+      int digsi = wcscspn(fn, W("0123456789"));
+      int nodigsi = wcsspn(&fn[digsi], W("0123456789"));
+      if (nodigsi)
+        fnst = &fn[digsi + nodigsi];
+#endif
+      for (uint i = 0; i < lengthof(weights); i++)
+        if ((st = tagsplit(fnst, weights[i]))) {
+          //   Iosevka Term Slab Medium Obliqu|Regular
+          //-> Iosevka Term Slab|Medium
+          break;
+        }
+    }
+    if (!st || !*st)
+      st = (wchar *)lpelf->elfStyle;
+    if (!*st)
+      st = W("Regular");
+    st = wcsdup(st);
+    fn = renewn(fn, wcslen(fn) + 1);
 
-    return 1;
+    if (pdata->report)
+      printf("%03ld %ls|%ls [2m[%ls|%ls][0m\n", (long int)lfp->lfWeight, fn, st, lfp->lfFaceName, lpelf->elfStyle);
+    else
+      enterfontlist(fn, lfp->lfWeight, st);
   }
 
-  EnumFontFamiliesW(dc, 0, (FONTENUMPROCW)fontenum, 1);
-  ReleaseDC(0, dc);
+  return 1;
+}
+
+void
+list_fonts(bool report)
+{
+  struct data_fontenum data = {
+    .dc = GetDC(0),
+    .report = report,
+    .outer = true
+  };
+
+  EnumFontFamiliesW(data.dc, 0, (FONTENUMPROCW)fontenum, (LPARAM)&data);
+  ReleaseDC(0, data.dc);
 }
 
 static void
@@ -2900,6 +2918,7 @@ setup_config_box(controlbox * b)
   //__ Options - Mouse: panel title
                       _("Mouse functions"), null);
   ctrl_columns(s, 2, 50, 50);
+#ifdef copy_as_html_checkbox
   ctrl_checkbox(
     //__ Options - Mouse:
     s, _("Cop&y on select"),
@@ -2910,6 +2929,59 @@ setup_config_box(controlbox * b)
     s, _("Copy as &rich text"),
     dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
   )->column = 1;
+  ctrl_columns(s, 2, 50, 50);
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("Copy as &HTML"),
+    dlg_stdcheckbox_handler, &new_cfg.copy_as_html
+  )->column = 1;
+#else
+#ifdef copy_as_html_right
+  ctrl_radiobuttons(
+    //__ Options - Mouse:
+    s, _("Copy as &HTML"), 2,
+    dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+    _("&None"), 0,
+    _("&Partial"), 1,
+    _("&Default"), 2,
+    _("&Full"), 3,
+    null
+  )->column = 1;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("Cop&y on select"),
+    dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+  )->column = 0;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("Copy as &rich text"),
+    dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+  )->column = 0;
+#else
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("Cop&y on select"),
+    dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+  )->column = 0;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("Copy as &rich text"),
+    dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+  )->column = 1;
+  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+  ctrl_columns(s, 2, 100, 0);
+  ctrl_radiobuttons(
+    //__ Options - Mouse:
+    s, _("Copy as &HTML"), 4,
+    dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+    _("&None"), 0,
+    _("&Partial"), 1,
+    _("&Default"), 2,
+    _("&Full"), 3,
+    null
+  );
+#endif
+#endif
   ctrl_checkbox(
     //__ Options - Mouse:
     s, _("Clic&ks place command line cursor"),

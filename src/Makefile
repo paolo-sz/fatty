@@ -1,19 +1,68 @@
-SRC := charset.c child.c config.c ctrls.c minibidi.c std.c term.c termclip.c \
-	termline.c termmouse.c termout.c winclip.c winctrls.c windialog.c wininput.c \
-	winmain.c winprint.c wintext.c wintip.c mcwidth.c winsearch.c printers.c \
-	winimg.c sixel.c sixel_hls.c base64.c jumplist.c \
-	childxx.cc winxx.cc \
-	res.rc
-BIN ?= fatty.exe
-CXX = g++
-CC = gcc
-RC = windres
+#############################################################################
+# Interesting make targets:
+# - exe: Just the executable. This is the default.
+# - zip: Zip for standalone release.
+# - clean: Delete generated files.
 
-CXXFLAGS ?= -Wall -Wextra -std=gnu++11
-CFLAGS ?= -std=gnu99 -include std.h -Wall -Wextra -Wundef -Werror
-LDFLAGS := -static-libgcc -mwindows -lcomctl32 -limm32 -lwinspool -lole32 -luuid -ld2d1 -lwinmm -lusp10 -lgdiplus
+# make parameter CCOPT, e.g. for make CCOPT=-Wno-unused
+# make parameter LDOPT, e.g. for make LDOPT=-lnew-library
 
-TARGET := $(shell $(CC) -dumpmachine)
+#############################################################################
+# Variables intended for setting on the make command line.
+# - RELEASE: release number for packaging
+# - VERSION_SUFFIX: suffix for version information
+# - WSLTTY_VERSION: wsltty version to be checked for updates
+# - TARGET: target triple for cross compiling
+#	values: i686-pc-cygwin, x86_64-pc-cygwin, i686-pc-msys, x86_64-pc-msys
+# - DEBUG: define to enable debug build
+# - DMALLOC: define to enable the dmalloc heap debugging library
+#
+# The values of DEBUG and DMALLOC variables do not matter, it's just about
+# whether they're defined, so e.g. 'make DEBUG=1' will trigger a debug build.
+
+#############################################################################
+NAME := fatty
+
+.PHONY: exe src pkg zip pdf clean
+
+BINFOLDER = ../bin
+#BINDIR = $(BINFOLDER)/$(TARGET)
+BINDIR = $(BINFOLDER)/$(platform)
+
+ifdef TARGET
+  CC := $(TARGET)-gcc
+  CXX := $(TARGET)-g++
+  RC := $(TARGET)-windres
+else
+  CC := gcc
+  CXX := g++
+  RC := windres
+  TARGET := $(shell $(CC) -dumpmachine)
+endif
+
+ifeq ($(TARGET), i686-pc-cygwin)
+  platform := cygwin32
+  cygport_opts := --32
+  zip_files := ../docs/readme.html ../scripts/create_shortcut.js
+else ifeq ($(TARGET), x86_64-pc-cygwin)
+  platform := cygwin64
+  cygport_opts := --64
+  zip_files := ../docs/readme.html ../scripts/create_shortcut.js
+else ifeq ($(TARGET), i686-pc-msys)
+  MSYS=$(shell uname -r | sed -e 's,\..*,,')
+  ifeq ("$(MSYS)", "1")
+    platform := msys
+  else
+    platform := msys32
+  endif
+  zip_files := ../docs/readme-msys.html
+else ifeq ($(TARGET), x86_64-pc-msys)
+  platform := msys64
+  zip_files := ../docs/readme-msys.html
+else
+  $(error Target '$(TARGET)' not supported)
+endif
+
 CPPFLAGS := -DTARGET=$(TARGET)
 ifdef VERSION_SUFFIX
 CPPFLAGS += -DVERSION_SUFFIX="$(VERSION_SUFFIX)"
@@ -22,27 +71,120 @@ ifdef WSLTTY_VERSION
 CPPFLAGS += -DWSLTTY_VERSION="$(WSLTTY_VERSION)"
 endif
 
-BUILD_DIR = build/
+ifndef RELEASE
+  svn_rev := $(shell svn info 2>/dev/null | grep ^Revision: | sed 's/Revision: //')
+  ifneq ($(svn_rev),)
+    CPPFLAGS += -DSVN_DIR=$(shell basename "`svn info | grep ^URL:`") \
+                -DSVN_REV=$(svn_rev)
+  endif
+endif
 
-LDFLAGS := -L$(shell $(CC) -print-file-name=w32api) $(LDFLAGS)
+version := \
+  $(shell echo $(shell echo VERSION | cpp -P $(CPPFLAGS) --include appinfo.h))
+name_ver := $(NAME)-$(version)
+
+#############################################################################
+# compilation parameters
+
+c_srcs := $(wildcard *.c)
+c_srcs := $(filter-out textprint.c, $(c_srcs))
+cxx_srcs :=  $(wildcard *.cc)
+rc_srcs := $(wildcard *.rc)
+objs := $(c_srcs:.c=.o) $(cxx_srcs:.cc=.o) $(rc_srcs:.rc=.o)
+bins := $(patsubst %.o,$(BINDIR)/%.o,$(objs))
+
+ifneq ($(platform), msys)
+  # ensure avoidance of trampolines (a gcc mechanism to implement 
+  # some nested functions) as they cause some security software to choke
+  SECUR=-Wtrampolines
+endif
+COMMONFLAGS := -Wall -Wextra -Wundef -Werror $(SECUR)
+CFLAGS := -std=gnu99 -include std.h
+CXXFLAGS := -std=gnu++11
+
+ifeq ($(shell VER=`$(CC) -dumpversion`; expr $${VER%.*} '>=' 4.5), 1)
+  COMMONFLAGS += -mtune=atom
+endif
+
+scriptlib=-lusp10
+#downldlib=-lurlmon
+#downldlib="${SYSTEMROOT}/System32/urlmon.dll"
+downldlib=
+ifneq ($(platform), msys)
+  emojilib=-lgdiplus
+endif
+extralibs=$(scriptlib) $(downldlib) $(emojilib)
+LDFLAGS := -L$(shell $(CC) -print-file-name=w32api) -static-libgcc
+LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid -ld2d1
+#override LDFLAGS += -L$(shell $(CC) -print-file-name=w32api) -static-libgcc
+#override LDLIBS += -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid
 
 ifdef DEBUG
-  extraflags := -g -O0
+  COMMONFLAGS += -g
 else
-  extraflags := -Os
   CPPFLAGS += -DNDEBUG
+  COMMONFLAGS += -fomit-frame-pointer -O2
+  LDFLAGS += -s
 endif
-CFLAGS += $(extraflags)
-CXXFLAGS += $(extraflags)
 
-objfiles := $(addprefix $(BUILD_DIR), $(addsuffix .o, $(basename $(SRC))))
-depfiles := $(objfiles:.o=.d)
+ifdef DMALLOC
+  CPPFLAGS += -DDMALLOC
+  LDLIBS += -ldmallocth
+endif
 
-$(BIN): $(objfiles)
-	$(CXX) -o $(BIN) $(objfiles) $(LDFLAGS)
+#############################################################################
+# build
+
+all:	bin
+
+DEPOPT=-MMD -MP
+#DEPOPT=
+
+CCOPT=
+COMMONFLAGS:=$(COMMONFLAGS) $(CCOPT)
+CFLAGS += $(COMMONFLAGS)
+CXXFLAGS += $(COMMONFLAGS)
+
+$(BINDIR)/term%.o: term%.c
+	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) $< -o $(BINDIR)/term$*.o
+
+$(BINDIR)/%.o: %.c
+	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
+
+$(BINDIR)/%.o: %.cc
+	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
+
+$(BINDIR)/%.o: %.rc %.h %.mft
+	$(RC) -c 65001 --preprocessor '$(CC) -E -xc -DRC_INVOKED $(DEPOPT) $(CPPFLAGS)' $< $(BINDIR)/$*.o
+	-mv $*.d $(BINDIR)/
+
+exe := $(NAME).exe
+exe: $(exe)
+$(exe): $(objs)
+	$(CXX) $(LDFLAGS) $^ $(LDLIBS) $(LDOPT) -o $@
+	#-du -b $@
+
+bin := $(BINDIR)/$(NAME).exe
+bin: $(BINDIR) $(bin)
+$(BINDIR):
+	mkdir -p $(BINDIR)
+$(bin): $(bins)
+	$(CXX) $(LDFLAGS) $^ $(LDLIBS) $(LDOPT) -o $@
+	cp -f $@ $(BINFOLDER)/		# for 'dobin' install in .cygport
+	# support simpler debugging:
+	-test -f `basename $@` && cp -fp $@ ./ || true
+	# report size of exe:
+	#-type du && du -b $@ || true
+
+#-include $(wildcard *.d)
+-include $(wildcard $(BINDIR)/*.d)
 
 #############################################################################
 # generate
+
+#WGET=wget -N -t 1 --timeout=55
+WGET=curl -R -O --connect-timeout 55
+WGET+=-z $@
 
 rgb.t:	# /usr/share/X11/rgb.txt # X11 color names
 #	255 250 250		snow
@@ -50,30 +192,125 @@ rgb.t:	# /usr/share/X11/rgb.txt # X11 color names
 #		{255, 250, 250, "snow"},
 	sed -e 's,	, ,g' -e 's/ *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([^ ].*[^ ]\) */	{\1, \2, \3, "\4"},/' /usr/share/X11/rgb.txt > rgb.t
 
+combdata=combining.t combdouble.t combined.t
+unidata=$(combdata) ambiguous.t casefold.t bidiclasses.t wide.t
+emojidata=emojibase.t emojiseqs.t
+
+clean-unicode:
+	rm -f $(unidata) $(emojidata)
+
+combining.t:	# UnicodeData.txt Blocks.txt
+	uniset +cat=Me +cat=Mn +cat=Cf -00AD +1160-11FF +200B +D7B0-D7C6 +D7CB-D7FB c > combining.t
+
+ambiguous.t:	# WIDTH-A # UnicodeData.txt Blocks.txt
+	sh ./mkwidthA
+	uniset +WIDTH-A -cat=Me -cat=Mn -cat=Cf c > ambiguous.t
+
+combdouble=$(shell sed -e "s,^\([^;]*\);.*Mn;23[34];.*, +\1," -e t -e d UnicodeData.txt )
+
+combdouble.t:	# UnicodeData.txt Blocks.txt
+	uniset $(combdouble) c > combdouble.t
+
+WIDTH-A:	# UnicodeData.txt Blocks.txt EastAsianWidth.txt
+	sh ./mkwidthA
+
+wide.t:	# UnicodeData.txt Blocks.txt EastAsianWidth.txt
+	sh ./mkwide
+
+casefold.t:	# CaseFolding.txt
+	sh ./mkcasefold > casefold.t
+
+combined.t:	# UnicodeData.txt
+	sh ./mkcombinedt > combined.t
+
+bidiclasses.t:	# UnicodeData.txt
+	sh ./mkbidiclasses > bidiclasses.t
+
+unicode:	UnicodeData.txt Blocks.txt EastAsianWidth.txt
+
+full-emoji-list.html:
+	#$(WGET) http://www.unicode.org/emoji/charts-11.0/$@
+	$(WGET) http://www.unicode.org/emoji/charts/$@
+
+emoji-%.txt:
+	$(WGET) http://www.unicode.org/Public/emoji/11.0/$@
+
+%.txt:
+	$(WGET) http://www.unicode.org/Public/UNIDATA/$@
+
+emojibase.t:	# emoji-data.txt emoji-variation-sequences.txt emoji-sequences.txt emoji-zwj-sequences.txt
+	bash ./mkemojis base > $@
+
+emojiseqs.t:	# emoji-sequences.txt emoji-zwj-sequences.txt
+	bash ./mkemojis seqs > $@
+
+#compose_list=/usr/share/X11/locale/en_US.UTF-8/Compose
+#keysymdefs=/usr/include/X11/keysymdef.h
+
+composed.t:	# $(compose_list) $(keysymdefs)
+	sh ./mkcomposedt > composed.t
+
+XGETTEXT_OPTS=--package-name=fatty #--package-version=$(version)
+#XGETTEXT_OPTS+=--msgid-bugs-address=fatty@...
+
+_:	localization checkloc
+localization:
+	mkdir -p ../lang
+	xgettext --from-code=UTF-8 -k_ -k_W -k__ -c__ $(XGETTEXT_OPTS) *.c appinfo.h -o- | grep -v "^#, c-format" > ../lang/messages.pot
+	cd ../lang; for po in *.po; do [ "$$po" = en.po ] || msgmerge -U "$$po" messages.pot; done
+checkloc:
+	cd ../lang; ! grep "^#, fuzzy" *.po
+
 #############################################################################
+# release targets
 
-winprint.c:
-	ln -s ../attic/winprint.c .
+DIST := ../release
 
-prepare_build = mkdir -pv $(dir $@)
+ifndef RELEASE
+RELEASE=0
+endif
 
-depflags = -MMD -MT $@ 
-$(BUILD_DIR)%.o: %.cc Makefile $(debug_t) rgb.t
-	@$(prepare_build)
-	$(CXX) -c $(depflags) $(CPPFLAGS) $(CXXFLAGS) -o $@ $< 
-$(BUILD_DIR)%.o: %.c Makefile $(debug_t) rgb.t
-	@$(prepare_build)
-	$(CC) -c $(depflags) $(CPPFLAGS) $(CFLAGS) -o $@ $< 
-$(BUILD_DIR)%.o: %.rc Makefile $(debug_t) rgb.t
-	@$(prepare_build)
-	$(RC) --preprocessor '$(CC) -E -xc -DRC_INVOKED $(depflags) $(CPPFLAGS)' $< $@
-	@mv res.d $(BUILD_DIR)
+ifdef RELEASE
+pkg := $(name_ver)-$(RELEASE)
+cygport := ../cygwin/fatty.cygport
+pkg: $(pkg)
+$(pkg): $(cygport) $(src)
+	cp $(cygport) $(pkg).cygport
+	cygport $(cygport_opts) $(pkg).cygport almostall
+endif
 
--include $(depfiles)
+zip := $(DIST)/$(name_ver)-$(platform).zip
+zip: $(zip)
+$(zip): $(exe) $(zip_files)
+	mkdir -p $(DIST)
+	zip -9 -j $@ $^
+	#-du -b $@
 
-.PHONY: clean
+pdf := $(DIST)/$(name_ver).pdf
+pdf: $(pdf)
+$(pdf): ../docs/$(NAME).1
+	groff -t -man -Tps $< | ps2pdf - $@
+
+html := ../docs/$(NAME).1.html
+html: $(html)
+$(html): ../docs/$(NAME).1
+#	manserver ... $< > $@
+	groff -t -man -Thtml $< > $@
+
 clean:
-	-rm -rf build $(BIN) $(debug_t) rgb.t
+	#rm -rf *.d *.o $(NAME)*
+	rm -rf $(BINDIR)/*.d $(BINDIR)/*.o $(BINDIR)/$(NAME)*
+
+check:	checksrc checkresource checkloc
+
+# check whether supportedOS Id list is up-to-date
+stripsupp=sed -e "/supportedOS/ s,>.*,>," -e t -e d
+defsupp=/usr/lib/default-manifest.o
+checkresource:
+	$(stripsupp) res.mft > .osmin
+	cat "$(defsupp)" /dev/null | strings | $(stripsupp) > .osdef
+	if [ -f "$(defsupp)" ]; then diff .osdef .osmin; else true; fi
+	rm -f .osdef .osmin
 
 # check whether sources are free of remaining debugging code
 SRCDEBUG:= -e "^(f*printf|\#define debug)" # \# make-escape to #
@@ -88,7 +325,8 @@ checksrc:
 #############################################################################
 # development and debug targets
 
-debug_t = _wm.t _vk.t _winidm.t
+tags:	*.c *.h
+	ctags -w *.c *.h
 
 _wm.t:	# Windows Message names, only for debugging
 #	#define WM_NULL 0x0000
@@ -111,4 +349,20 @@ _vk.t:	# Windows Virtual Key Code names, only for debugging
 _winidm.t:	winids.h
 	sed -e 's/#define *\(IDM_[^ ]*\).*/	{\1, "\1"},/' -e t -e d winids.h > _winidm.t
 
+target:
+	echo TARGET $(TARGET)
+	echo platform $(platform)
+	echo BINDIR $(BINDIR)
+	echo $(bins)
+
+getappinfo=$(shell echo "$(1)" ; echo "$(1)" | cpp -P $(CPPFLAGS) --include appinfo.h)
+
+ver:
+	echo "$(call getappinfo,VERSION)"
+	echo "$(call getappinfo,POINT_VERSION)"
+	echo "$(call getappinfo,COMMA_VERSION)"
+	echo "$(call getappinfo,DECIMAL_VERSION)"
+	echo version $(version)
+
 #############################################################################
+# end
