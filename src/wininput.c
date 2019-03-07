@@ -463,6 +463,8 @@ win_update_menus(bool callback)
   modify_menu(ctxmenu, IDM_COPY, sel_enabled, _W("&Copy"),
     clip ? W("Ctrl+Ins") : ct_sh ? W("Ctrl+Shift+C") : null
   );
+  // enable/disable predefined extended context menu entries
+  // (user-definable ones are handled via fct_status())
   EnableMenuItem(ctxmenu, IDM_COPY_TEXT, sel_enabled);
   EnableMenuItem(ctxmenu, IDM_COPY_RTF, sel_enabled);
   EnableMenuItem(ctxmenu, IDM_COPY_HTXT, sel_enabled);
@@ -537,11 +539,11 @@ win_update_menus(bool callback)
     alt_fn ? W("Alt+F11") : ct_sh ? W("Ctrl+Shift+F") : null
   );
 
-  uint otherscreen_checked = term->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+//  uint otherscreen_checked = term->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
-  modify_menu(ctxmenu, IDM_FLIPSCREEN, otherscreen_checked, _W("Flip &Screen"),
-    alt_fn ? W("Alt+F12") : ct_sh ? W("Ctrl+Shift+S") : null
-  );
+//  modify_menu(ctxmenu, IDM_FLIPSCREEN, otherscreen_checked, _W("Flip &Screen"),
+//    alt_fn ? W("Alt+F12") : ct_sh ? W("Ctrl+Shift+S") : null
+//  );
 
   uint options_enabled = config_wnd ? MF_GRAYED : MF_ENABLED;
   EnableMenuItem(ctxmenu, IDM_OPTIONS, options_enabled);
@@ -672,7 +674,7 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_DEFSIZE_ZOOM, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_SCROLLBAR, 0);
   AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FULLSCREEN_ZOOM, 0);
-  AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FLIPSCREEN, 0);
+//  AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FLIPSCREEN, 0);
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   if (extended_menu) {
     //__ Context menu:
@@ -1172,6 +1174,15 @@ window_max()
 }
 
 static void
+window_toggle_max()
+{
+  if (IsZoomed(wnd))
+    win_maximise(0);
+  else
+    win_maximise(1);
+}
+
+static void
 window_restore()
 {
   win_maximise(0);
@@ -1206,6 +1217,16 @@ mflags_copy()
   return win_active_terminal()->selected ? MF_ENABLED : MF_GRAYED;
 }
 
+static uint
+mflags_paste()
+{
+  return
+    IsClipboardFormatAvailable(CF_TEXT) ||
+    IsClipboardFormatAvailable(CF_UNICODETEXT) ||
+    IsClipboardFormatAvailable(CF_HDROP)
+    ? MF_ENABLED : MF_GRAYED;
+}
+
 static void
 lock_title()
 {
@@ -1219,9 +1240,80 @@ mflags_lock_title()
 }
 
 static uint
-mflags_flipscreen()
+mflags_defsize()
 {
-  return win_active_terminal()->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+  return
+    IsZoomed(wnd) || win_active_terminal()->cols != cfg.cols || win_active_terminal()->rows != cfg.rows
+    ? MF_ENABLED : MF_GRAYED;
+}
+
+static uint
+mflags_fullscreen()
+{
+  return win_is_fullscreen ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
+mflags_zoomed()
+{
+  return IsZoomed(wnd) ? MF_CHECKED: MF_UNCHECKED;
+}
+
+//static uint
+//mflags_flipscreen()
+//{
+//  return win_active_terminal()->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+//}
+
+static uint
+mflags_scrollbar_outer()
+{
+  return win_active_terminal()->show_scrollbar ? MF_CHECKED : MF_UNCHECKED
+#ifdef allow_disabling_scrollbar
+         | cfg.scrollbar ? 0 : MF_GRAYED
+#endif
+  ;
+}
+
+static uint
+mflags_scrollbar_inner()
+{
+  if (cfg.scrollbar)
+    return win_active_terminal()->show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
+  else
+    return MF_GRAYED;
+}
+
+static uint
+mflags_open()
+{
+  return win_active_terminal()->selected ? MF_ENABLED : MF_GRAYED;
+}
+
+static uint
+mflags_logging()
+{
+  return ((logging || *cfg.log) ? MF_ENABLED : MF_GRAYED)
+       | (logging ? MF_CHECKED : MF_UNCHECKED)
+  ;
+}
+
+static uint
+mflags_char_info()
+{
+  return show_charinfo ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
+mflags_vt220()
+{
+  return win_active_terminal()->vt220_keys ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
+mflags_options()
+{
+  return config_wnd ? MF_GRAYED : MF_ENABLED;
 }
 
 // user-definable functions
@@ -1241,23 +1333,24 @@ static struct function_def cmd_defs[] = {
   //{"new-monitor", {IDM_NEW_MONI}, 0},
 
   //{"default-size", {IDM_DEFSIZE}, 0},
-  {"default-size", {IDM_DEFSIZE_ZOOM}, 0},
-  {"toggle-fullscreen", {IDM_FULLSCREEN}, 0},
-  {"fullscreen", {.fct = window_full}, 0},
-  {"win-max", {.fct = window_max}, 0},
+  {"default-size", {IDM_DEFSIZE_ZOOM}, mflags_defsize},
+  {"toggle-fullscreen", {IDM_FULLSCREEN}, mflags_fullscreen},
+  {"fullscreen", {.fct = window_full}, mflags_fullscreen},
+  {"win-max", {.fct = window_max}, mflags_zoomed},
+  {"win-toggle-max", {.fct = window_toggle_max}, mflags_zoomed},
   {"win-restore", {.fct = window_restore}, 0},
   {"win-icon", {.fct = window_min}, 0},
   {"close", {.fct = win_close}, 0},
 
   {"new", {.fct = newwin_begin}, 0},  // deprecated
   {"new-key", {.fct = newwin_begin}, 0},
-  {"options", {IDM_OPTIONS}, 0},
+  {"options", {IDM_OPTIONS}, mflags_options},
   {"menu-text", {.fct = menu_text}, 0},
   {"menu-pointer", {.fct = menu_pointer}, 0},
 
   {"search", {IDM_SEARCH}, 0},
-  {"scrollbar-outer", {IDM_SCROLLBAR}, 0},
-  {"scrollbar-inner", {.fct = toggle_scrollbar}, 0},
+  {"scrollbar-outer", {IDM_SCROLLBAR}, mflags_scrollbar_outer},
+  {"scrollbar-inner", {.fct = toggle_scrollbar}, mflags_scrollbar_inner},
   {"cycle-pointer-style", {.fct = cycle_pointer_style}, 0},
   {"cycle-transparency-level", {.fct = transparency_level}, 0},
 
@@ -1267,7 +1360,7 @@ static struct function_def cmd_defs[] = {
   {"copy-html-text", {IDM_COPY_HTXT}, mflags_copy},
   {"copy-html-format", {IDM_COPY_HFMT}, mflags_copy},
   {"copy-html-full", {IDM_COPY_HTML}, mflags_copy},
-  {"paste", {IDM_PASTE}, 0},
+  {"paste", {IDM_PASTE}, mflags_paste},
   {"copy-paste", {IDM_COPASTE}, mflags_copy},
   {"select-all", {IDM_SELALL}, 0},
   {"clear-scrollback", {IDM_CLRSCRLBCK}, 0},
@@ -1275,13 +1368,13 @@ static struct function_def cmd_defs[] = {
   {"lock-title", {.fct = lock_title}, mflags_lock_title},
   {"reset", {IDM_RESET}, 0},
   {"break", {IDM_BREAK}, 0},
-  {"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
-  {"open", {IDM_OPEN}, 0},
-  {"toggle-logging", {IDM_TOGLOG}, 0},
-  {"toggle-char-info", {IDM_TOGCHARINFO}, 0},
+  //{"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
+  {"open", {IDM_OPEN}, mflags_open},
+  {"toggle-logging", {IDM_TOGLOG}, mflags_logging},
+  {"toggle-char-info", {IDM_TOGCHARINFO}, mflags_char_info},
   {"export-html", {IDM_HTML}, 0},
   {"print-screen", {.fct = print_screen}, 0},
-  {"toggle-vt220", {.fct = toggle_vt220}, 0},
+  {"toggle-vt220", {.fct = toggle_vt220}, mflags_vt220},
 
   {"void", {.fct = nop}, 0}
 };
@@ -1866,7 +1959,7 @@ win_key_down(WPARAM wp, LPARAM lp)
           when VK_F8:  send_syscommand(IDM_RESET);
           when VK_F10: send_syscommand(IDM_DEFSIZE_ZOOM);
           when VK_F11: send_syscommand(IDM_FULLSCREEN_ZOOM);
-          when VK_F12: send_syscommand(IDM_FLIPSCREEN);
+//          when VK_F12: send_syscommand(IDM_FLIPSCREEN);
         }
       }
       return true;
@@ -1885,7 +1978,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'R': send_syscommand(IDM_RESET);
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(IDM_FULLSCREEN);
-        when 'S': send_syscommand(IDM_FLIPSCREEN);
+//        when 'S': send_syscommand(IDM_FLIPSCREEN);
         when 'T': win_tab_create();
         when 'W': child_terminate(active_term->child);
         when 'H': send_syscommand(IDM_SEARCH);

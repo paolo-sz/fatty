@@ -2943,6 +2943,7 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
 static wchar *
 get_shortcut_appid(wchar * shortcut)
 {
+#if CYGWIN_VERSION_API_MINOR >= 74
   HRESULT hres = OleInitialize(NULL);
   if (hres != S_FALSE && hres != S_OK)
     return 0;
@@ -2986,6 +2987,10 @@ rel1:
   link->lpVtbl->Release(link);
 
   return res;
+#else
+  (void)shortcut;
+  return 0;
+#endif
 }
 
 
