@@ -431,9 +431,6 @@ term_cmd(struct term * term, char * cmd)
   unsetenv("FATTY_SCREEN");
   unsetenv("FATTY_SELECT");
   unsetenv("FATTY_BUFFER");
-  unsetenv("FATTY_CWD");
-  unsetenv("FATTY_PID");
-  unsetenv("FATTY_PROG");
   if (cmdf) {
     if (term->bracketed_paste)
       child_write(term->child, "\e[200~", 6);

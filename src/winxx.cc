@@ -107,7 +107,7 @@ int win_tab_count() { return tabs.size(); }
 int win_active_tab() { return active_tab; }
 
 static void update_window_state() {
-    win_update_menus();
+    win_update_menus(false /*should this be true?*/);
     if (cfg.title_settable)
       SetWindowTextW(wnd, win_tab_get_title(active_tab));
     win_adapt_term_size(false, false);

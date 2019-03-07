@@ -300,9 +300,16 @@ add_launcher(HMENU menu, bool vsep, bool hsep)
 #define dont_debug_modify_menu
 
 void
-win_update_menus(void)
+win_update_menus(bool callback)
 {
+  if (callback) {
+    // invoked after WM_INITMENU
+  }
+  else
+    return;
+
   struct term* term = win_active_terminal();
+
   bool shorts = !term->shortcut_override;
   bool clip = shorts && cfg.clip_shortcuts;
   bool alt_fn = shorts && cfg.alt_fn_shortcuts;
@@ -319,7 +326,7 @@ win_update_menus(void)
   // label: if null, use current label
   // key: shortcut description; localize "Ctrl+Alt+Shift+"
   {
-    bool sysentry = item & 0xF000;
+    bool sysentry = item >= 0xF000;
 #ifdef debug_modify_menu
     if (sysentry)
       printf("mm %04X <%ls> <%ls>\n", item, label, key);
@@ -565,10 +572,14 @@ win_update_menus(void)
         *newcmdp++ = '\0';
 
       struct function_def * fudef = function_def(paramp);
+      // localize
+      wchar * label = _W(cmdp);
+      uint status = 0;
       if (fudef && fudef->fct_status) {
-        uint status = fudef->fct_status();
-        EnableMenuItem(menu, idm_cmd + n, status);
+        status = fudef->fct_status();
+        //EnableMenuItem(menu, idm_cmd + n, status);  // done by modify_menu
       }
+      modify_menu(menu, idm_cmd + n, status, label, null);
 
       cmdp = newcmdp;
       n++;
@@ -583,21 +594,25 @@ win_update_menus(void)
     }
     free(cmds);
   }
+  if (*cfg.ctx_user_commands)
+    check_commands(ctxmenu, cfg.ctx_user_commands, IDM_CTXMENUFUNCTION);
   if (*cfg.sys_user_commands)
     check_commands(sysmenu, cfg.sys_user_commands, IDM_SYSMENUFUNCTION);
 }
 
 static bool
-add_user_commands(HMENU menu, bool vsep, bool hsep, wstring title, wstring commands)
+add_user_commands(HMENU menu, bool vsep, bool hsep, wstring title, wstring commands, UINT_PTR idm_cmd)
 {
   if (*commands) {
     uint bar = vsep ? MF_MENUBARBREAK : 0;
     if (hsep)
       AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    AppendMenuW(menu, MF_DISABLED | bar, 0, title);
-    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+    if (title) {
+      AppendMenuW(menu, MF_DISABLED | bar, 0, title);
+      AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+    }
 
-    append_commands(menu, commands, IDM_USERCOMMAND, false, false);
+    append_commands(menu, commands, idm_cmd, false, false);
     return true;
   }
   else
@@ -605,7 +620,7 @@ add_user_commands(HMENU menu, bool vsep, bool hsep, wstring title, wstring comma
 }
 
 static void
-win_init_ctxmenu(bool extended_menu, bool user_commands)
+win_init_ctxmenu(bool extended_menu, bool with_user_commands)
 {
 #ifdef debug_modify_menu
   printf("win_init_ctxmenu\n");
@@ -665,7 +680,11 @@ win_init_ctxmenu(bool extended_menu, bool user_commands)
     AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   }
 
-  if (user_commands && *cfg.user_commands) {
+  if (with_user_commands && *cfg.ctx_user_commands) {
+    append_commands(ctxmenu, cfg.ctx_user_commands, IDM_CTXMENUFUNCTION, false, false);
+    AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+  }
+  else if (with_user_commands && *cfg.user_commands) {
     append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND, false, false);
     AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   }
@@ -742,9 +761,14 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
                     init = true;
                   }
         when 'u': ok = add_user_commands(ctxmenu, vsep, hsep & !vsep,
+                                         null,
+                                         cfg.ctx_user_commands, IDM_CTXMENUFUNCTION
+                                         )
+                       ||
+                       add_user_commands(ctxmenu, vsep, hsep & !vsep,
                                          //__ Context menu, user commands
                                          _W("User commands"),
-                                         cfg.user_commands
+                                         cfg.user_commands, IDM_USERCOMMAND
                                          );
         when 'W': wicons = true;
         when 's': add_switcher(ctxmenu, vsep, hsep & !vsep, wicons);
@@ -759,7 +783,7 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
     }
     menucfg++;
   }
-  win_update_menus();
+  win_update_menus(false);  // dispensable; also called via WM_INITMENU
 
   POINT p;
   if (use_text_cursor) {
@@ -768,6 +792,7 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
   }
   else
     GetCursorPos(&p);
+
   TrackPopupMenu(
     ctxmenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON,
     p.x, p.y, 0, wnd, null
@@ -1181,6 +1206,24 @@ mflags_copy()
   return win_active_terminal()->selected ? MF_ENABLED : MF_GRAYED;
 }
 
+static void
+lock_title()
+{
+  title_settable = false;
+}
+
+static uint
+mflags_lock_title()
+{
+  return title_settable ? MF_ENABLED : MF_GRAYED;
+}
+
+static uint
+mflags_flipscreen()
+{
+  return win_active_terminal()->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+}
+
 // user-definable functions
 static struct function_def cmd_defs[] = {
 #ifdef support_sc_defs
@@ -1206,7 +1249,8 @@ static struct function_def cmd_defs[] = {
   {"win-icon", {.fct = window_min}, 0},
   {"close", {.fct = win_close}, 0},
 
-  {"new", {.fct = newwin_begin}, 0},
+  {"new", {.fct = newwin_begin}, 0},  // deprecated
+  {"new-key", {.fct = newwin_begin}, 0},
   {"options", {IDM_OPTIONS}, 0},
   {"menu-text", {.fct = menu_text}, 0},
   {"menu-pointer", {.fct = menu_pointer}, 0},
@@ -1228,9 +1272,10 @@ static struct function_def cmd_defs[] = {
   {"select-all", {IDM_SELALL}, 0},
   {"clear-scrollback", {IDM_CLRSCRLBCK}, 0},
   {"copy-title", {IDM_COPYTITLE}, 0},
+  {"lock-title", {.fct = lock_title}, mflags_lock_title},
   {"reset", {IDM_RESET}, 0},
   {"break", {IDM_BREAK}, 0},
-  {"flipscreen", {IDM_FLIPSCREEN}, 0},
+  {"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
   {"open", {IDM_OPEN}, 0},
   {"toggle-logging", {IDM_TOGLOG}, 0},
   {"toggle-char-info", {IDM_TOGCHARINFO}, 0},

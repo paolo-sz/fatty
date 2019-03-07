@@ -102,6 +102,7 @@ enum {
 };
 
 // Options
+bool title_settable = true;
 static string border_style = 0;
 static string report_geom = 0;
 static bool report_moni = false;
@@ -2222,6 +2223,8 @@ static struct {
         ; // skip WM_SYSCOMMAND from Windows here (but process own ones)
       else if ((wp & ~0xF) >= IDM_GOTAB)
         win_gotab(wp - IDM_GOTAB);
+      else if ((wp & ~0xF) >= IDM_CTXMENUFUNCTION)
+        user_function(cfg.ctx_user_commands, wp - IDM_CTXMENUFUNCTION);
       else if ((wp & ~0xF) >= IDM_SYSMENUFUNCTION)
         user_function(cfg.sys_user_commands, wp - IDM_SYSMENUFUNCTION);
       else if ((wp & ~0xF) >= IDM_SESSIONCOMMAND)
@@ -2489,7 +2492,7 @@ static struct {
       // which is supposed to initiate this message;
       // however, if we skip the call here, the "New" item will 
       // not be initialised !?!
-      win_update_menus();
+      win_update_menus(true);
       return 0;
 
     when WM_MOVING:

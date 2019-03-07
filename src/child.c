@@ -552,6 +552,9 @@ user_command(struct child* child, wstring commands, int n)
           free(fgd);
         }
         term_cmd(child->term, progp);
+        unsetenv("FATTY_CWD");
+        unsetenv("FATTY_PROG");
+        unsetenv("FATTY_PID");
         break;
       }
       n--;
