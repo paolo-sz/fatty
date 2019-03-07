@@ -515,10 +515,10 @@ foreground_prog(struct child* child)
 }
 
 void
-user_command(struct child* child, int n)
+user_command(struct child* child, wstring commands, int n)
 {
-  if (*cfg.user_commands) {
-    char * cmds = cs__wcstombs(cfg.user_commands);
+  if (*commands) {
+    char * cmds = cs__wcstombs(commands);
     char * cmdp = cmds;
     char sepch = ';';
     if ((uchar)*cmdp <= (uchar)' ')

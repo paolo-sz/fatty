@@ -2222,10 +2222,12 @@ static struct {
         ; // skip WM_SYSCOMMAND from Windows here (but process own ones)
       else if ((wp & ~0xF) >= IDM_GOTAB)
         win_gotab(wp - IDM_GOTAB);
+      else if ((wp & ~0xF) >= IDM_SYSMENUFUNCTION)
+        user_function(cfg.sys_user_commands, wp - IDM_SYSMENUFUNCTION);
       else if ((wp & ~0xF) >= IDM_SESSIONCOMMAND)
         win_launch(wp - IDM_SESSIONCOMMAND);
       else if ((wp & ~0xF) >= IDM_USERCOMMAND)
-        user_command(term->child, wp - IDM_USERCOMMAND);
+        user_command(term->child, cfg.user_commands, wp - IDM_USERCOMMAND);
       else
       switch (wp & ~0xF) {  /* low 4 bits reserved to Windows */
         when IDM_BREAK: child_break(term->child);

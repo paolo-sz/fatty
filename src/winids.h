@@ -40,8 +40,9 @@
 #define IDM_HTML            0x0310
 
 #define IDM_USERCOMMAND     0x1000
-#define IDM_SESSIONCOMMAND  0x5000
-#define IDM_GOTAB           0x9000
+#define IDM_SESSIONCOMMAND  0x4000
+#define IDM_SYSMENUFUNCTION 0x7000
+#define IDM_GOTAB           0xA000
 
 #define IDM_NEWTAB          0x0800
 #define IDM_KILLTAB         0x0810
