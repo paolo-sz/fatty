@@ -885,6 +885,9 @@ static HDC dc;
 static enum { UPDATE_IDLE, UPDATE_BLOCKED, UPDATE_PENDING } update_state;
 static bool ime_open;
 
+static int update_skipped = 0;
+int lines_scrolled = 0;
+
 void do_update(void);
 static void do_update_cb(void* _) { (void)_; do_update(); }
 
@@ -1117,13 +1120,26 @@ do_update(void)
 
   struct term* term = win_active_terminal();
 
-  show_curchar_info('u');
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
     return;
   }
 
+  update_skipped++;
+  int output_speed = lines_scrolled / term->rows;
+  lines_scrolled = 0;
+  if (update_skipped < cfg.display_speedup && cfg.display_speedup < 10
+      && output_speed > update_skipped
+     )
+  {
+    win_set_timer(do_update_cb, null, 16);
+    return;
+  }
+  update_skipped = 0;
+
   update_state = UPDATE_BLOCKED;
+
+  show_curchar_info('u');
 
   dc = GetDC(wnd);
 

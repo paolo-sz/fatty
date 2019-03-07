@@ -100,7 +100,7 @@ icon_bitmap(HICON hIcon)
 /* Menu handling */
 
 static void
-append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons)
+append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, bool sysmenu)
 {
   char * cmds = cs__wcstoutf(commands);
   char * cmdp = cmds;
@@ -112,7 +112,10 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons)
   char * paramp;
   while ((paramp = strchr(cmdp, ':'))) {
     *paramp++ = '\0';
-    AppendMenuW(menu, MF_ENABLED, idm_cmd + n, _W(cmdp));
+    if (sysmenu)
+      InsertMenuW(menu, SC_CLOSE, MF_ENABLED, idm_cmd + n, _W(cmdp));
+    else
+      AppendMenuW(menu, MF_ENABLED, idm_cmd + n, _W(cmdp));
     cmdp = strchr(paramp, sepch);
     if (cmdp)
       *cmdp++ = '\0';
@@ -276,7 +279,7 @@ add_launcher(HMENU menu, bool vsep, bool hsep)
     //__ Context menu, session launcher ("virtual tabs")
     AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session launcher"));
     AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true);
+    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true, false);
     return true;
   }
   else
@@ -534,17 +537,16 @@ win_update_menus(void)
 }
 
 static bool
-add_user_commands(HMENU menu, bool vsep, bool hsep)
+add_user_commands(HMENU menu, bool vsep, bool hsep, wstring title, wstring commands)
 {
-  if (*cfg.user_commands) {
+  if (*commands) {
     uint bar = vsep ? MF_MENUBARBREAK : 0;
     if (hsep)
       AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    //__ Context menu, user commands
-    AppendMenuW(menu, MF_DISABLED | bar, 0, _W("User commands"));
+    AppendMenuW(menu, MF_DISABLED | bar, 0, title);
     AppendMenuW(menu, MF_SEPARATOR, 0, 0);
 
-    append_commands(menu, cfg.user_commands, IDM_USERCOMMAND, false);
+    append_commands(menu, commands, IDM_USERCOMMAND, false, false);
     return true;
   }
   else
@@ -613,7 +615,7 @@ win_init_ctxmenu(bool extended_menu, bool user_commands)
   }
 
   if (user_commands && *cfg.user_commands) {
-    append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND, false);
+    append_commands(ctxmenu, cfg.user_commands, IDM_USERCOMMAND, false, false);
     AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   }
 
@@ -629,11 +631,17 @@ win_init_menus(void)
 #endif
 
   sysmenu = GetSystemMenu(wnd, false);
-  //__ System menu:
-  InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_COPYTITLE, _W("Copy &Title"));
-  //__ System menu:
-  InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_OPTIONS, _W("&Options..."));
-//  InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_NEW, 0);
+
+  if (*cfg.sys_user_commands && false)
+    append_commands(sysmenu, cfg.sys_user_commands, IDM_USERCOMMAND, false, true);
+  else {
+    //__ System menu:
+    InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_COPYTITLE, _W("Copy &Title"));
+    //__ System menu:
+    InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_OPTIONS, _W("&Options..."));
+//    InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_NEW, 0);
+  }
+
   InsertMenuW(sysmenu, SC_CLOSE, MF_SEPARATOR, 0, 0);
 }
 
@@ -682,7 +690,11 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
                     win_init_ctxmenu(true, true);
                     init = true;
                   }
-        when 'u': ok = add_user_commands(ctxmenu, vsep, hsep & !vsep);
+        when 'u': ok = add_user_commands(ctxmenu, vsep, hsep & !vsep,
+                                         //__ Context menu, user commands
+                                         _W("User commands"),
+                                         cfg.user_commands
+                                         );
         when 'W': wicons = true;
         when 's': add_switcher(ctxmenu, vsep, hsep & !vsep, wicons);
         when 'l': ok = add_launcher(ctxmenu, vsep, hsep & !vsep);
@@ -1371,6 +1383,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   // Distinguish real LCONTROL keypresses from fake messages sent for AltGr.
   // It's a fake if the next message is an RMENU with the same timestamp.
+  // Or, as of buggy TeamViewer, if the RMENU comes soon after (#783).
   if (key == VK_CONTROL && !extended) {
     lctrl = true;
     lctrl_time = GetMessageTime();
@@ -1389,6 +1402,14 @@ win_key_down(WPARAM wp, LPARAM lp)
   bool lalt = is_key_down(VK_LMENU);
   bool ralt = is_key_down(VK_RMENU);
   bool alt = lalt | ralt;
+  bool external_hotkey = false;
+  if (ralt && !scancode && cfg.external_hotkeys) {
+    // Support external hot key injection by overriding disabled Alt+Fn
+    // and fix buggy StrokeIt (#833).
+    ralt = false;
+    if (cfg.external_hotkeys > 1)
+      external_hotkey = true;
+  }
   bool rctrl = is_key_down(VK_RCONTROL);
   bool ctrl = lctrl | rctrl;
   bool ctrl_lalt_altgr = cfg.ctrl_alt_is_altgr & ctrl & lalt & !ralt;
@@ -1697,7 +1718,11 @@ win_key_down(WPARAM wp, LPARAM lp)
 #endif
 
     // Alt+Fn shortcuts
-    if (cfg.alt_fn_shortcuts && alt && !altgr && VK_F1 <= key && key <= VK_F24) {
+    if ((cfg.alt_fn_shortcuts || external_hotkey)
+        && alt && !altgr
+        && VK_F1 <= key && key <= VK_F24
+       )
+    {
       if (!ctrl) {
         switch (key) {
 //          when VK_F2:
