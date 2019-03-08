@@ -141,7 +141,7 @@ win_linedraw_char(int i)
 char *
 fontpropinfo()
 {
-  //__ Options - Text: font properties information ("leading" ("ledding"): add. row spacing)
+  //__ Options - Text: font properties information: "Leading": total line padding (see option RowSpacing), Bold/Underline modes (font or manual, see options BoldAsFont/UnderlineManual/UnderlineColour)
   char * fontinfopat = _("Leading: %d, Bold: %s, Underline: %s");
   //__ Options - Text: font properties: value taken from font
   char * fontinfo_font = _("font");
@@ -2795,7 +2795,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     box.right += cell_width;
     box.left -= cell_width;
   }
-  if (clearpad)
+  if (clearpad && tx > 0)
     box.right += PADDING;
   RECT box2 = box;
   if (combining_double)

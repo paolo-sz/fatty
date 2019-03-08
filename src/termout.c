@@ -220,6 +220,7 @@ static void
 write_linefeed(struct term* term)
 {
   term_cursor *curs = &term->curs;
+  clear_wrapcontd(term, term->lines[curs->y], curs->y);
   if (curs->y == term->marg_bot)
     term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
   else if (curs->y < term->rows - 1)
@@ -277,12 +278,43 @@ write_char(struct term* term, wchar c, int width)
   last_char = c;
   last_attr = curs->attr;
 
+  void wrapparabidi(ushort parabidi, termline * line, int y)
+  {
+    line->lattr = (line->lattr & ~LATTR_BIDIMASK) | parabidi | LATTR_WRAPCONTD;
+
+#ifdef determine_parabidi_during_output
+    if (parabidi & (LATTR_BIDISEL | LATTR_AUTOSEL))
+      return;
+
+    // if direction autodetection pending:
+    // from current line, extend backward and forward to adjust 
+    // "paragraph" bidi attributes (esp. direction) to wrapped lines
+    termline * paraline = line;
+    int paray = y;
+    while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines()) {
+      paraline = fetch_line(--paray);
+      paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
+      release_line(paraline);
+    }
+    paraline = line;
+    paray = y;
+    while ((paraline->lattr & LATTR_WRAPPED) && paray < term.rows) {
+      paraline = fetch_line(++paray);
+      paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
+      release_line(paraline);
+    }
+#else
+    (void)y;
+#endif
+  }
+
   void put_char(wchar c)
   {
     clear_cc(line, curs->x);
     line->chars[curs->x].chr = c;
     line->chars[curs->x].attr = curs->attr;
-    line->lattr = (line->lattr & ~LATTR_BIDIMASK) | curs->bidimode;
+    if (!(line->lattr & LATTR_WRAPCONTD))
+      line->lattr = (line->lattr & ~LATTR_BIDIMASK) | curs->bidimode;
     if (cfg.ligatures_support)
       term_invalidate(term, 0, curs->y, curs->x, curs->y);
   }
@@ -290,6 +322,7 @@ write_char(struct term* term, wchar c, int width)
   if (curs->wrapnext && curs->autowrap && width > 0) {
     line->lattr |= LATTR_WRAPPED;
     line->wrappos = curs->x;
+    ushort parabidi = getparabidi(line);
     if (curs->y == term->marg_bot)
       term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
     else if (curs->y < term->rows - 1)
@@ -297,6 +330,7 @@ write_char(struct term* term, wchar c, int width)
     curs->x = 0;
     curs->wrapnext = false;
     line = term->lines[curs->y];
+    wrapparabidi(parabidi, line, curs->y);
   }
 
   if (term->insert && width > 0)
@@ -327,12 +361,14 @@ write_char(struct term* term, wchar c, int width)
         line->chars[curs->x] = term->erase_char;
         line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
         line->wrappos = curs->x;
+        ushort parabidi = getparabidi(line);
         if (curs->y == term->marg_bot)
           term_do_scroll(term, term->marg_top, term->marg_bot, 1, true);
         else if (curs->y < term->rows - 1)
           curs->y++;
         curs->x = 0;
         line = term->lines[curs->y];
+        wrapparabidi(parabidi, line, curs->y);
        /* Now we must term_check_boundary again, of course. */
         term_check_boundary(term, curs->x, curs->y);
         term_check_boundary(term, curs->x + width, curs->y);
@@ -532,6 +568,7 @@ do_esc(struct term* term, uchar c)
       {CPAIR('"', '?'), 1, 1, CSET_DEC_Greek_Supp},
       {CPAIR('"', '4'), 1, 1, CSET_DEC_Hebrew_Supp},
       {CPAIR('%', '0'), 1, 1, CSET_DEC_Turkish_Supp},
+      {CPAIR('&', '4'), 1, 0, CSET_NRCS_Cyrillic},
       {CPAIR('"', '>'), 1, 0, CSET_NRCS_Greek},
       {CPAIR('%', '='), 1, 0, CSET_NRCS_Hebrew},
       {CPAIR('%', '2'), 1, 0, CSET_NRCS_Turkish},
@@ -1100,6 +1137,11 @@ set_modes(struct term* term, bool state)
             term->curs.bidimode |= LATTR_BOXMIRROR;
           else
             term->curs.bidimode &= ~LATTR_BOXMIRROR;
+        when 2501: /* bidi direction auto-detection */
+          if (state)
+            term->curs.bidimode &= ~LATTR_BIDISEL;
+          else
+            term->curs.bidimode |= LATTR_BIDISEL;
       }
     }
     else { /* SM/RM: set/reset mode */
@@ -1248,6 +1290,8 @@ get_mode(struct term* term, bool privatemode, int arg)
       }
       when 2500: /* bidi box graphics mirroring */
         return 2 - !!(term->curs.bidimode & LATTR_BOXMIRROR);
+      when 2501: /* bidi direction auto-detection */
+        return 2 - !(term->curs.bidimode & LATTR_BIDISEL);
       otherwise:
         return 0;
     }
@@ -1848,11 +1892,17 @@ do_csi(struct term* term, uchar c)
     }
     when CPAIR(' ', 'k'):  /* SCP: ECMA-48 Set Character Path (LTR/RTL) */
       if (arg0 <= 2) {
-        curs->bidimode &= ~LATTR_BIDIMODE;
-        curs->bidimode |= arg0 << LATTR_BIDISHIFT;
+        if (arg0 == 2)
+          curs->bidimode |= LATTR_BIDIRTL;
+        else if (arg0 == 1)
+          curs->bidimode &= ~LATTR_BIDIRTL;
+        else {  // default
+          curs->bidimode &= ~(LATTR_BIDISEL | LATTR_BIDIRTL);
+        }
         // postpone propagation to line until char is written (put_char)
         //termline *line = term.lines[curs->y];
-        //line->lattr = (line->lattr & ~LATTR_BIDIMASK) | curs->bidimode;
+        //line->lattr &= ~(LATTR_BIDISEL | LATTR_BIDIRTL);
+        //line->lattr |= curs->bidimode & ~LATTR_BIDISEL | LATTR_BIDIRTL);
       }
   }
 }
@@ -2726,6 +2776,11 @@ term_do_write(struct term* term, const char *buf, uint len)
           when CSET_DEC_Turkish_Supp:
             if (c >= ' ' && c <= 0x7F) {
               wc = W(" ¡¢£￿¥￿§¨©ª«￿￿İ￿°±²³￿µ¶·￿¹º»¼½ı¿ÀÁÂÃÄÅÆÇÈÉÊËÌÍÎÏĞÑÒÓÔÕÖŒØÙÚÛÜŸŞßàáâãäåæçèéêëìíîïğñòóôõöœøùúûüÿş")
+                   [c - ' '];
+            }
+          when CSET_NRCS_Cyrillic:
+            if (c >= ' ' && c <= 0x7F) {
+              wc = W(" ￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿￿юабцдефгхийклмнопярстужвьызшэщчъЮАБЦДЕФГХИЙКЛМНОПЯРСТУЖВЬЫЗШЭЩЧЪ")
                    [c - ' '];
             }
           when CSET_NRCS_Greek:

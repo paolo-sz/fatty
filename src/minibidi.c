@@ -20,6 +20,14 @@
  * - generating mirroring data from Unicode
  * - fixed recognition of runs
  * - sanitized handling of directional markers
+ * - support bidi mode model of «BiDi in Terminal Emulators» recommendation
+     (https://terminal-wg.pages.freedesktop.org/bidi/):
+ * -  return resolved paragraph level (or -1 if none)
+ * -  switchable options for:
+ * -   autodetection (rules P2, P3)
+ * -   LTR/RTL fallback for autodetection
+ * -   explicit RTL
+ * -   mirroring of additional characters (Box drawing, quadrant blocks)
  *
  ************************************************************************/
 
@@ -412,6 +420,11 @@ mirror(ucschar c, bool box_mirror)
   return c;
 }
 
+
+#ifdef TEST_BIDI
+uchar bidi_levels[999];
+#endif
+
 /*
  * The Main Bidi Function, and the only function that should
  * be used by the outside world.
@@ -419,17 +432,18 @@ mirror(ucschar c, bool box_mirror)
  * line: a buffer of size count containing text to apply
  * the Bidirectional algorithm to.
  */
-
 int
-do_bidi(int paragraphLevel, bool explicitRTL, bool box_mirror, 
+do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror, 
         bidi_char * line, int count)
 {
   uchar currentEmbedding;
   uchar currentOverride;
   uchar tempType;
-  int i, j, yes;
+  int i, j;
 
   uchar bidi_class_of(int i) {
+#ifdef try_to_handle_CJK_here
+#warning does not always work in RTL mode, now filtered before calling do_bidi
     if (i && line[i].wc == UCSWIDE) {
       // try to fix double-width within right-to-left
       if (currentEmbedding & 1)
@@ -440,25 +454,64 @@ do_bidi(int paragraphLevel, bool explicitRTL, bool box_mirror,
       // OK for RTL U+5555: EN, NSM
       // not displayed in RTL: U+FF1C (class default -> ON)
     }
+#endif
     if (explicitRTL)
       return R;
     return bidi_class(line[i].wc);
   }
 
- /* Check the presence of R or AL types as optimization */
-  yes = 0;
+ /* Rule (P1)  NOT IMPLEMENTED
+  * P1. Split the text into separate paragraphs. A paragraph separator is
+  * kept with the previous paragraph. Within each paragraph, apply all the
+  * other rules of this algorithm.
+  */
+
+ /* Rule (P2), (P3)
+  * P2. In each paragraph, find the first character of type L, AL, or R 
+    while skipping over any characters between an isolate initiator and 
+    its matching PDI or, if it has no matching PDI, the end of the paragraph.
+  * P3. If a character is found in P2 and it is of type AL or R, then set
+  * the paragraph embedding level to one; otherwise, set it to zero.
+  */
+  int isolateLevel = 0;
+  int resLevel = -1;
+  bool hasRTL = false;
   for (i = 0; i < count; i++) {
     int type = bidi_class_of(i);
-    if (type == R || type == AL
-        || type == RLE || type == LRE || type == RLO || type == LRO || type == PDF
-        || type == LRI || type == RLI || type == FSI || type == PDI
-       ) {
-      yes = 1;
-      break;
+    if (type == LRI || type == RLI || type == FSI) {
+      hasRTL = true;
+      isolateLevel++;
+    }
+    else if (type == PDI) {
+      hasRTL = true;
+      isolateLevel--;
+    }
+    else if (isolateLevel == 0) {
+      if (type == R || type == AL) {
+        hasRTL = true;
+        if (resLevel < 0)
+          resLevel = 1;
+        break;
+      }
+      else if (type == RLE || type == LRE || type == RLO || type == LRO || type == PDF) {
+        hasRTL = true;
+        if (resLevel >= 0)
+          break;
+      }
+      else if (type == L) {
+        if (resLevel < 0)
+          resLevel = 0;
+      }
     }
   }
-  if (yes == 0)
-    return L;
+  if (autodir) {
+    if (resLevel >= 0)
+      paragraphLevel = resLevel;
+  }
+  else
+    resLevel = paragraphLevel;
+  if (!hasRTL && !paragraphLevel)
+    return 0;
 
  /* Initialize types, levels */
   uchar types[count];
@@ -505,40 +558,6 @@ do_bidi(int paragraphLevel, bool explicitRTL, bool box_mirror,
 #define trace_mark(tag)	
 #endif
 
- /* Rule (P1)  NOT IMPLEMENTED
-  * P1. Split the text into separate paragraphs. A paragraph separator is
-  * kept with the previous paragraph. Within each paragraph, apply all the
-  * other rules of this algorithm.
-  */
-
- /* Rule (P2), (P3)
-  * P2. In each paragraph, find the first character of type L, AL, or R 
-    while skipping over any characters between an isolate initiator and 
-    its matching PDI or, if it has no matching PDI, the end of the paragraph.
-  * P3. If a character is found in P2 and it is of type AL or R, then set
-  * the paragraph embedding level to one; otherwise, set it to zero.
-  */
-  int isolateLevel = 0;
-  if (paragraphLevel == -1) {
-    paragraphLevel = 0;
-    for (i = 0; i < count; i++) {
-      int type = bidi_class_of(i);
-      if (type == LRI || type == RLI || type == FSI)
-        isolateLevel++;
-      else if (type == PDI)
-        isolateLevel--;
-      else if (isolateLevel == 0) {
-        if (type == R || type == AL) {
-          paragraphLevel = 1;
-          break;
-        }
-        else if (type == L) {
-          //paragraphLevel = 0;
-          break;
-        }
-      }
-    }
-  }
   trace_bidi("[P2, P3]");
 
  /* Rule (X1)
@@ -995,6 +1014,10 @@ do_bidi(int paragraphLevel, bool explicitRTL, bool box_mirror,
     }
   }
 
+#ifdef TEST_BIDI
+  memcpy(bidi_levels, levels, count);
+#endif
+
  /* Rule (L4)
   * L4. A character that possesses the mirrored property as specified by
   * Section 4.7, Mirrored, must be depicted by a mirrored glyph if the
@@ -1036,5 +1059,5 @@ do_bidi(int paragraphLevel, bool explicitRTL, bool box_mirror,
   // This is not relevant for mintty as the combining characters are kept 
   // hidden from this algorithm and are maintained transparently to it.
 
-  return R;
+  return resLevel;
 }

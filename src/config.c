@@ -826,6 +826,7 @@ parse_option(string option, bool from_file)
 {
   const char *eq = strchr(option, '=');
   if (!eq) {
+    ((char *)option)[strcspn(option, "\r")] = 0;
     //__ %s: option name
     opterror(_("Ignoring option '%s' with missing value"), 
              from_file, option, 0);
@@ -3048,7 +3049,7 @@ setup_config_box(controlbox * b)
   );
   ctrl_radiobuttons(
     //__ Options - Mouse:
-    s, _("Modifier for overriding default"), 4,
+    s, _("Modifier for overriding default"), 5,
     dlg_stdradiobutton_handler, &new_cfg.click_target_mod,
     //__ Options - Mouse:
     _("&Shift"), MDK_SHIFT,
@@ -3056,6 +3057,8 @@ setup_config_box(controlbox * b)
     _("&Ctrl"), MDK_CTRL,
     //__ Options - Mouse:
     _("&Alt"), MDK_ALT,
+    //__ Options - Window:
+    _("&Win"), MDK_WIN,
     //__ Options - Mouse:
     _("&Off"), 0,
     null

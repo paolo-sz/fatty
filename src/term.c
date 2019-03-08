@@ -1268,6 +1268,15 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
 
 #define inclpos(p, size) ((p).x == size ? ((p).x = 0, (p).y++, 1) : ((p).x++, 0))
 
+void
+clear_wrapcontd(struct term* term, termline * line, int y)
+{
+  if (y < term->rows - 1 && (line->lattr & LATTR_WRAPPED)) {
+    line = term->lines[y + 1];
+    line->lattr &= ~(LATTR_WRAPCONTD | LATTR_AUTOSEL);
+  }
+}
+
 /*
  * Erase a large portion of the screen: the whole screen, or the
  * whole line, or parts thereof.
@@ -1332,6 +1341,7 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
     while (poslt(start, end)) {
       int cols = min(line->cols, line->size);
       if (start.x == cols) {
+        clear_wrapcontd(term, line, start.y);
         if (line_only)
           line->lattr &= ~(LATTR_WRAPPED | LATTR_WRAPPED2);
         else
@@ -2138,6 +2148,32 @@ term_paint(struct term* term)
       // clear overhang into left padding border
       win_text(-1, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr | LATTR_CLEARPAD, false);
     }
+
+#define dont_debug_bidi_paragraphs
+#ifdef debug_bidi_paragraphs
+    static cattr CATTR_WRAPPED = {.truebg = RGB(255, 0, 0),
+                             .attr = ATTR_DEFFG | TRUE_COLOUR << ATTR_BGSHIFT,
+                             .truefg = 0, .ulcolr = (colour)-1, .link = -1};
+    static cattr CATTR_CONTD = {.truebg = RGB(0, 0, 255),
+                             .attr = ATTR_DEFFG | TRUE_COLOUR << ATTR_BGSHIFT,
+                             .truefg = 0, .ulcolr = (colour)-1, .link = -1};
+    static cattr CATTR_CONTWRAPD = {.truebg = RGB(255, 0, 255),
+                             .attr = ATTR_DEFFG | TRUE_COLOUR << ATTR_BGSHIFT,
+                             .truefg = 0, .ulcolr = (colour)-1, .link = -1};
+    wchar diag = ((line->lattr & 0x0F00) >> 8) + '0';
+    if (diag > '9')
+      diag += 'A' - '0' - 10;
+    if (line->lattr & (LATTR_WRAPPED | LATTR_WRAPCONTD)) {
+      if ((line->lattr & (LATTR_WRAPPED | LATTR_WRAPCONTD)) == (LATTR_WRAPPED | LATTR_WRAPCONTD))
+        win_text(-1, i, &diag, 1, CATTR_CONTWRAPD, (cattr*)&CATTR_CONTWRAPD, line->lattr | LATTR_CLEARPAD, false);
+      else if (line->lattr & LATTR_WRAPPED)
+        win_text(-1, i, &diag, 1, CATTR_WRAPPED, (cattr*)&CATTR_WRAPPED, line->lattr | LATTR_CLEARPAD, false);
+      else
+        win_text(-1, i, &diag, 1, CATTR_CONTD, (cattr*)&CATTR_CONTD, line->lattr | LATTR_CLEARPAD, false);
+    }
+    else if (displine->lattr & (LATTR_WRAPPED | LATTR_WRAPCONTD))
+      win_text(-1, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr | LATTR_CLEARPAD, false);
+#endif
 
    /*
     * Finally, loop once more and actually do the drawing.

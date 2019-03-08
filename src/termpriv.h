@@ -30,6 +30,11 @@ extern void term_do_scroll(struct term* term, int topline, int botline, int line
 extern void term_erase(struct term* term, bool selective, bool line_only, bool from_begin, bool to_end);
 extern int  term_last_nonempty_line(struct term* term);
 
+/* Bidi paragraph support */
+extern void clear_wrapcontd(struct term* term, termline * line, int y);
+extern ushort getparabidi(termline * line);
+extern wchar * wcsline(struct term* term, termline * line);  // for debug output
+
 static inline bool
 term_selecting(struct term* term)
 { return term->mouse_state < 0 && term->mouse_state >= MS_SEL_LINE; }

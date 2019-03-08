@@ -396,7 +396,7 @@ send_keys(struct term* term, char *code, uint len, uint count)
 }
 
 static bool
-is_app_mouse(struct term* term, mod_keys *mods_p)
+check_app_mouse(struct term* term, mod_keys *mods_p)
 {
   if (term->locator_1_enabled)
     return true;
@@ -415,7 +415,7 @@ term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int co
     win_update_term(term, true);
   }
 
-  if (is_app_mouse(term, &mods)) {
+  if (check_app_mouse(term, &mods)) {
     if (term->mouse_mode == MM_X10)
       mods = 0;
     send_mouse_event(term, MA_CLICK, b, mods, box_pos(term, p));
@@ -461,7 +461,7 @@ term_mouse_click(struct term* term, mouse_button b, mod_keys mods, pos p, int co
     }
     else if (b == MBT_LEFT && mods == MDK_SHIFT && rca == RC_EXTEND)
       term->mouse_state = MS_PASTING;
-    else if (b == MBT_LEFT && mods == MDK_CTRL) {
+    else if (b == MBT_LEFT && (mods & ~cfg.click_target_mod) == MDK_CTRL) {
       if (count == cfg.opening_clicks) {
         // Open word under cursor
         p = get_selpoint(term, box_pos(term, p));
@@ -581,9 +581,8 @@ term_mouse_release(struct term* term, mouse_button b, mod_keys mods, pos p)
       moved_previously = true;
       last_dest = dest;
     }
-    break;
-    default:
-      if (is_app_mouse(term, &mods)) {
+    otherwise:
+      if (check_app_mouse(term, &mods)) {
         if (term->mouse_mode >= MM_VT200)
           send_mouse_event(term, MA_RELEASE, b, mods, box_pos(term, p));
       }
@@ -641,7 +640,7 @@ term_mouse_move(struct term* term, mod_keys mods, pos p)
       send_mouse_event(term, MA_MOVE, 0, mods, bp);
   }
 
-  if (mods == MDK_CTRL && term->has_focus) {
+  if (!check_app_mouse(term, &mods) && (mods & ~cfg.click_target_mod) == MDK_CTRL && term->has_focus) {
     p = get_selpoint(term, box_pos(term, p));
     term->hover_start = term->hover_end = p;
     if (!hover_spread_empty(term)) {
@@ -671,7 +670,7 @@ term_mouse_wheel(struct term* term, int delta, int lines_per_notch, mod_keys mod
   static int accu;
   accu += delta;
 
-  if (is_app_mouse(term,&mods)) {
+  if (check_app_mouse(term, &mods)) {
     if (strstr(cfg.suppress_wheel, "report"))
       return;
     // Send as mouse events, with one event per notch.

@@ -822,7 +822,7 @@ release_line(termline *line)
  * fed to the algorithm on each line of the display.
  */
 static int
-term_bidi_cache_hit(struct term* term, int line, termchar *lbefore, int width)
+term_bidi_cache_hit(struct term* term, int line, termchar *lbefore, ushort lattr, int width)
 {
   int i;
 
@@ -835,6 +835,9 @@ term_bidi_cache_hit(struct term* term, int line, termchar *lbefore, int width)
   if (!term->pre_bidi_cache[line].chars)
     return false;       /* cache doesn't contain _this_ line */
 
+  if (term->pre_bidi_cache[line].lattr != (lattr & LATTR_BIDIMASK))
+    return false;       /* bidi attributes may be different */
+
   if (term->pre_bidi_cache[line].width != width)
     return false;       /* line is wrong width */
 
@@ -846,8 +849,9 @@ term_bidi_cache_hit(struct term* term, int line, termchar *lbefore, int width)
 }
 
 static void
-term_bidi_cache_store(struct term* term, int line, termchar *lbefore, termchar *lafter,
-                      bidi_char *wcTo, int width, int size, int bidisize)
+term_bidi_cache_store(struct term* term, int line, 
+                      termchar *lbefore, termchar *lafter, bidi_char *wcTo, 
+                      ushort lattr, int width, int size, int bidisize)
 {
   int i;
 
@@ -858,6 +862,7 @@ term_bidi_cache_store(struct term* term, int line, termchar *lbefore, termchar *
     term->post_bidi_cache = renewn(term->post_bidi_cache, term->bidi_cache_size);
     while (j < term->bidi_cache_size) {
       term->pre_bidi_cache[j].chars = term->post_bidi_cache[j].chars = null;
+      term->pre_bidi_cache[j].lattr = -1;
       term->pre_bidi_cache[j].width = term->post_bidi_cache[j].width = -1;
       term->pre_bidi_cache[j].forward = term->post_bidi_cache[j].forward = null;
       term->pre_bidi_cache[j].backward = term->post_bidi_cache[j].backward = null;
@@ -870,6 +875,7 @@ term_bidi_cache_store(struct term* term, int line, termchar *lbefore, termchar *
   free(term->post_bidi_cache[line].forward);
   free(term->post_bidi_cache[line].backward);
 
+  term->pre_bidi_cache[line].lattr = lattr & LATTR_BIDIMASK;
   term->pre_bidi_cache[line].width = width;
   term->pre_bidi_cache[line].chars = newn(termchar, size);
   term->post_bidi_cache[line].width = width;
@@ -912,6 +918,57 @@ void trace_bidi(char * tag, bidi_char * wc)
 #define trace_bidi(tag, wc)	
 #endif
 
+wchar *
+wcsline(struct term* term, termline * line)
+{
+  static wchar * wcs = 0;
+  wcs = renewn(wcs, term->cols + 1);
+  for (int i = 0; i < term->cols; i++)
+    wcs[i] = line->chars[i].chr;
+  wcs[term->cols] = 0;
+  return wcs;
+}
+
+ushort
+getparabidi(termline * line)
+{
+  ushort parabidi = line->lattr & LATTR_BIDIMASK;
+  if (parabidi & (LATTR_BIDISEL | LATTR_AUTOSEL))
+    return parabidi;
+
+  // autodetection of line direction (UBA P2 and P3)
+  bool det = false;
+  int isolateLevel = 0;
+  int paragraphLevel = !!(parabidi & LATTR_BIDIRTL);
+  for (int i = 0; i < line->cols; i++) {
+    int type = bidi_class(line->chars[i].chr);
+    if (type == LRI || type == RLI || type == FSI)
+      isolateLevel++;
+    else if (type == PDI)
+      isolateLevel--;
+    else if (isolateLevel == 0) {
+      if (type == R || type == AL) {
+        paragraphLevel = 1;
+        det = true;
+        break;
+      }
+      else if (type == L) {
+        paragraphLevel = 0;
+        det = true;
+        break;
+      }
+    }
+  }
+  if (paragraphLevel & 1)
+    parabidi |= LATTR_AUTORTL;
+  else
+    parabidi &= ~LATTR_AUTORTL;
+  if (det)
+    parabidi |= LATTR_AUTOSEL;
+
+  return parabidi;
+}
+
 /*
  * Prepare the bidi information for a screen line. Returns the
  * transformed list of termchars, or null if no transformation at
@@ -923,8 +980,24 @@ void trace_bidi(char * tag, bidi_char * wc)
 termchar *
 term_bidi_line(struct term* term, termline *line, int scr_y)
 {
-  int level = ((line->lattr & LATTR_BIDIMODE) >> LATTR_BIDISHIFT) - 1;
+  bool autodir = !(line->lattr & (LATTR_BIDISEL | LATTR_AUTOSEL));
+  int level = (line->lattr & LATTR_BIDIRTL) ? 1 : 0;
   bool explicitRTL = (line->lattr & LATTR_NOBIDI) && level == 1;
+  // within a "paragraph" (in a wrapped continuation line), 
+  // consult previous line (if there is one)
+  if (autodir && line->lattr & LATTR_WRAPCONTD && scr_y > -sblines(term)) {
+    termline *prevline = fetch_line(term, term->disptop + scr_y - 1);
+    if (prevline->lattr & LATTR_WRAPPED)
+      line->lattr = (line->lattr & ~LATTR_BIDIMASK) | getparabidi(prevline);
+    release_line(prevline);
+    /// if not determined, loop back to beginning of paragraph
+
+    autodir = !(line->lattr & (LATTR_BIDISEL | LATTR_AUTOSEL));
+    level = (line->lattr & LATTR_BIDIRTL) ? 1 : 0;
+  }
+  // if we autodetect the direction here, determine it
+  if (line->lattr & LATTR_AUTOSEL)
+    level = (line->lattr & LATTR_AUTORTL) ? 1 : 0;
 
   if (((line->lattr & LATTR_NOBIDI) && !explicitRTL)
       || term->disable_bidi
@@ -938,7 +1011,7 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
 
  /* Do Arabic shaping and bidi. */
 
-  if (!term_bidi_cache_hit(term, scr_y, line->chars, term->cols)) {
+  if (!term_bidi_cache_hit(term, scr_y, line->chars, line->lattr, term->cols)) {
 
     if (term->wcFromTo_size < term->cols) {
       term->wcFromTo_size = term->cols;
@@ -1028,10 +1101,37 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
     }
 
     trace_bidi("=", term->wcFrom);
-    do_bidi(level, explicitRTL,
-            line->lattr & LATTR_BOXMIRROR,
-            term->wcFrom, ib);
-    trace_bidi(":", term->wcFrom);
+    int rtl = do_bidi(autodir, level, explicitRTL,
+                      line->lattr & LATTR_BOXMIRROR,
+                      term->wcFrom, ib);
+    trace_bidi(":", term.wcFrom);
+
+    if (rtl >= 0)
+      line->lattr |= LATTR_AUTOSEL;
+
+#ifdef refresh_parabidi_after_bidi
+    if (line->lattr & LATTR_WRAPPED && scr_y + 1 < term.rows) {
+      int conty = scr_y + 1;
+      do {
+        termline *contline = term->lines[conty];
+        if (!(contline->lattr & LATTR_WRAPCONTD))
+          break;
+        if (rtl)
+          contline->lattr |= (LATTR_AUTORTL | LATTR_AUTOSEL);
+        else {
+          contline->lattr &= ~LATTR_AUTORTL;
+          contline->lattr |= LATTR_AUTOSEL;
+        }
+        /// if changed, invalidate display line
+        /// also propagate back to beginning of paragraph
+
+        if (!(contline->lattr & LATTR_WRAPPED))
+          break;
+        conty++;
+      } while (conty < term->rows);
+    }
+#endif
+
     do_shape(term->wcFrom, term->wcTo, ib);
     trace_bidi("~", term->wcTo);
 
@@ -1065,7 +1165,7 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
       ib++;
     }
     term_bidi_cache_store(term, scr_y, line->chars, term->ltemp, term->wcTo,
-                          term->cols, line->size, ib);
+                          line->lattr, term->cols, line->size, ib);
 
     lchars = term->ltemp;
   }

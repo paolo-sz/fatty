@@ -271,7 +271,7 @@ add_switcher(HMENU menu, bool vsep, bool hsep, bool use_win_icons)
   uint bar = vsep ? MF_MENUBARBREAK : 0;
   if (hsep)
     AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-  //__ Context menu, session switcher ("virtual tabs")
+  //__ Context menu, session switcher ("virtual tabs") menu label
   AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session switcher"));
   AppendMenuW(menu, MF_SEPARATOR, 0, 0);
   struct data_add_switcher data = {
@@ -290,7 +290,7 @@ add_launcher(HMENU menu, bool vsep, bool hsep)
     uint bar = vsep ? MF_MENUBARBREAK : 0;
     if (hsep)
       AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    //__ Context menu, session launcher ("virtual tabs")
+    //__ Context menu, session launcher ("virtual tabs") menu label
     AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session launcher"));
     AppendMenuW(menu, MF_SEPARATOR, 0, 0);
     append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true, false);
@@ -662,7 +662,7 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_SEARCH, 0);
   if (extended_menu) {
-    //__ Context menu:
+    //__ Context menu: write terminal window contents as HTML file
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_HTML, _W("HTML Screen Dump"));
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGLOG, 0);
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGCHARINFO, 0);
@@ -670,7 +670,7 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
   }
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_RESET, 0);
   if (extended_menu) {
-    //__ Context menu:
+    //__ Context menu: clear scrollback buffer (lines scrolled off the window)
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_CLRSCRLBCK, _W("Clear Scrollback"));
   }
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
@@ -680,7 +680,7 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
 //  AppendMenuW(ctxmenu, MF_ENABLED | MF_UNCHECKED, IDM_FLIPSCREEN, 0);
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   if (extended_menu) {
-    //__ Context menu:
+    //__ Context menu: generate a TTY BRK condition (tty line interrupt)
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_BREAK, _W("Send Break"));
     AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   }
@@ -1461,6 +1461,8 @@ win_key_reset(void)
 }
 
 #define dont_debug_virtual_key_codes
+#define dont_debug_key
+#define dont_debug_compose
 
 #ifdef debug_virtual_key_codes
 static struct {
@@ -1481,9 +1483,6 @@ vk_name(uint key)
   return vk_name;
 }
 #endif
-
-#define dont_debug_key
-#define dont_debug_compose
 
 #ifdef debug_compose
 # define debug_key
@@ -2460,12 +2459,16 @@ win_key_down(WPARAM wp, LPARAM lp)
       }
     }
 #ifdef debug_key
-    printf("modf wc %04X\n", wc);
+    printf("modf wc %04X (ctrl %d key %02X)\n", wc, ctrl, key);
 #endif
     if (wc) {
       if (altgr && !is_key_down(VK_LMENU))
         mods &= ~ MDK_ALT;
-      other_code(wc);
+      if ((mods & MDK_CTRL) && wc > '_' && key <= 'Z')
+        // report control char on non-latin keyboard layout
+        other_code(key);
+      else
+        other_code(wc);
     }
   }
 
@@ -2737,11 +2740,13 @@ win_key_down(WPARAM wp, LPARAM lp)
 	    child_terminate(term->child);
       else if (term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
+        // only in modify-other-keys mode 2
         modify_other_key();
       else if (char_key())
         trace_key("char");
-      else if (term->modify_other_keys > 1)
-        // handled Alt+space after char_key, avoiding undead_ glitch
+      else if (term->modify_other_keys > 0)
+        // handle Alt+space after char_key, avoiding undead_ glitch;
+        // also handle combinations like Ctrl+AltGr+e
         modify_other_key();
       else if (ctrl_key())
         trace_key("ctrl");
