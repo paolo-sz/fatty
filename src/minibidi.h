@@ -6,9 +6,10 @@ typedef unsigned int ucschar;
 typedef struct {
   ucschar origwc, wc;
   short index;
+  bool wide;
 } bidi_char;
 
-int do_bidi(int paragraph_level, bidi_char * line, int count);
+int do_bidi(int paragraph_level, bool explicitRTL, bool box_mirror, bidi_char * line, int count);
 int do_shape(bidi_char * line, bidi_char * to, int count);
 
 /* bidi classes (Unicode: PropertyValueAliases.txt) */

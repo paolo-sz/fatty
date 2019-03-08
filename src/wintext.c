@@ -1853,7 +1853,8 @@ get_bg_filename(void)
       DWORD type;
       int err = RegQueryValueExW(key, attribute, 0, &type, (void *)val, &len);
       if (err ||
-          !(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ))
+          !(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ)
+         )
         *val = 0;
     }
 
@@ -2101,7 +2102,8 @@ _trace_line(char * tag, cattr attr, ushort lattr, wchar * text, int len)
 {
   bool show = false;
   for (int i = 0; i < len; i++)
-    if (text[i] != ' ') show = true;
+    if (text[i] != ' ')
+      show = true;
   if (show) {
     if (*tag != ' ') {
       wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
@@ -2410,9 +2412,9 @@ apply_bold_colour(colour_i *pfgi)
   }
   // switchable bold_colour
   if (win_active_terminal()->enable_bold_colour && CCL_DEFAULT(*pfgi)
-      && colours[BOLD_COLOUR_I] != (colour)-1) {
+      && colours[BOLD_COLOUR_I] != (colour)-1
+     )
     *pfgi = BOLD_COLOUR_I;
-  }
   else
   // normal independent as_font/as_colour controls
   if (cfg.bold_as_colour) {
@@ -2618,7 +2620,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
       colour ccfg = brighten(cursor_colour, fg, false);
       colour ccbg = brighten(cursor_colour, bg, false);
       if (colour_dist(ccfg, bg) < mindist
-          && colour_dist(ccfg, bg) < colour_dist(ccbg, bg))
+          && colour_dist(ccfg, bg) < colour_dist(ccbg, bg)
+         )
         cursor_colour = ccbg;
       else
         cursor_colour = ccfg;
@@ -2657,13 +2660,15 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   if (ff->bold_mode == BOLD_FONT && (attr.attr & ATTR_BOLD))
     nfont |= FONT_BOLD;
   if (ff->und_mode == UND_FONT && (attr.attr & UNDER_MASK) == ATTR_UNDER
-      && !(attr.attr & ATTR_ULCOLOUR))
+      && !(attr.attr & ATTR_ULCOLOUR)
+     )
     nfont |= FONT_UNDERLINE;
   if (attr.attr & ATTR_ITALIC)
     nfont |= FONT_ITALIC;
   if (attr.attr & ATTR_STRIKEOUT
       && !cfg.underl_manual && cfg.underl_colour == (colour)-1
-      && !(attr.attr & ATTR_ULCOLOUR))
+      && !(attr.attr & ATTR_ULCOLOUR)
+     )
     nfont |= FONT_STRIKEOUT;
   if (attr.attr & TATTR_ZOOMFULL)
     nfont |= FONT_ZOOMFULL;
@@ -2947,21 +2952,41 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     underlaid = true;
   }
 
- /* Special underline */
+ /* Wavy underline */
   if (!ldisp2 && lattr != LATTR_TOP &&
-      (attr.attr & UNDER_MASK) == ATTR_CURLYUND) {
+      (attr.attr & UNDER_MASK) == ATTR_CURLYUND
+     )
+  {
     clear_run();
+    //printf("curly %d:%d %d:%d (w %d ulen %d cw %d)\n", ty, tx, y, x, width, ulen, char_width);
 
     int step = 4;  // horizontal step width
     int delta = 3; // vertical phase height
     int offset = 1; // offset up from uloff
-    int rep = (ulen * char_width - 1) / step + 1;
+    //int x0 = x - PADDING - (x - PADDING) % step + PADDING;
+    //int rep = (ulen * char_width - 1) / step / 3 + 2;
+    // when starting the undercurl at the current text start position,
+    // the transitions between adjacent Bezier waves looks disrupted;
+    // trying to align them by snapping to a previous point (- x... % step)
+    // does not help, maybe Bezier curves should be studied first;
+    // so in order to achieve uniform undercurls, we always start at 
+    // the line beginning position (getting clipped anyway)
+    int x0 = PADDING;
+    int rep = (x - x0 + width + char_width) / step / 3;
+
     POINT bezier[1 + rep * 3];
+    //printf("                      ");
     for (int i = 0; i <= rep * 3; i++) {
-      bezier[i].x = x + i * step;
+      bezier[i].x = x0 + i * step;
       int wave = (i % 3 == 2) ? delta : (i % 3 == 1) ? -delta : 0;
       bezier[i].y = y + uloff - offset + wave;
+      //printf("  %04d:%04d%s", uloff - offset + wave, i * step, i % 3 ? "" : "\n");
     }
+
+    HRGN ur = 0;
+    GetClipRgn(dc, ur);
+    IntersectClipRect(dc, box.left, box.top, box.right, box.bottom);
+
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
       if (l)
@@ -2971,6 +2996,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     }
     oldpen = SelectObject(dc, oldpen);
     DeleteObject(oldpen);
+
+    SelectClipRgn(dc, ur);
   }
   else
 
@@ -2981,7 +3008,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
        ((attr.attr & UNDER_MASK) == ATTR_UNDER &&
         (ff->und_mode == UND_LINE || (attr.attr & ATTR_ULCOLOUR)))
       )
-     ) {
+     )
+  {
     clear_run();
 
     int penstyle = (attr.attr & ATTR_BROKENUND)
@@ -3419,7 +3447,9 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   if ((attr.attr & ATTR_STRIKEOUT)
       && (cfg.underl_manual || cfg.underl_colour != (colour)-1
           || (attr.attr & ATTR_ULCOLOUR)
-         )) {
+         )
+     )
+  {
     int soff = (ff->descent + (ff->row_spacing / 2)) * 2 / 3;
     HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
@@ -3695,7 +3725,9 @@ win_char_width(xchar c)
        //|| wcschr (W("‐‑‘’‚‛“”„‟‹›"), c) // #712 workaround; now caching
        )
 #endif
-     )) {
+      )
+     )
+  {
     // look up c in charpropcache
     struct charpropcache * cpfound = 0;
     for (uint i = 0; i < ff->cpcachelen[font4index]; i++)
@@ -3959,7 +3991,8 @@ win_paint(void)
        || p.rcPaint.right >= PADDING + cell_width * term->cols
        || p.rcPaint.bottom >= PADDING + cell_height * term->rows
       )
-     ) {
+     )
+  {
     /* Notes:
        * Do we actually need this stuff? We paint the background with
          each win_text chunk anyway, except for the padding border,

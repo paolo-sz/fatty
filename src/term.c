@@ -227,7 +227,7 @@ term_cursor_reset(term_cursor *curs)
 
   curs->autowrap = true;
   curs->rev_wrap = cfg.old_wrapmodes;
-  curs->bidi = 0;
+  curs->bidimode = 0;
 
   curs->origin = false;
 }

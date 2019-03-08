@@ -23,6 +23,7 @@ static bool newwin_shifted = false;
 static bool newwin_home = false;
 static int newwin_monix = 0, newwin_moniy = 0;
 static int transparency_pending = 0;
+static bool selection_pending = false;
 bool kb_input = false;
 uint kb_trace = 0;
 
@@ -1210,6 +1211,12 @@ toggle_vt220_term(struct term * term)
   term->vt220_keys = !term->vt220_keys;
 }
 
+void
+toggle_bidi()
+{
+  win_active_terminal()->disable_bidi = !win_active_terminal()->disable_bidi;
+}
+
 static void
 nop()
 {
@@ -1315,6 +1322,17 @@ mflags_vt220()
 }
 
 static uint
+mflags_bidi()
+{
+  struct term * term = win_active_terminal();
+  
+  return (cfg.bidi == 0
+         || (cfg.bidi == 1 && (term->on_alt_screen ^ term->show_other_screen))
+         ) ? MF_GRAYED
+           : term->disable_bidi ? MF_UNCHECKED : MF_CHECKED;
+}
+
+static uint
 mflags_options()
 {
   return config_wnd ? MF_GRAYED : MF_ENABLED;
@@ -1379,6 +1397,7 @@ static struct function_def cmd_defs[] = {
   {"export-html", {IDM_HTML}, 0},
   {"print-screen", {.fct = print_screen}, 0},
   {"toggle-vt220", {.fct = toggle_vt220}, mflags_vt220},
+  {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
 
   {"void", {.fct = nop}, 0}
 };
@@ -1638,7 +1657,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   else if (comp_state == COMP_CLEAR)
     comp_state = COMP_NONE;
 
-  struct term* active_term = win_active_terminal();
+  struct term* term = win_active_terminal();
 
   uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
   bool extended = HIWORD(lp) & KF_EXTENDED;
@@ -1803,10 +1822,116 @@ win_key_down(WPARAM wp, LPARAM lp)
       return true;
     }
   }
+  if (selection_pending) {
+    bool sel_adjust = false;
+    //WPARAM scroll = 0;
+    int sbtop = -sblines(term);
+    int sbbot = term_last_nonempty_line(term);
+    int oldisptop = term->disptop;
+    //printf("y %d disptop %d sb %d..%d\n", term.sel_pos.y, term.disptop, sbtop, sbbot);
+    switch (key) {
+      when VK_CLEAR:  // recalibrate
+        term->sel_anchor = term->sel_pos;
+        term->sel_start = term->sel_pos;
+        term->sel_end = term->sel_pos;
+        term->sel_rect = mods & MDK_ALT;
+        sel_adjust = true;
+      when VK_LEFT:
+        if (term->sel_pos.x > 0)
+          term->sel_pos.x--;
+        sel_adjust = true;
+      when VK_RIGHT:
+        if (term->sel_pos.x < term->cols)
+          term->sel_pos.x++;
+        sel_adjust = true;
+      when VK_UP:
+        if (term->sel_pos.y > sbtop) {
+          if (term->sel_pos.y <= term->disptop)
+            term_scroll(term, 0, -1);
+          term->sel_pos.y--;
+          sel_adjust = true;
+        }
+      when VK_DOWN:
+        if (term->sel_pos.y < sbbot) {
+          if (term->sel_pos.y + 1 >= term->disptop + term->rows)
+            term_scroll(term, 0, +1);
+          term->sel_pos.y++;
+          sel_adjust = true;
+        }
+      when VK_PRIOR:
+        //scroll = SB_PAGEUP;
+        term_scroll(term, 0, -max(1, term->rows - 1));
+        term->sel_pos.y += term->disptop - oldisptop;
+        sel_adjust = true;
+      when VK_NEXT:
+        //scroll = SB_PAGEDOWN;
+        term_scroll(term, 0, +max(1, term->rows - 1));
+        term->sel_pos.y += term->disptop - oldisptop;
+        sel_adjust = true;
+      when VK_HOME:
+        //scroll = SB_TOP;
+        term_scroll(term, +1, 0);
+        term->sel_pos.y += term->disptop - oldisptop;
+        term->sel_pos.y = sbtop;
+        term->sel_pos.x = 0;
+        sel_adjust = true;
+      when VK_END:
+        //scroll = SB_BOTTOM;
+        term_scroll(term, -1, 0);
+        term->sel_pos.y += term->disptop - oldisptop;
+        term->sel_pos.y = sbbot;
+        if (sbbot < term->rows) {
+          termline *line = term->lines[sbbot];
+          if (line)
+            for (int j = line->cols - 1; j > 0; j--) {
+              term->sel_pos.x = j + 1;
+              if (!termchars_equal(&line->chars[j], &term->erase_char))
+                break;
+            }
+        }
+        sel_adjust = true;
+      when VK_INSERT or VK_RETURN:  // copy
+        term_copy(term);
+        selection_pending = false;
+      when VK_DELETE or VK_ESCAPE:  // abort
+        selection_pending = false;
+      otherwise:
+        //selection_pending = false;
+        win_bell(term, &cfg);
+    }
+    //if (scroll) {
+    //  SendMessage(wnd, WM_VSCROLL, scroll, 0);
+    //  sel_adjust = true;
+    //}
+    if (sel_adjust) {
+      if (term->sel_rect) {
+        term->sel_start.y = min(term->sel_anchor.y, term->sel_pos.y);
+        term->sel_start.x = min(term->sel_anchor.x, term->sel_pos.x);
+        term->sel_end.y = max(term->sel_anchor.y, term->sel_pos.y);
+        term->sel_end.x = max(term->sel_anchor.x, term->sel_pos.x);
+      }
+      else if (posle(term->sel_anchor, term->sel_pos)) {
+        term->sel_start = term->sel_anchor;
+        term->sel_end = term->sel_pos;
+      }
+      else {
+        term->sel_start = term->sel_pos;
+        term->sel_end = term->sel_anchor;
+      }
+      //printf("->sel %d:%d .. %d:%d\n", term.sel_start.y, term.sel_start.x, term.sel_end.y, term.sel_end.x);
+      term->selected = true;
+      win_update(true);
+    }
+    if (selection_pending)
+      return true;
+    else
+      term->selected = false;
+    return true;
+  }
 
   bool allow_shortcut = true;
 
-  if (!active_term->shortcut_override) {
+  if (!term->shortcut_override) {
 
 #define dont_debug_def_keys 1
 
@@ -1837,8 +1962,8 @@ win_key_down(WPARAM wp, LPARAM lp)
       bool editpad = !keypad && vktab[vki].unmod >= 2;
       if (vki >= 0 && !altgr
           && (mods || vktab[vki].unmod || extended)
-          && (!editpad || !active_term->app_cursor_keys)
-          && (!keypad || !active_term->app_keypad)
+          && (!editpad || !term->app_cursor_keys)
+          && (!keypad || !term->app_keypad)
          )
       {
         tag = asform("%s%s%s%s%s%s%s",
@@ -1932,7 +2057,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     // Copy&paste
     if (cfg.clip_shortcuts && key == VK_INSERT && mods && !alt) {
       if (ctrl)
-        term_copy(active_term);
+        term_copy(term);
       if (shift)
         win_paste();
       return true;
@@ -1988,8 +2113,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         mods == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT))
        ) {
       switch (key) {
-        when 'A': term_select_all(active_term);
-        when 'C': term_copy(active_term);
+        when 'A': term_select_all(term);
+        when 'C': term_copy(term);
         when 'V': win_paste();
         when 'I': open_popup_menu(true, "ls", mods);
 //        when 'N': send_syscommand(IDM_NEW);
@@ -1998,7 +2123,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'F': send_syscommand(IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
         when 'T': win_tab_create();
-        when 'W': child_terminate(active_term->child);
+        when 'W': child_terminate(term->child);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': if (!transparency_pending) {
                     previous_transparency = cfg.transparency;
@@ -2016,9 +2141,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       return true;
     }
 
-    // Scrollback
-    if (!active_term->on_alt_screen || active_term->show_other_screen) {
-      mod_keys scroll_mod = cfg.scroll_mod ?: 8;
+    // Scrollback and Selection via keyboard
+    if (!term->on_alt_screen || term->show_other_screen) {
+      mod_keys scroll_mod = cfg.scroll_mod ?: 128;
       if (cfg.pgupdn_scroll && (key == VK_PRIOR || key == VK_NEXT) &&
           !(mods & ~scroll_mod))
         mods ^= scroll_mod;
@@ -2033,6 +2158,15 @@ win_key_down(WPARAM wp, LPARAM lp)
           when VK_DOWN:  scroll = SB_LINEDOWN;
           when VK_LEFT:  scroll = SB_PRIOR;
           when VK_RIGHT: scroll = SB_NEXT;
+          when VK_CLEAR:
+            term->sel_pos = (pos){.y = term->curs.y, .x = term->curs.x, .r = 0};
+            term->sel_anchor = term->sel_pos;
+            term->sel_start = term->sel_pos;
+            term->sel_end = term->sel_pos;
+            term->sel_rect = mods & MDK_ALT;
+            selection_pending = true;
+            //printf("selection_pending = true\n");
+            return true;
           otherwise: goto not_scroll;
         }
         SendMessage(wnd, WM_VSCROLL, scroll, 0);
@@ -2068,7 +2202,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   skip_shortcuts:;
 
   bool zoom_hotkey(void) {
-    if (!active_term->shortcut_override && cfg.zoom_shortcuts
+    if (!term->shortcut_override && cfg.zoom_shortcuts
         && (mods & ~MDK_SHIFT) == MDK_CTRL) {
       int zoom;
       switch (key) {
@@ -2121,12 +2255,12 @@ win_key_down(WPARAM wp, LPARAM lp)
   }
   void app_pad_code(char c) {
     void mod_appl_xterm(char c) {len = sprintf(buf, "\eO%c%c", mods + '1', c);}
-    if (mods && active_term->app_keypad) switch (key) {
+    if (mods && term->app_keypad) switch (key) {
       when VK_DIVIDE or VK_MULTIPLY or VK_SUBTRACT or VK_ADD or VK_RETURN:
         mod_appl_xterm(c - '0' + 'p');
         return;
     }
-    if (active_term->vt220_keys && mods && active_term->app_keypad) switch (key) {
+    if (term->vt220_keys && mods && term->app_keypad) switch (key) {
       when VK_CLEAR or VK_PRIOR ... VK_DOWN or VK_INSERT or VK_DELETE:
         mod_appl_xterm(c - '0' + 'p');
         return;
@@ -2165,7 +2299,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     // Mintty-specific: produce app_pad codes not only when vt220 mode is on,
     // but also in PC-style mode when app_cursor_keys is off, to allow the
     // numpad keys to be distinguished from the cursor/editing keys.
-    if (active_term->app_keypad && (!active_term->app_cursor_keys || active_term->vt220_keys)) {
+    if (term->app_keypad && (!term->app_cursor_keys || term->vt220_keys)) {
       // If NumLock is on, Shift must have been pressed to override it and
       // get a VK code for an editing or cursor key code.
       if (numlock)
@@ -2178,7 +2312,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   void edit_key(uchar code, char symbol) {
     if (!app_pad_key(symbol)) {
-      if (code != 3 || ctrl || alt || shift || !active_term->delete_sends_del)
+      if (code != 3 || ctrl || alt || shift || !term->delete_sends_del)
         tilde_code(code);
       else
         ch(CDEL);
@@ -2187,7 +2321,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   void cursor_key(char code, char symbol) {
     if (!app_pad_key(symbol))
-      mods ? mod_csi(code) : active_term->app_cursor_keys ? ss3(code) : csi(code);
+      mods ? mod_csi(code) : term->app_cursor_keys ? ss3(code) : csi(code);
   }
 
   static struct {
@@ -2431,7 +2565,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       if (try_key())
         return true;
       shift = is_key_down(VK_SHIFT);
-      if (shift || (key >= '0' && key <= '9' && !active_term->modify_other_keys)) {
+      if (shift || (key >= '0' && key <= '9' && !term->modify_other_keys)) {
         kbd[VK_SHIFT] ^= 0x80;
         if (try_key())
           return true;
@@ -2465,7 +2599,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   switch (key) {
     when VK_RETURN:
-      if (allow_shortcut && !!active_term->shortcut_override && cfg.window_shortcuts
+      if (allow_shortcut && !!term->shortcut_override && cfg.window_shortcuts
           && alt && !altgr && !ctrl
          )
       {
@@ -2473,23 +2607,23 @@ win_key_down(WPARAM wp, LPARAM lp)
         send_syscommand(IDM_FULLSCREEN_ZOOM);
         return true;
       }
-      else if (extended && !numlock && active_term->app_keypad)
+      else if (extended && !numlock && term->app_keypad)
         //mod_ss3('M');
         app_pad_code('M' - '@');
-      else if (!extended && active_term->modify_other_keys && (shift || ctrl))
+      else if (!extended && term->modify_other_keys && (shift || ctrl))
         other_code('\r');
       else if (!ctrl)
         esc_if(alt),
-        active_term->newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
+        term->newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
       else
         ctrl_ch(CTRL('^'));
     when VK_BACK:
       if (!ctrl)
-        esc_if(alt), ch(active_term->backspace_sends_bs ? '\b' : CDEL);
-      else if (active_term->modify_other_keys)
-        other_code(active_term->backspace_sends_bs ? '\b' : CDEL);
+        esc_if(alt), ch(term->backspace_sends_bs ? '\b' : CDEL);
+      else if (term->modify_other_keys)
+        other_code(term->backspace_sends_bs ? '\b' : CDEL);
       else
-        ctrl_ch(active_term->backspace_sends_bs ? CDEL : CTRL('_'));
+        ctrl_ch(term->backspace_sends_bs ? CDEL : CTRL('_'));
     when VK_TAB:
 #ifdef handle_alt_tab
       if (alt) {
@@ -2511,17 +2645,17 @@ win_key_down(WPARAM wp, LPARAM lp)
         return true;
       }
       else
-        active_term->modify_other_keys ? other_code('\t') : mod_csi('I');
+        term->modify_other_keys ? other_code('\t') : mod_csi('I');
     when VK_ESCAPE:
-      active_term->app_escape_key
+      term->app_escape_key
       ? ss3('[')
-      : ctrl_ch(active_term->escape_sends_fs ? CTRL('\\') : CTRL('['));
+      : ctrl_ch(term->escape_sends_fs ? CTRL('\\') : CTRL('['));
     when VK_PAUSE:
       if (!vk_special(ctrl & !extended ? cfg.key_break : cfg.key_pause))
         return false;
     when VK_CANCEL:
       if (!strcmp(cfg.key_break, "_BRK_")) {
-        child_break(active_term->child);
+        child_break(term->child);
         return false;
       }
       if (!vk_special(cfg.key_break))
@@ -2536,7 +2670,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       if (!vk_special(cfg.key_scrlock))
         return false;
     when VK_F1 ... VK_F24:
-      if (active_term->vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
+      if (term->vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
         key += 10, mods &= ~MDK_CTRL;
       if (key <= VK_F4)
         mod_ss3(key - VK_F1 + 'P');
@@ -2564,8 +2698,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         win_tab_change(1);
       else
         edit_key(6, '3');
-    when VK_HOME:   active_term->vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
-    when VK_END:    active_term->vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
+    when VK_HOME:   term->vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
+    when VK_END:    term->vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
     when VK_UP:     cursor_key('A', '8');
     when VK_DOWN:   cursor_key('B', '2');
     when VK_LEFT:   cursor_key('D', '4');
@@ -2574,17 +2708,17 @@ win_key_down(WPARAM wp, LPARAM lp)
     when VK_MULTIPLY ... VK_DIVIDE:
       if (key == VK_ADD && old_alt_state == ALT_ALONE)
         alt_state = ALT_HEX, alt_code = 0;
-      else if (mods || (active_term->app_keypad && !numlock) || !layout())
+      else if (mods || (term->app_keypad && !numlock) || !layout())
         app_pad_code(key - VK_MULTIPLY + '*');
     when VK_NUMPAD0 ... VK_NUMPAD9:
-      if ((active_term->app_cursor_keys || !active_term->app_keypad) &&
+      if ((term->app_cursor_keys || !term->app_keypad) &&
           alt_code_numpad_key(key - VK_NUMPAD0));
       else if (layout())
         ;
       else
         app_pad_code(key - VK_NUMPAD0 + '0');
     when 'A' ... 'Z' or ' ': {
-      bool check_menu = key == VK_SPACE && !active_term->shortcut_override
+      bool check_menu = key == VK_SPACE && !term->shortcut_override
                         && cfg.window_shortcuts && alt && !altgr && !ctrl;
 #ifdef debug_key
       printf("mods %d (modf %d comp %d)\n", mods, term.modify_other_keys, comp_state);
@@ -2600,13 +2734,13 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (shift && ctrl && key == 'T')
 	    win_tab_create();
       else if (shift && ctrl && key == 'W')
-	    child_terminate(active_term->child);
-      else if (active_term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
+	    child_terminate(term->child);
+      else if (term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
         modify_other_key();
       else if (char_key())
         trace_key("char");
-      else if (active_term->modify_other_keys > 1)
+      else if (term->modify_other_keys > 1)
         // handled Alt+space after char_key, avoiding undead_ glitch
         modify_other_key();
       else if (ctrl_key())
@@ -2619,9 +2753,9 @@ win_key_down(WPARAM wp, LPARAM lp)
         ;
       else if (char_key())
         trace_key("0... char_key");
-      else if (active_term->modify_other_keys <= 1 && ctrl_key())
+      else if (term->modify_other_keys <= 1 && ctrl_key())
         trace_key("0... ctrl_key");
-      else if (active_term->modify_other_keys)
+      else if (term->modify_other_keys)
         modify_other_key();
       else if (zoom_hotkey())
         ;
@@ -2640,12 +2774,12 @@ win_key_down(WPARAM wp, LPARAM lp)
   }
 
   hide_mouse();
-  term_cancel_paste(active_term);
+  term_cancel_paste(term);
 
   if (len) {
     //printf("[%ld] win_key_down %02X\n", mtime(), key); kb_trace = key;
     while (count--)
-      child_send(active_term->child, buf, len);
+      child_send(term->child, buf, len);
     compose_clear();
     // set token to enforce immediate display of keyboard echo;
     // we cannot win_update_now here; need to wait for the echo (child_proc)

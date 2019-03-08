@@ -8,7 +8,7 @@
 #include "term.h"
 #include "charset.h"
 
-#include "winpriv.h"  /* win_prefix_title */
+#include "winpriv.h"  /* win_prefix_title, win_update_now */
 
 #include <pwd.h>
 #include <fcntl.h>

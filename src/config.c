@@ -518,6 +518,7 @@ static opt_val
     {"shift", MDK_SHIFT},
     {"alt", MDK_ALT},
     {"ctrl", MDK_CTRL},
+    {"win", MDK_WIN},
     {0, 0}
   },
   [OPT_TRANS] = (opt_val[]) {
@@ -3104,7 +3105,7 @@ setup_config_box(controlbox * b)
   );
   ctrl_radiobuttons(
     //__ Options - Window:
-    s, _("Modifier for scrolling"), 4,
+    s, _("Modifier for scrolling"), 5,
     dlg_stdradiobutton_handler, &new_cfg.scroll_mod,
     //__ Options - Window:
     _("&Shift"), MDK_SHIFT,
@@ -3112,6 +3113,8 @@ setup_config_box(controlbox * b)
     _("&Ctrl"), MDK_CTRL,
     //__ Options - Window:
     _("&Alt"), MDK_ALT,
+    //__ Options - Window:
+    _("&Win"), MDK_WIN,
     //__ Options - Window:
     _("&Off"), 0,
     null
