@@ -17,6 +17,7 @@ newline(int cols, termchar erase_char)
 {
   termline *line = new(termline);
   newn_1(line->chars, termchar, cols);
+  //! Note: line->chars is based @ index -1
   for (int j = -1; j < cols; j++)
     line->chars[j] = erase_char;
   line->cols = line->size = cols;
@@ -30,7 +31,8 @@ void
 freeline(termline *line)
 {
   assert(line);
-  free(line->chars);
+  //! Note: line->chars is based @ index -1
+  free(&line->chars[-1]);
   free(line);
 }
 
@@ -249,11 +251,13 @@ makeliteral_attr(struct buf *b, termchar *c)
   * user uses extended colour.
   */
   cattrflags attr = c->attr.attr & ~DATTR_MASK;
+  int link = c->attr.link;
   uint truefg = c->attr.truefg;
   uint truebg = c->attr.truebg;
   colour ulcolr = c->attr.ulcolr;
 
-  if (attr < 0x800000 && !truefg && !truebg && ulcolr != (colour)-1) {
+  if (attr < 0x800000 && !truefg && !truebg
+      && link == -1 && ulcolr == (colour)-1) {
     add(b, (uchar) ((attr >> 16) & 0xFF));
     add(b, (uchar) ((attr >> 8) & 0xFF));
     add(b, (uchar) (attr & 0xFF));
@@ -267,6 +271,10 @@ makeliteral_attr(struct buf *b, termchar *c)
     add(b, (uchar) ((attr >> 16) & 0xFF));
     add(b, (uchar) ((attr >> 8) & 0xFF));
     add(b, (uchar) (attr & 0xFF));
+    add(b, (uchar) ((link >> 24) & 0xFF));
+    add(b, (uchar) ((link >> 16) & 0xFF));
+    add(b, (uchar) ((link >> 8) & 0xFF));
+    add(b, (uchar) (link & 0xFF));
 
     add(b, (uchar) ((truefg >> 16) & 0xFF));
     add(b, (uchar) ((truefg >> 8) & 0xFF));
@@ -324,6 +332,7 @@ static void
 readliteral_attr(struct buf *b, termchar *c, termline *unused(line))
 {
   cattrflags attr;
+  int link = -1;
   uint fg = 0;
   uint bg = 0;
   colour ul = (colour)-1;
@@ -343,6 +352,10 @@ readliteral_attr(struct buf *b, termchar *c, termline *unused(line))
     attr |= get(b);
     attr <<= 8;
     attr |= get(b);
+    link = get(b) << 24;
+    link |= get(b) << 16;
+    link |= get(b) << 8;
+    link |= get(b);
 
     fg = get(b) << 16;
     fg |= get(b) << 8;
@@ -356,6 +369,7 @@ readliteral_attr(struct buf *b, termchar *c, termline *unused(line))
   }
 
   c->attr.attr = attr;
+  c->attr.link = link;
   c->attr.truefg = fg;
   c->attr.truebg = bg;
   c->attr.ulcolr = ul;
@@ -387,7 +401,7 @@ makerle(struct buf *b, termline *line,
   termchar *c = line->chars;
   int n = line->cols;
 
- /* Adjust to -1 base index */
+  //! Note: line->chars is based @ index -1
   c--;
   n++;
 
@@ -585,7 +599,8 @@ static void
 readrle(struct buf *b, termline *line,
         void (*readliteral) (struct buf *b, termchar *c, termline *line))
 {
-  int n = -1;  // include base index -1
+  //! Note: line->chars is based @ index -1
+  int n = -1;
 
   while (n < line->cols) {
     int hdr = get(b);
@@ -650,6 +665,7 @@ decompressline(uchar *data, int *bytes_used)
   * so that cc diagnostics that verify the integrity of the whole line 
   * will make sense while we're in the middle of building it up.
   */
+  //! Note: line->chars is based @ index -1
   for (int i = -1; i < line->cols; i++)
     line->chars[i].cc_next = 0;
 
@@ -697,6 +713,7 @@ void
 clearline(termline *line, termchar erase_char)
 {
   line->lattr = LATTR_NORM;
+  //! Note: line->chars is based @ index -1
   for (int j = -1; j < line->cols; j++)
     line->chars[j] = erase_char;
   if (line->size > line->cols) {
@@ -735,6 +752,7 @@ resizeline(termline *line, int cols)
     * relative offsets within the cc block.) Also do the same
     * to the head of the cc_free list.
     */
+    //! Note: line->chars is based @ index -1
     for (int i = -1; i < oldcols; i++)
       if (line->chars[i].cc_next)
         line->chars[i].cc_next += cols - oldcols;
@@ -997,7 +1015,8 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
     }
 
     trace_bidi("=", term->wcFrom);
-    do_bidi(term->wcFrom, ib);
+    do_bidi(((line->lattr & LATTR_BIDIMASK) >> LATTR_BIDISHIFT) - 1,
+            term->wcFrom, ib);
     trace_bidi(":", term->wcFrom);
     do_shape(term->wcFrom, term->wcTo, ib);
     trace_bidi("~", term->wcTo);

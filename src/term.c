@@ -15,20 +15,90 @@
 #include "charset.h"
 #include "child.h"
 #include "winsearch.h"
+#if CYGWIN_VERSION_API_MINOR >= 66
+#include <langinfo.h>
+#endif
+
 
 
 
 
 const cattr CATTR_DEFAULT =
             {.attr = ATTR_DEFAULT,
-             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1};
+             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1,
+             .link = -1
+            };
 
 termchar basic_erase_char =
    {.cc_next = 0, .chr = ' ',
             /* CATTR_DEFAULT */
     .attr = {.attr = ATTR_DEFAULT | TATTR_CLEAR,
-             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1}
+             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1,
+             .link = -1
+            }
    };
+
+
+#define dont_debug_hyperlinks
+
+static char * * links = 0;
+static int nlinks = 0;
+static int linkid = 0;
+
+int
+putlink(char * link)
+{
+#if CYGWIN_VERSION_API_MINOR >= 66
+  bool utf8 = strcmp(nl_langinfo(CODESET), "UTF-8") == 0;
+#else
+  bool utf8 = strstr(cs_get_locale(), ".65001");
+#endif
+  if (!utf8) {
+    wchar * wlink = cs__mbstowcs(link);
+    link = cs__wcstoutf(wlink);
+    free(wlink);
+  }
+
+  if (*link != ';')
+    for (int i = 0; i < nlinks; i++)
+      if (0 == strcmp(link, links[i])) {
+        if (!utf8)
+          free(link);
+        return i;
+      }
+
+  char * link1;
+  if (*link == ';')
+    link1 = asform("=%d%s", ++linkid, link);
+  else
+    link1 = strdup(link);
+#ifdef debug_hyperlinks
+  printf("[%d] link <%s>\n", nlinks, link1);
+#endif
+  if (!utf8)
+    free(link);
+
+  nlinks++;
+  links = renewn(links, nlinks);
+  links[nlinks - 1] = link1;
+  return nlinks - 1;
+}
+
+char *
+geturl(int n)
+{
+  if (n >= 0 && n < nlinks) {
+    char * url = strchr(links[n], ';');
+    if (url) {
+      url++;
+#ifdef debug_hyperlinks
+      printf("[%d] url <%s> link <%s>\n", n, url, links[n]);
+#endif
+      return url;
+    }
+  }
+  return 0;
+}
 
 
 static bool
@@ -157,6 +227,7 @@ term_cursor_reset(term_cursor *curs)
 
   curs->autowrap = true;
   curs->rev_wrap = cfg.old_wrapmodes;
+  curs->bidi = 0;
 
   curs->origin = false;
 }
@@ -246,6 +317,7 @@ term_reset(struct term* term, bool full)
   if (full) {
     term->selected = false;
     term->hovering = false;
+    term->hoverlink = -1;
     term->on_alt_screen = false;
     term_print_finish(term);
     if (term->lines) {
@@ -1263,7 +1335,7 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
         if (line_only)
           line->lattr &= ~(LATTR_WRAPPED | LATTR_WRAPPED2);
         else
-          line->lattr = LATTR_NORM;
+          line->lattr = LATTR_NORM | (line->lattr & LATTR_BIDIMASK);
       }
       else if (!selective ||
                !(line->chars[start.x].attr.attr & ATTR_PROTECTED)
@@ -1702,6 +1774,8 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
 void
 term_paint(struct term* term)
 {
+  //if (kb_trace) printf("[%ld] term_paint\n", mtime());
+
 #ifdef use_display_scrolling
   if (dispscroll_lines) {
     disp_do_scroll(dispscroll_top, dispscroll_bot, dispscroll_lines);
@@ -1782,7 +1856,12 @@ term_paint(struct term* term)
       }
 
       if (term->hovering &&
-          posle(term->hover_start, scrpos) && poslt(scrpos, term->hover_end)) {
+          (term->hoverlink >= 0
+           ? term->hoverlink == tattr.link
+           : posle(term->hover_start, scrpos) && poslt(scrpos, term->hover_end)
+          )
+         )
+      {
         tattr.attr &= ~UNDER_MASK;
         tattr.attr |= ATTR_UNDER;
         if (cfg.hover_colour != (colour)-1) {

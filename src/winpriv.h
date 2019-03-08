@@ -50,6 +50,10 @@ extern int per_monitor_dpi_aware;
 extern bool click_focus_token;
 extern pos last_pos;
 extern int lines_scrolled;
+extern bool kb_input;
+extern uint kb_trace;
+
+extern void win_update_now(void);
 
 extern void win_flush_background(bool clearbg);
 extern void win_paint(void);
@@ -132,5 +136,9 @@ void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool para
 
 bool win_should_die();
 extern void win_close(void);
+
+extern char * geturl(int n);
+
+extern unsigned long mtime(void);
 
 #endif

@@ -293,7 +293,6 @@ $(pdf): ../docs/$(NAME).1
 html := ../docs/$(NAME).1.html
 html: $(html)
 $(html): ../docs/$(NAME).1
-#	manserver ... $< > $@
 	groff -t -man -Thtml $< > $@
 
 clean:

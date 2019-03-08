@@ -1111,9 +1111,13 @@ show_curchar_info(char tag)
 }
 
 
+#define update_timer 16
+
 void
 do_update(void)
 {
+  //if (kb_trace) printf("[%ld] do_update\n", mtime());
+
 #if defined(debug_cursor) && debug_cursor > 1
   printf("do_update cursor_on %d @%d,%d\n", term.cursor_on, term.curs.y, term.curs.x);
 #endif
@@ -1126,13 +1130,13 @@ do_update(void)
   }
 
   update_skipped++;
-  int output_speed = lines_scrolled / term->rows;
+  int output_speed = lines_scrolled / (term->rows ?: cfg.rows);
   lines_scrolled = 0;
   if (update_skipped < cfg.display_speedup && cfg.display_speedup < 10
       && output_speed > update_skipped
      )
   {
-    win_set_timer(do_update_cb, null, 16);
+    win_set_timer(do_update_cb, null, update_timer);
     return;
   }
   update_skipped = 0;
@@ -1180,7 +1184,7 @@ do_update(void)
   }
 
   // Schedule next update.
-  win_set_timer(do_update_cb, null, 16);
+  win_set_timer(do_update_cb, null, update_timer);
 }
 
 #include <math.h>
@@ -1240,16 +1244,51 @@ sel_update(bool update_sel_tip)
   }
 }
 
+static void
+show_link(void)
+{
+  struct term* term = win_active_terminal();
+
+  static int lasthoverlink = -1;
+
+  int hoverlink = term->hovering ? term->hoverlink : -1;
+  if (hoverlink != lasthoverlink) {
+    lasthoverlink = hoverlink;
+
+    char * url = geturl(hoverlink) ?: "";
+
+    if (nonascii(url)) {
+      wchar * wcs = cs__utftowcs(url);
+      SetWindowTextW(wnd, wcs);
+      free(wcs);
+    }
+    else
+      SetWindowTextA(wnd, url);
+  }
+}
+
+void
+win_update_now(void)
+{
+  if (update_state == UPDATE_PENDING)
+    update_state = UPDATE_IDLE;
+  win_update(false);
+}
+
 void
 win_update(bool update_sel_tip)
 {
+  //if (kb_trace) printf("[%ld] win_update state %d (idl/blk/pnd)\n", mtime(), update_state);
   trace_resize(("----- win_update\n"));
+
   if (update_state == UPDATE_IDLE)
     do_update();
   else
     update_state = UPDATE_PENDING;
 
   sel_update(update_sel_tip);
+  if (cfg.hover_title)
+    show_link();
 }
 
 void win_update_term(struct term* term, bool update_sel_tip)
@@ -1260,8 +1299,10 @@ void win_update_term(struct term* term, bool update_sel_tip)
 void
 win_schedule_update(void)
 {
+  //if (kb_trace) printf("[%ld] win_schedule_update state %d (idl/blk/pnd)\n", mtime(), update_state);
+
   if (update_state == UPDATE_IDLE)
-    win_set_timer(do_update_cb, null, 16);
+    win_set_timer(do_update_cb, null, update_timer);
   update_state = UPDATE_PENDING;
 }
 
@@ -2505,6 +2546,8 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
 void
 win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
 {
+  //if (kb_trace) {printf("[%ld] <win_text\n", mtime()); kb_trace = 0;}
+
   int graph = (attr.attr >> ATTR_GRAPH_SHIFT) & 0xFF;
   int findex = (attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   struct fontfam * ff = &fontfamilies[findex];
@@ -3895,6 +3938,7 @@ win_paint(void)
     (p.rcPaint.bottom - PADDING - 1) / cell_height
   );
 
+  //if (kb_trace) printf("[%ld] win_paint state %d (idl/blk/pnd)\n", mtime(), update_state);
   if (update_state != UPDATE_PENDING) {
     term_paint(term);
     winimg_paint(term);

@@ -23,6 +23,8 @@ static bool newwin_shifted = false;
 static bool newwin_home = false;
 static int newwin_monix = 0, newwin_moniy = 0;
 static int transparency_pending = 0;
+bool kb_input = false;
+uint kb_trace = 0;
 
 struct function_def {
   string name;
@@ -827,9 +829,11 @@ get_mods(void)
   lctrl_time = 0;
   lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
   return
-    is_key_down(VK_SHIFT) * MDK_SHIFT |
-    is_key_down(VK_MENU) * MDK_ALT |
-    (lctrl | is_key_down(VK_RCONTROL)) * MDK_CTRL;
+    is_key_down(VK_SHIFT) * MDK_SHIFT
+    | is_key_down(VK_MENU) * MDK_ALT
+    | (lctrl | is_key_down(VK_RCONTROL)) * MDK_CTRL
+    | (is_key_down(VK_LWIN) | is_key_down(VK_RWIN)) * MDK_WIN
+    ;
 }
 
 
@@ -1714,8 +1718,14 @@ win_key_down(WPARAM wp, LPARAM lp)
   bool ctrl = lctrl | rctrl;
   bool ctrl_lalt_altgr = cfg.ctrl_alt_is_altgr & ctrl & lalt & !ralt;
   bool altgr = ralt | ctrl_lalt_altgr;
+  bool win = (is_key_down(VK_LWIN) && key != VK_LWIN)
+          || (is_key_down(VK_RWIN) && key != VK_RWIN);
 
-  mod_keys mods = shift * MDK_SHIFT | alt * MDK_ALT | ctrl * MDK_CTRL;
+  mod_keys mods = shift * MDK_SHIFT
+                | alt * MDK_ALT
+                | ctrl * MDK_CTRL
+                | win * MDK_WIN
+                ;
 
   update_mouse(mods);
 
@@ -1831,27 +1841,31 @@ win_key_down(WPARAM wp, LPARAM lp)
           && (!keypad || !active_term->app_keypad)
          )
       {
-        tag = asform("%s%s%s%s%s%s",
+        tag = asform("%s%s%s%s%s%s%s",
                      ctrl ? "C" : "",
                      alt ? "A" : "",
                      shift ? "S" : "",
+                     win ? "W" : "",
                      mods ? "+" : "",
                      keypad ? "KP_" : "",
                      vktab[vki].nam);
       }
       else if (VK_F1 <= key && key <= VK_F24) {
-        tag = asform("%s%s%s%sF%d",
+        tag = asform("%s%s%s%s%sF%d",
                      ctrl ? "C" : "",
                      alt ? "A" : "",
                      shift ? "S" : "",
+                     win ? "W" : "",
                      mods ? "+" : "",
                      key - VK_F1 + 1);
       }
       else if (
                // !term.modify_other_keys &&
-               (mods & ~MDK_ALT) == (cfg.ctrl_exchange_shift
+               (mods & (MDK_CTRL | MDK_SHIFT))
+                == (cfg.ctrl_exchange_shift
                                      ? MDK_CTRL
                                      : (MDK_CTRL | MDK_SHIFT))
+               || (mods & MDK_WIN)
               )
       {
         uchar kbd0[256];
@@ -1882,23 +1896,27 @@ win_key_down(WPARAM wp, LPARAM lp)
 #endif
           if (wlen == 1 || wlen == 2) {
             wbuf[wlen] = 0;
-            tag = cs__wcstoutf(wbuf);
+            char * keytag = cs__wcstoutf(wbuf);
+            tag = asform("%s%s%s%s",
+                         alt ? "A" : "",
+                         win ? "W" : "",
+                         (alt | win) ? "+" : "",
+                         keytag);
+            free(keytag);
           }
         }
 #ifdef debug_def_keys
-        printf("ctrl+shift+key %04X <%s>\n", *wbuf, tag);
+        printf("key %04X <%s>\n", *wbuf, tag);
 #endif
       }
       if (tag) {
         int ret = pick_key_function(cfg.key_commands, tag, 0, key, mods);
+        free(tag);
         if (ret == true)
           return true;
         if (ret == -1)
           allow_shortcut = false;
       }
-#ifdef debug_def_keys
-      printf("check key <%s>\n", tag);
-#endif
     }
 
     // If a user-defined key definition overrides a built-in shortcut 
@@ -2625,9 +2643,14 @@ win_key_down(WPARAM wp, LPARAM lp)
   term_cancel_paste(active_term);
 
   if (len) {
+    //printf("[%ld] win_key_down %02X\n", mtime(), key); kb_trace = key;
     while (count--)
       child_send(active_term->child, buf, len);
     compose_clear();
+    // set token to enforce immediate display of keyboard echo;
+    // we cannot win_update_now here; need to wait for the echo (child_proc)
+    kb_input = true;
+    //printf("[%ld] win_key sent %02X\n", mtime(), key); kb_trace = key;
   }
   else if (comp_state == COMP_PENDING)
     comp_state = COMP_ACTIVE;
