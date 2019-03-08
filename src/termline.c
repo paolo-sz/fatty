@@ -8,12 +8,16 @@
 #include "win.h"  // cfg.bidi
 
 
+#define newn_1(poi, type, count)	{poi = newn(type, count + 1); poi++;}
+#define renewn_1(poi, count)	{poi--; poi = renewn(poi, count + 1); poi++;}
+
+
 termline *
 newline(int cols, termchar erase_char)
 {
   termline *line = new(termline);
-  line->chars = newn(termchar, cols);
-  for (int j = 0; j < cols; j++)
+  newn_1(line->chars, termchar, cols);
+  for (int j = -1; j < cols; j++)
     line->chars[j] = erase_char;
   line->cols = line->size = cols;
   line->lattr = LATTR_NORM;
@@ -67,7 +71,7 @@ get(struct buf *b)
 void
 add_cc(termline *line, int col, wchar chr, cattr attr)
 {
-  assert(col >= 0 && col < line->cols);
+  assert(col >= -1 && col < line->cols);
 
  /*
   * Start by extending the cols array if the free list is empty.
@@ -75,7 +79,7 @@ add_cc(termline *line, int col, wchar chr, cattr attr)
   if (!line->cc_free) {
     int n = line->size;
     line->size += 16 + (line->size - line->cols) / 2;
-    line->chars = renewn(line->chars, line->size);
+    renewn_1(line->chars, line->size);
     line->cc_free = n;
     do
       line->chars[n].cc_next = 1;
@@ -112,7 +116,7 @@ clear_cc(termline *line, int col)
 {
   int oldfree, origcol = col;
 
-  assert(col >= 0 && col < line->cols);
+  assert(col >= -1 && col < line->cols);
 
   if (!line->chars[col].cc_next)
     return;     /* nothing needs doing */
@@ -378,10 +382,14 @@ static void
 makerle(struct buf *b, termline *line,
         void (*makeliteral) (struct buf *b, termchar *c))
 {
-  int hdrpos, hdrsize, n, prevlen, prevpos, thislen, thispos, prev2;
-  termchar *c = line->chars;
+  int hdrpos, hdrsize, prevlen, prevpos, thislen, thispos, prev2;
 
-  n = line->cols;
+  termchar *c = line->chars;
+  int n = line->cols;
+
+ /* Adjust to -1 base index */
+  c--;
+  n++;
 
   hdrpos = b->len;
   hdrsize = 0;
@@ -577,7 +585,7 @@ static void
 readrle(struct buf *b, termline *line,
         void (*readliteral) (struct buf *b, termchar *c, termline *line))
 {
-  int n = 0;
+  int n = -1;  // include base index -1
 
   while (n < line->cols) {
     int hdr = get(b);
@@ -632,7 +640,7 @@ decompressline(uchar *data, int *bytes_used)
   * Now create the output termline.
   */
   line = new(termline);
-  line->chars = newn(termchar, ncols);
+  newn_1(line->chars, termchar, ncols);
   line->cols = line->size = ncols;
   line->temporary = true;
   line->cc_free = 0;
@@ -642,11 +650,8 @@ decompressline(uchar *data, int *bytes_used)
   * so that cc diagnostics that verify the integrity of the whole line 
   * will make sense while we're in the middle of building it up.
   */
-  {
-    int i;
-    for (i = 0; i < line->cols; i++)
-      line->chars[i].cc_next = 0;
-  }
+  for (int i = -1; i < line->cols; i++)
+    line->chars[i].cc_next = 0;
 
  /*
   * Now read in the line attributes.
@@ -692,11 +697,11 @@ void
 clearline(termline *line, termchar erase_char)
 {
   line->lattr = LATTR_NORM;
-  for (int j = 0; j < line->cols; j++)
+  for (int j = -1; j < line->cols; j++)
     line->chars[j] = erase_char;
   if (line->size > line->cols) {
     line->size = line->cols;
-    line->chars = renewn(line->chars, line->size);
+    renewn_1(line->chars, line->size);
     line->cc_free = 0;
   }
 }
@@ -715,7 +720,7 @@ resizeline(termline *line, int cols)
     * Leave the same amount of cc space as there was to begin with.
     */
     line->size += cols - oldcols;
-    line->chars = renewn(line->chars, line->size);
+    renewn_1(line->chars, line->size);
     line->cols = cols;
 
    /*
@@ -730,7 +735,7 @@ resizeline(termline *line, int cols)
     * relative offsets within the cc block.) Also do the same
     * to the head of the cc_free list.
     */
-    for (int i = 0; i < oldcols; i++)
+    for (int i = -1; i < oldcols; i++)
       if (line->chars[i].cc_next)
         line->chars[i].cc_next += cols - oldcols;
     if (line->cc_free)
@@ -939,10 +944,9 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
         }
       }
 
-#ifdef handle_initial_bidi_markers
-#warning to be implemented
-      if (line->ini_bidi) {
-        termchar * bp = &line->ini_bidi;
+      if (!it) {
+        // Handle initial combining characters, esp. directional markers
+        termchar * bp = &line->chars[-1];
         // Unfold directional formatting characters which are handled 
         // like combining characters in the mintty structures 
         // (and would thus stay hidden from minibidi), and need to be 
@@ -964,7 +968,6 @@ term_bidi_line(struct term* term, termline *line, int scr_y)
           }
         }
       }
-#endif
 
       term->wcFrom[ib].origwc = term->wcFrom[ib].wc = c;
       term->wcFrom[ib].index = it;
