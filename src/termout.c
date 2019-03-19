@@ -315,6 +315,7 @@ write_char(struct term* term, wchar c, int width)
     line->chars[curs->x].attr = curs->attr;
     if (!(line->lattr & LATTR_WRAPCONTD))
       line->lattr = (line->lattr & ~LATTR_BIDIMASK) | curs->bidimode;
+    //TODO: if changed, propagate mode onto paragraph
     if (cfg.ligatures_support)
       term_invalidate(term, 0, curs->y, curs->x, curs->y);
   }

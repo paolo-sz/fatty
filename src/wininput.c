@@ -1664,7 +1664,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   uint count = LOWORD(lp);
 
 #ifdef debug_virtual_key_codes
-  printf("win_key_down %04X %s scan %d ext %d\n", key, vk_name(key), scancode, extended);
+  printf("win_key_down %04X %s scan %d ext %d rpt %d/%d other %02X\n", key, vk_name(key), scancode, extended, repeat, count, HIWORD(lp) >> 8);
 #endif
 
   if (key == VK_PROCESSKEY) {
@@ -2464,9 +2464,10 @@ win_key_down(WPARAM wp, LPARAM lp)
     if (wc) {
       if (altgr && !is_key_down(VK_LMENU))
         mods &= ~ MDK_ALT;
-      if ((mods & MDK_CTRL) && wc > '_' && key <= 'Z')
+      if (!altgr && (mods == MDK_CTRL) && wc > '~' && key <= 'Z') {
         // report control char on non-latin keyboard layout
         other_code(key);
+      }
       else
         other_code(wc);
     }
@@ -2744,7 +2745,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         modify_other_key();
       else if (char_key())
         trace_key("char");
-      else if (term->modify_other_keys > 0)
+      else if (term->modify_other_keys > 1 || (term->modify_other_keys && altgr))
         // handle Alt+space after char_key, avoiding undead_ glitch;
         // also handle combinations like Ctrl+AltGr+e
         modify_other_key();

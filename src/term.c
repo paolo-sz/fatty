@@ -2580,7 +2580,9 @@ term_scroll(struct term* term, int rel, int where)
     int y = term->markpos;
     while ((rel == SB_PRIOR) ? y-- > sbtop : y++ < sbbot) {
       termline * line = fetch_line(term, y);
-      if (line->lattr & LATTR_MARKED) {
+      ushort lattr = line->lattr;
+      release_line(line);
+      if (lattr & LATTR_MARKED) {
         term->markpos = y;
         term->disptop = y;
         break;
