@@ -1004,7 +1004,7 @@ set_modes(struct term* term, bool state)
           term->curs.rev_wrap = state;
           term->curs.wrapnext = false;
         when 8:  /* DECARM: auto key repeat */
-          // ignore
+          term->auto_repeat = state;
         when 9:  /* X10_MOUSE */
           term->mouse_mode = state ? MM_X10 : 0;
           win_update_mouse();
@@ -1208,7 +1208,8 @@ get_mode(struct term* term, bool privatemode, int arg)
       when 45:  /* xterm: reverse (auto) wraparound */
         return 2 - term->curs.rev_wrap;
       when 8:  /* DECARM: auto key repeat */
-        return 3; // ignored
+        return 2 - term->auto_repeat;
+        //return 3; // ignored
       when 9:  /* X10_MOUSE */
         return 2 - (term->mouse_mode == MM_X10);
       when 12: /* AT&T 610 blinking cursor */
@@ -1803,6 +1804,8 @@ do_csi(struct term* term, uchar c)
     when CPAIR(' ', 'q'):     /* DECSCUSR: set cursor style */
       term->cursor_type = arg0 ? (arg0 - 1) / 2 : -1;
       term->cursor_blinks = arg0 ? arg0 % 2 : -1;
+      if (term->cursor_blinks)
+        term->cursor_blink_interval = arg1;
       term->cursor_invalid = true;
       term_schedule_cblink(term);
     when CPAIR('"', 'q'):  /* DECSCA: select character protection attribute */

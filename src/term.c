@@ -172,7 +172,7 @@ void
 term_schedule_cblink(struct term* term)
 {
   if (term_cursor_blinks(term) && term->has_focus)
-    win_set_timer(cblink_cb, term, cursor_blink_ticks());
+    win_set_timer(cblink_cb, term, term->cursor_blink_interval ?: cursor_blink_ticks());
   else
     term->cblinker = 1;  /* reset when not in use */
 }
@@ -263,6 +263,7 @@ term_reset(struct term* term, bool full)
     term->app_keypad = false;  // xterm only with RIS
     term->app_wheel = false;
     term->app_control = 0;
+    term->auto_repeat = cfg.auto_repeat;  // not supported by xterm
   }
   term->modify_other_keys = 0;  // xterm resets this
 
@@ -309,6 +310,7 @@ term_reset(struct term* term, bool full)
 
   term->cursor_type = -1;
   term->cursor_blinks = -1;
+  term->cursor_blink_interval = 0;
   if (full) {
     term->blink_is_real = cfg.allow_blinking;
     term->hide_mouse = cfg.hide_mouse;
