@@ -17,6 +17,8 @@
 
 static HMENU ctxmenu = NULL;
 static HMENU sysmenu;
+static uint super_key = 0;
+static uint hyper_key = 0;
 static uint newwin_key = 0;
 static bool newwin_pending = false;
 static bool newwin_shifted = false;
@@ -32,6 +34,7 @@ struct function_def {
   union {
     WPARAM cmd;
     void (*fct)(void);
+    void (*fct_key)(uint key, mod_keys mods);
   };
   uint (*fct_status)(void);
 };
@@ -1160,10 +1163,18 @@ transparency_level()
 }
 
 static void
-newwin_begin()
+newwin_begin(uint key, mod_keys mods)
 {
-  newwin_pending = true;
-  newwin_home = false; newwin_monix = 0; newwin_moniy = 0;
+  if (key) {
+    newwin_pending = true;
+    newwin_home = false; newwin_monix = 0; newwin_moniy = 0;
+
+    newwin_key = key;
+    if (mods & MDK_SHIFT)
+      newwin_shifted = true;
+    else
+      newwin_shifted = false;
+  }
 }
 
 static void
@@ -1249,6 +1260,20 @@ static void
 lock_title()
 {
   title_settable = false;
+}
+
+static void
+super_down(uint key, mod_keys mods)
+{
+  super_key = key;
+  (void)mods;
+}
+
+static void
+hyper_down(uint key, mod_keys mods)
+{
+  hyper_key = key;
+  (void)mods;
 }
 
 static uint
@@ -1370,7 +1395,7 @@ static struct function_def cmd_defs[] = {
 
   //{"default-size", {IDM_DEFSIZE}, 0},
   {"default-size", {IDM_DEFSIZE_ZOOM}, mflags_defsize},
-  {"toggle-fullscreen", {IDM_FULLSCREEN}, mflags_fullscreen},
+  {"toggle-fullscreen", {IDM_FULLSCREEN_ZOOM}, mflags_fullscreen},
   {"fullscreen", {.fct = window_full}, mflags_fullscreen},
   {"win-max", {.fct = window_max}, mflags_zoomed},
   {"win-toggle-max", {.fct = window_toggle_max}, mflags_zoomed},
@@ -1378,8 +1403,8 @@ static struct function_def cmd_defs[] = {
   {"win-icon", {.fct = window_min}, 0},
   {"close", {.fct = win_close}, 0},
 
-  {"new", {.fct = newwin_begin}, 0},  // deprecated
-  {"new-key", {.fct = newwin_begin}, 0},
+  {"new", {.fct_key = newwin_begin}, 0},  // deprecated
+  {"new-key", {.fct_key = newwin_begin}, 0},
   {"options", {IDM_OPTIONS}, mflags_options},
   {"menu-text", {.fct = menu_text}, 0},
   {"menu-pointer", {.fct = menu_pointer}, 0},
@@ -1414,6 +1439,9 @@ static struct function_def cmd_defs[] = {
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
 
+  {"super", {.fct_key = super_down}, 0},
+  {"hyper", {.fct_key = hyper_down}, 0},
+
   {"void", {.fct = nop}, 0}
 };
 
@@ -1442,6 +1470,7 @@ send_syscommand(WPARAM cmd)
 {
   SendMessage(wnd, WM_SYSCOMMAND, cmd, ' ');
 }
+
 
 typedef enum {
   COMP_CLEAR = -1,
@@ -1527,6 +1556,7 @@ static struct {
   {VK_RWIN, 1, "RWin"},
   {VK_APPS, 1, "Menu"},
   {VK_NUMLOCK, 1, "NumLock"},
+  {VK_CAPITAL, 1, "CapsLock"},
   {VK_SCROLL, 1, "ScrollLock"},
   // exotic keys:
   {VK_SELECT, 1, "Select"},
@@ -1559,7 +1589,28 @@ static struct {
 };
 
 static int
-pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mods)
+win_key_nullify(uchar vk)
+{
+  INPUT ki[2];
+  ki[0].type = INPUT_KEYBOARD;
+  ki[1].type = INPUT_KEYBOARD;
+  ki[0].ki.dwFlags = KEYEVENTF_KEYUP;
+  ki[1].ki.dwFlags = 0;
+  ki[0].ki.wVk = vk;
+  ki[1].ki.wVk = vk;
+  ki[0].ki.wScan = 0;
+  ki[1].ki.wScan = 0;
+  ki[0].ki.time = 0;
+  ki[1].ki.time = 0;
+  ki[0].ki.dwExtraInfo = 0;
+  ki[1].ki.dwExtraInfo = 0;
+  return SendInput(2, ki, sizeof(INPUT));
+}
+
+#define dont_debug_def_keys 1
+
+static int
+pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mods, uint scancode)
 {
   struct term* active_term = win_active_terminal();
 
@@ -1568,7 +1619,15 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
   char sepch = ';';
   if ((uchar)*cmdp <= (uchar)' ')
     sepch = *cmdp++;
+#ifdef debug_def_keys
+  printf("pick_key_function (%s) <%s> %d\n", ukey_commands, tag, n);
+#endif
 
+  char * tag0 = tag ? strchr(tag, '+') : 0;
+  if (tag0)
+    tag0++;
+  else
+    tag0 = tag;
   char * paramp;
   while ((tag || n >= 0) && (paramp = strchr(cmdp, ':'))) {
     *paramp = '\0';
@@ -1580,21 +1639,49 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
 #if defined(debug_def_keys) && debug_def_keys > 1
     printf("tag <%s>: cmd <%s> fct <%s>\n", tag, cmdp, paramp);
 #endif
-    if (tag ? !strcmp(cmdp, tag) : n == 0) {
+
+    if (tag ? (*cmdp == '*' ? !strcmp(&cmdp[1], tag0)
+                            : !strcmp(cmdp, tag)
+              )
+            : n == 0
+       )
+    {
 #if defined(debug_def_keys) && debug_def_keys == 1
       printf("tag <%s>: cmd <%s> fct <%s>\n", tag, cmdp, paramp);
 #endif
-      int ret = true;
+      int ret = false;
       wchar * fct = cs__utftowcs(paramp);
-      if ((*fct == '"' && fct[wcslen(fct) - 1] == '"') ||
-          (*fct == '\'' && fct[wcslen(fct) - 1] == '\'')) {
+
+      if (key == VK_CAPITAL || key == VK_SCROLL || key == VK_NUMLOCK) {
+        // nullify the keyboard state effect implied by the Lock key; 
+        // use fake keyboard events, but avoid the recursion, 
+        // fake events have scancode 0, ignore them also in win_key_up;
+        // alternatively, we could hook the keyboard (low-level) and 
+        // swallow the Lock key, but then it's not handled anymore so 
+        // we'd need to fake its keyboard state effect 
+        // (SetKeyboardState, and handle the off transition...) 
+        // or consider it otherwise, all getting very tricky...
+        if (!scancode) {
+          ret = true;
+        }
+        else
+          win_key_nullify(key);
+      }
+
+      if (ret) {
+      }
+      else if ((*fct == '"' && fct[wcslen(fct) - 1] == '"') ||
+          (*fct == '\'' && fct[wcslen(fct) - 1] == '\''))
+      {
         child_sendw(active_term->child, &fct[1], wcslen(fct) - 2);
+        ret = true;
       }
       else if (*fct == '`' && fct[wcslen(fct) - 1] == '`') {
         fct[wcslen(fct) - 1] = 0;
         char * cmd = cs__wcstombs(&fct[1]);
         term_cmd(active_term, cmd);
         free(cmd);
+        ret = true;
       }
       else if (!*paramp) {
         // empty definition (e.g. "A+Enter:;"), shall disable 
@@ -1603,28 +1690,15 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         ret = -1;
       }
       else {
-        ret = false;
-        for (uint i = 0; i < lengthof(cmd_defs); i++) {
-          if (!strcmp(paramp, cmd_defs[i].name)) {
-            if (cmd_defs[i].cmd < 0xF000)
-              send_syscommand(cmd_defs[i].cmd);
-            else if (cmd_defs[i].fct == newwin_begin) {
-              if (key) {
-                newwin_begin();
-                newwin_key = key;
-                if (mods & MDK_SHIFT)
-                  newwin_shifted = true;
-                else
-                  newwin_shifted = false;
-              }
-            }
-            else
-              cmd_defs[i].fct();
-            ret = true;
-            break;
-          }
+        struct function_def * fudef = function_def(paramp);
+        if (fudef) {
+          if (fudef->cmd < 0xF000)
+            send_syscommand(fudef->cmd);
+          else
+            fudef->fct_key(key, mods);
+          ret = true;
         }
-        if (ret != true) {
+        else {
           // invalid definition (e.g. "A+Enter:foo;"), shall 
           // not cause any action (return true) but provide a feedback
           win_bell(active_term, &cfg);
@@ -1657,7 +1731,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
 void
 user_function(wstring commands, int n)
 {
-  pick_key_function(commands, 0, n, 0, 0);
+  pick_key_function(commands, 0, n, 0, 0, 0);
 }
 
 bool
@@ -1768,6 +1842,9 @@ win_key_down(WPARAM wp, LPARAM lp)
                 | ctrl * MDK_CTRL
                 | win * MDK_WIN
                 ;
+  bool super = super_key && is_key_down(super_key);
+  bool hyper__ = hyper_key && is_key_down(hyper_key);
+  mods |= super * MDK_SUPER | hyper__ * MDK_HYPER;
 
   update_mouse(mods);
 
@@ -1788,18 +1865,10 @@ win_key_down(WPARAM wp, LPARAM lp)
   if (alt_state > ALT_NONE)
     alt_state = ALT_CANCELLED;
 
-  // Context and window menus
-  if (key == VK_APPS && !*cfg.key_menu) {
-    if (shift)
-      send_syscommand(SC_KEYMENU);
-    else {
-      win_show_mouse();
-      open_popup_menu(false, 
-                      mods & MDK_CTRL ? cfg.menu_ctrlmenu : cfg.menu_menu, 
-                      mods);
-    }
-    return true;
-  }
+  // Exit when pressing Enter or Escape while holding the window open after
+  // the child process has died.
+  if ((key == VK_RETURN || key == VK_ESCAPE) && !mods && !child_is_alive(term->child))
+    exit_fatty(1);
 
   // Handling special shifted key functions
   if (newwin_pending) {
@@ -1955,9 +2024,6 @@ win_key_down(WPARAM wp, LPARAM lp)
   bool allow_shortcut = true;
 
   if (!term->shortcut_override) {
-
-#define dont_debug_def_keys 1
-
     // user-defined shortcuts
     //test: W("-:'foo';A+F3:;A+F5:flipscreen;A+F9:\"f9\";C+F10:\"f10\";p:paste;d:`date`;o:\"oo\";ö:\"öö\";€:\"euro\";~:'tilde';[:'[[';µ:'µµ'")
     if (*cfg.key_commands) {
@@ -1989,21 +2055,25 @@ win_key_down(WPARAM wp, LPARAM lp)
           && (!keypad || !term->app_keypad)
          )
       {
-        tag = asform("%s%s%s%s%s%s%s",
+        tag = asform("%s%s%s%s%s%s%s%s%s",
                      ctrl ? "C" : "",
                      alt ? "A" : "",
                      shift ? "S" : "",
                      win ? "W" : "",
+                     super ? "U" : "",
+                     hyper__ ? "Y" : "",
                      mods ? "+" : "",
                      keypad ? "KP_" : "",
                      vktab[vki].nam);
       }
       else if (VK_F1 <= key && key <= VK_F24) {
-        tag = asform("%s%s%s%s%sF%d",
+        tag = asform("%s%s%s%s%s%s%sF%d",
                      ctrl ? "C" : "",
                      alt ? "A" : "",
                      shift ? "S" : "",
                      win ? "W" : "",
+                     super ? "U" : "",
+                     hyper__ ? "Y" : "",
                      mods ? "+" : "",
                      key - VK_F1 + 1);
       }
@@ -2045,9 +2115,11 @@ win_key_down(WPARAM wp, LPARAM lp)
           if (wlen == 1 || wlen == 2) {
             wbuf[wlen] = 0;
             char * keytag = cs__wcstoutf(wbuf);
-            tag = asform("%s%s%s%s",
+            tag = asform("%s%s%s%s%s%s",
                          alt ? "A" : "",
                          win ? "W" : "",
+                         super ? "U" : "",
+                         hyper__ ? "Y" : "",
                          (alt | win) ? "+" : "",
                          keytag);
             free(keytag);
@@ -2058,7 +2130,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 #endif
       }
       if (tag) {
-        int ret = pick_key_function(cfg.key_commands, tag, 0, key, mods);
+        int ret = pick_key_function(cfg.key_commands, tag, 0, key, mods, scancode);
         free(tag);
         if (ret == true)
           return true;
@@ -2086,22 +2158,6 @@ win_key_down(WPARAM wp, LPARAM lp)
       return true;
     }
 
-#ifdef check_alt_ret_space_first
-    // Moved to switch() below so we can override it with layout().
-    // Window menu and fullscreen
-    if (cfg.window_shortcuts && alt && !altgr && !ctrl) {
-      if (key == VK_RETURN) {
-        trace_resize(("--- Alt-Enter (shift %d)", shift));
-        send_syscommand(IDM_FULLSCREEN_ZOOM);
-        return true;
-      }
-      else if (key == VK_SPACE) {
-        send_syscommand(SC_KEYMENU);
-        return true;
-      }
-    }
-#endif
-
     // Alt+Fn shortcuts
     if ((cfg.alt_fn_shortcuts || external_hotkey)
         && alt && !altgr
@@ -2124,7 +2180,7 @@ win_key_down(WPARAM wp, LPARAM lp)
           when VK_F4:  send_syscommand(SC_CLOSE);
           when VK_F8:  send_syscommand(IDM_RESET);
           when VK_F10: send_syscommand(IDM_DEFSIZE_ZOOM);
-          when VK_F11: send_syscommand(IDM_FULLSCREEN_ZOOM);
+          when VK_F11: send_syscommand(IDM_FULLSCREEN);
 //          when VK_F12: send_syscommand(IDM_FLIPSCREEN);
         }
       }
@@ -2143,7 +2199,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 //        when 'N': send_syscommand(IDM_NEW);
         when 'R': send_syscommand(IDM_RESET);
         when 'D': send_syscommand(IDM_DEFSIZE);
-        when 'F': send_syscommand(IDM_FULLSCREEN);
+        when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
         when 'T': win_tab_create();
         when 'W': child_terminate(term->child);
@@ -2224,6 +2280,23 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   skip_shortcuts:;
 
+  // Context and window menus
+  if (key == VK_APPS && !*cfg.key_menu) {
+    if (shift)
+      send_syscommand(SC_KEYMENU);
+    else {
+      win_show_mouse();
+      open_popup_menu(false, 
+                      mods & MDK_CTRL ? cfg.menu_ctrlmenu : cfg.menu_menu, 
+                      mods);
+    }
+    return true;
+  }
+
+  // we might consider super and hyper for mods here but we need to filter 
+  // them anyway during user-defined key detection (using the '*' prefix)
+  //mods |= super * MDK_SUPER | hyper * MDK_HYPER;
+
   bool zoom_hotkey(void) {
     if (!term->shortcut_override && cfg.zoom_shortcuts
         && (mods & ~MDK_SHIFT) == MDK_CTRL) {
@@ -2261,23 +2334,18 @@ win_key_down(WPARAM wp, LPARAM lp)
   inline void esc_if(bool b) { if (b) ch('\e'); }
   void ss3(char c) { ch('\e'); ch('O'); ch(c); }
   void csi(char c) { ch('\e'); ch('['); ch(c); }
-  void mod_csi(char c) { len = sprintf(buf, "\e[1;%c%c", mods + '1', c); }
+  void mod_csi(char c) { len = sprintf(buf, "\e[1;%u%c", mods + 1, c); }
   void mod_ss3(char c) { mods ? mod_csi(c) : ss3(c); }
   void tilde_code(uchar code) {
-    len = sprintf(buf, mods ? "\e[%i;%c~" : "\e[%i~", code, mods + '1');
+    trace_key("tilde");
+    len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
   }
   void other_code(wchar c) {
-#ifdef support_alt_meta_combinations
-    // not too useful as mintty doesn't support Alt even with F-keys at all
-    if (altgr && is_key_down(VK_LMENU))
-      len = sprintf(buf, "\e[%u;%du", c, mods + 9);
-    else
-#endif
     trace_key("other");
-    len = sprintf(buf, "\e[%u;%cu", c, mods + '1');
+    len = sprintf(buf, "\e[%u;%uu", c, mods + 1);
   }
   void app_pad_code(char c) {
-    void mod_appl_xterm(char c) {len = sprintf(buf, "\eO%c%c", mods + '1', c);}
+    void mod_appl_xterm(char c) {len = sprintf(buf, "\eO%u%c", mods + 1, c);}
     if (mods && term->app_keypad) switch (key) {
       when VK_DIVIDE or VK_MULTIPLY or VK_SUBTRACT or VK_ADD or VK_RETURN:
         mod_appl_xterm(c - '0' + 'p');
@@ -2627,12 +2695,12 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   switch (key) {
     when VK_RETURN:
-      if (allow_shortcut && !!term->shortcut_override && cfg.window_shortcuts
-          && alt && !altgr && !ctrl
+      if (allow_shortcut && !term->shortcut_override && cfg.window_shortcuts
+          && alt && !altgr
          )
       {
-        trace_resize(("--- Alt-Enter (shift %d)", shift));
-        send_syscommand(IDM_FULLSCREEN_ZOOM);
+        trace_resize(("--- Alt-Enter (shift %d ctrl %d)", shift, ctrl));
+        send_syscommand((shift && !ctrl) ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
         return true;
       }
       else if (extended && !numlock && term->app_keypad)
@@ -2823,7 +2891,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 }
 
 bool
-win_key_up(WPARAM wp, LPARAM unused(lp))
+win_key_up(WPARAM wp, LPARAM lp)
 {
   uint key = wp;
 #ifdef debug_virtual_key_codes
@@ -2831,7 +2899,21 @@ win_key_up(WPARAM wp, LPARAM unused(lp))
 #endif
 
   struct term* active_term = win_active_terminal();
+
+  if (key == VK_CANCEL) {
+    // in combination with Control, this may be the KEYUP event 
+    // for VK_PAUSE or VK_SCROLL, so there actual state cannot be 
+    // detected properly for use as a modifier; let's try to fix this
+    super_key = 0;
+    hyper_key = 0;
+  }
+
   win_update_mouse();
+
+  uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
+  // avoid impact of fake keyboard events (nullifying implicit Lock states)
+  if (!scancode)
+    return false;
 
   if (key == last_key) {
     if (
@@ -2943,6 +3025,8 @@ win_key_fake(uchar vk)
   ki[1].ki.dwFlags = KEYEVENTF_KEYUP;
   ki[0].ki.wVk = vk;
   ki[1].ki.wVk = vk;
+  ki[0].ki.wScan = 0;
+  ki[1].ki.wScan = 0;
   ki[0].ki.time = 0;
   ki[1].ki.time = 0;
   ki[0].ki.dwExtraInfo = 0;

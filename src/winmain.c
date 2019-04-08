@@ -1057,10 +1057,14 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
     data->vscr.bottom = max(data->vscr.bottom, fr.bottom);
 
     if (data->print_monitors) {
-      printf("Monitor %d %s %s width,height %4d,%4d (%4d,%4d...%4d,%4d)\n", 
+      uint x, dpi = 0;
+      if (pGetDpiForMonitor)
+        pGetDpiForMonitor(hMonitor, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
+      printf("Monitor %d %s %s (%3d dpi) w,h %4d,%4d (%4d,%4d...%4d,%4d)\n", 
              data->moni,
              hMonitor == data->curmon ? "current" : "       ",
              mi.dwFlags & MONITORINFOF_PRIMARY ? "primary" : "       ",
+             dpi,
              (int)(fr.right - fr.left), (int)(fr.bottom - fr.top),
              (int)fr.left, (int)fr.top, (int)fr.right, (int)fr.bottom);
     }
@@ -1482,9 +1486,16 @@ flash_border()
 void
 win_bell(struct term* term, config * conf)
 {
-  if (conf->bell_sound || conf->bell_type) {
+  do_update();
+
+  static unsigned long last_bell = 0;
+         unsigned long now = mtime();
+
+  if ( (conf->bell_sound || conf->bell_type) &&
+      ((unsigned long)conf->bell_interval <= now - last_bell) ) {
     wchar * bell_name = (wchar *)conf->bell_file;
     bool free_bell_name = false;
+    last_bell = now;
     if (*bell_name) {
       if (wcschr(bell_name, L'/') || wcschr(bell_name, L'\\')) {
         if (bell_name[1] != ':') {
@@ -2308,6 +2319,7 @@ static struct {
         when IDM_SELALL: term_select_all(term); win_update(false);
         when IDM_RESET: winimgs_clear(term); term_reset(term, true); win_update(false);
         when IDM_DEFSIZE:
+          default_size_token = true;
           default_size();
         when IDM_DEFSIZE_ZOOM:
           if (GetKeyState(VK_SHIFT) & 0x80) {
@@ -2323,18 +2335,25 @@ static struct {
           else {
             default_size();
           }
-        when IDM_SCROLLBAR:
-          term->show_scrollbar = !term->show_scrollbar;
-          win_update_scrollbar(false);
-        when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM:
-          if ((wp & ~0xF) == IDM_FULLSCREEN_ZOOM)
-            zoom_token = 4;  // override cfg.zoom_font_with_window == 0
-          else
+        when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM: {
+          bool ctrl = GetKeyState(VK_CONTROL) & 0x80;
+          bool shift = GetKeyState(VK_SHIFT) & 0x80;
+          if (((wp & ~0xF) == IDM_FULLSCREEN_ZOOM && shift)
+           || (cfg.zoom_font_with_window && shift && !ctrl)
+             )
+            zoom_token = 4;
+          else {
             zoom_token = -4;
+            default_size_token = true;
+          }
           win_maximise(win_is_fullscreen ? 0 : 2);
 
           term_schedule_search_update(term);
           win_update_search();
+        }
+        when IDM_SCROLLBAR:
+          term->show_scrollbar = !term->show_scrollbar;
+          win_update_scrollbar(false);
         when IDM_SEARCH: win_open_search();
         when IDM_FLIPSCREEN: term_flip_screen(term);
         when IDM_OPTIONS: win_open_config();
@@ -2630,6 +2649,7 @@ static struct {
         bool scale_font = (cfg.zoom_font_with_window || zoom_token > 2)
                        && (zoom_token > 0) && (GetKeyState(VK_SHIFT) & 0x80)
                        && !default_size_token;
+        //printf("WM_SIZE scale_font %d zoom_token %d\n", scale_font, zoom_token);
         win_adapt_term_size(false, scale_font);
         if (zoom_token > 0)
           zoom_token = zoom_token >> 1;
@@ -2823,6 +2843,55 @@ static struct {
   */
   return DefWindowProcW(wnd, message, wp, lp);
 }
+
+#ifdef hook_keyboard
+
+static LRESULT CALLBACK
+hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
+{
+  LPKBDLLHOOKSTRUCT kbdll = (LPKBDLLHOOKSTRUCT)lParam;
+  uint key = kbdll->vkCode;
+#ifdef debug_hook
+  printf("hooked ll %d wm %03lX vk %02X sc %d fl %04X ex %04lX\n", 
+         nCode, (long)wParam, 
+         key, (uint)kbdll->scanCode, (uint)kbdll->flags, (ulong)kbdll->dwExtraInfo);
+#endif
+  bool hook = false;
+#ifdef check_swallow
+  // this should be factored out to wininput.c, if ever to be used
+  bool is_hooked_key(WPARAM wParam, uint key)
+  {
+    return wParam == WM_KEYDOWN &&
+      (key == VK_LWIN || key == VK_RWIN
+       || key == VK_CAPITAL || key == VK_SCROLL || key == VK_NUMLOCK
+      )
+    ;
+  }
+  hook = GetFocus() == wnd && is_hooked_key(wParam, key);
+#endif
+  if (hook) {
+    LPARAM lp = 1;
+    lp |= (LPARAM)kbdll->flags << 24 | (LPARAM)kbdll->scanCode << 16;
+    bool swallow_key = false;
+    // here we have another opportunity to set a flag to swallow the key,
+    // based on dynamic processing (win_key_down, win_key_up)
+    win_proc(wnd, wParam, key, lp);
+    // if we have processed the key (e.g. as modifier or user-defined key)
+    if (swallow_key) {
+      // return non-zero to swallow
+      return 1;
+    }
+  }
+  return CallNextHookEx(0, nCode, wParam, lParam);
+}
+
+void
+hook_windows(int id, HOOKPROC hookproc, bool global)
+{
+  SetWindowsHookExW(id, hookproc, 0, global ? 0 : GetCurrentThreadId());
+}
+
+#endif
 
 
 void
@@ -4706,6 +4775,11 @@ main(int argc, char *argv[])
 
   win_synctabs(4);
   update_tab_titles();
+
+#ifdef hook_keyboard
+  // Install keyboard hook.
+  hook_windows(WH_KEYBOARD_LL, hookprockbll, true);
+#endif
 
   // Message loop.
   do {
