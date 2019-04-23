@@ -630,6 +630,11 @@ do_esc(struct term* term, uchar c)
       }
     when 'H':  /* HTS: set a tab */
       term->tabs[curs->x] = true;
+    when 'l':  /* HP Memory Lock */
+      if (curs->y < term->marg_bot)
+        term->marg_top = curs->y;
+    when 'm':  /* HP Memory Unlock */
+      term->marg_top = 0;
     when CPAIR('#', '8'):    /* DECALN: fills screen with Es :-) */
       for (int i = 0; i < term->rows; i++) {
         termline *line = term->lines[i];
@@ -1027,7 +1032,7 @@ set_modes(struct term* term, bool state)
         when 67: /* DECBKM: backarrow key mode */
           term->backspace_sends_bs = state;
         when 80: /* DECSDM: SIXEL display mode */
-          term->sixel_display = state;
+          term->sixel_display = !state;
         when 1000: /* VT200_MOUSE */
           term->mouse_mode = state ? MM_VT200 : 0;
           win_update_mouse();
@@ -1225,7 +1230,7 @@ get_mode(struct term* term, bool privatemode, int arg)
       when 67: /* DECBKM: backarrow key mode */
         return 2 - term->backspace_sends_bs;
       when 80: /* DECSDM: SIXEL display mode */
-        return 2 - term->sixel_display;
+        return 2 - !term->sixel_display;
       when 1000: /* VT200_MOUSE */
         return 2 - (term->mouse_mode == MM_VT200);
       when 1002: /* BTN_EVENT_MOUSE */
@@ -1694,8 +1699,9 @@ do_csi(struct term* term, uchar c)
       else if (arg0 == 3) {
         for (int i = 0; i < term->cols; i++)
           term->tabs[i] = false;
+        term->newtab = 0;  // don't set new default tabs on resize
       }
-    when 'r': {      /* DECSTBM: set scroll margins */
+    when 'r': {      /* DECSTBM: set scrolling region */
       int top = arg0_def1 - 1;
       int bot = (arg1 ? min(arg1, term->rows) : term->rows) - 1;
       if (bot > top) {

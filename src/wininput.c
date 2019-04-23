@@ -1668,6 +1668,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
           win_key_nullify(key);
       }
 
+      uint code;
       if (ret) {
       }
       else if ((*fct == '"' && fct[wcslen(fct) - 1] == '"') ||
@@ -1681,6 +1682,12 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         char * cmd = cs__wcstombs(&fct[1]);
         term_cmd(active_term, cmd);
         free(cmd);
+        ret = true;
+      }
+      else if (sscanf (paramp, "%u%c", & code, &(char){0}) == 1) {
+        char buf[33];
+        int len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
+        child_send(active_term->child, buf, len);
         ret = true;
       }
       else if (!*paramp) {

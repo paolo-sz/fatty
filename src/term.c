@@ -274,6 +274,7 @@ term_reset(struct term* term, bool full)
       term->tabs[i] = (i % 8 == 0);
   }
   if (full) {
+    term->newtab = 1;  // set default tabs on resize
     term->rvideo = 0;  // not reset by xterm
     term->bell_taskbar = cfg.bell_taskbar;  // not reset by xterm
     term->bell_popup = cfg.bell_popup;  // not reset by xterm
@@ -993,7 +994,7 @@ term_resize(struct term* term, int newrows, int newcols)
   // Reset tab stops
   term->tabs = renewn(term->tabs, newcols);
   for (int i = (term->cols > 0 ? term->cols : 0); i < newcols; i++)
-    term->tabs[i] = (i % 8 == 0);
+    term->tabs[i] = term->newtab && (i % 8 == 0);
 
   // Check that the cursor positions are still valid.
   assert(0 <= curs->y && curs->y < newrows);
@@ -1803,9 +1804,83 @@ term_paint(struct term* term)
   for (int i = 0; i < term->rows; i++) {
     pos scrpos;
     scrpos.y = i + term->disptop;
+    termline *line = fetch_line(term, scrpos.y);
+
+   /*
+    * Pre-loop: identify emojis and emoji sequences.
+    */
+    // Prevent nested emoji sequence matching from matching partial subseqs
+    int emoji_col = 0;  // column from which to match for emoji sequences
+    for (int j = 0; j < term->cols; j++) {
+      termchar *d = line->chars + j;
+      cattr tattr = d->attr;
+
+      if (j < term->cols - 1 && d[1].chr == UCSWIDE)
+        tattr.attr |= ATTR_WIDE;
+
+     /* Match emoji sequences
+      * and replace by emoji indicators
+      */
+      if (cfg.emojis && j >= emoji_col) {
+        struct emoji e;
+        if ((tattr.attr & TATTR_EMOJI) && !(tattr.attr & ATTR_FGMASK)) {
+          // previously marked subsequent emoji sequence component
+          e.len = 0;
+        }
+        else
+          e = match_emoji(d, term->cols - j);
+        if (e.len) {  // we have matched an emoji (sequence)
+          // avoid subsequent matching of a partial emoji subsequence
+          emoji_col = j + e.len;
+
+          // check whether emoji graphics exist for the emoji
+          bool ok = check_emoji(e);
+
+          // check whether all emoji components have the same attributes
+          bool equalattrs = true;
+          for (int i = 1; i < e.len && equalattrs; i++) {
+# define IGNATTR (ATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING)
+            if ((d[i].attr.attr & ~IGNATTR) != (d->attr.attr & ~IGNATTR)
+               || d[i].attr.truebg != d->attr.truebg
+               )
+              equalattrs = false;
+          }
+#ifdef debug_emojis
+          printf("matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
+#endif
+
+          // modify character data to trigger later emoji display
+          if (ok && equalattrs) {
+            d->attr.attr &= ~ATTR_FGMASK;
+            d->attr.attr |= TATTR_EMOJI | e.len;
+
+            //d->attr.truefg = (uint)e;
+            struct emoji * ee = &e;
+            uint em = *(uint *)ee;
+            d->attr.truefg = em;
+
+            // refresh cached copy to avoid display delay
+            if (tattr.attr & TATTR_SELECTED) {
+              tattr = d->attr;
+              // need to propagate this to enable emoji highlighting
+              tattr.attr |= TATTR_SELECTED;
+            }
+            else
+              tattr = d->attr;
+            // inhibit rendering of subsequent emoji sequence components
+            for (int i = 1; i < e.len; i++) {
+              d[i].attr.attr &= ~ATTR_FGMASK;
+              d[i].attr.attr |= TATTR_EMOJI;
+              d[i].attr.truefg = em;
+            }
+          }
+        }
+      }
+
+      d->attr = tattr;
+    }
 
    /* Do Arabic shaping and bidi. */
-    termline *line = fetch_line(term, scrpos.y);
     termchar *chars = term_bidi_line(term, line, i);
     int *backward = chars ? term->post_bidi_cache[i].backward : 0;
     int *forward = chars ? term->post_bidi_cache[i].forward : 0;
@@ -1814,9 +1889,6 @@ term_paint(struct term* term)
     termline *displine = term->displines[i];
     termchar *dispchars = displine->chars;
     termchar newchars[term->cols];
-
-    // Prevent nested emoji sequence matching from matching partial subseqs
-    int emoji_col = 0;  // column from which to match for emoji sequences
 
    /*
     * First loop: work along the line deciding what we want
@@ -1928,65 +2000,6 @@ term_paint(struct term* term)
         if (term->has_focus && term->tblinker2)
           tchar = ' ';
         tattr.attr &= ~ATTR_BLINK2;
-      }
-
-     /* Match emoji sequences
-      * and replace by emoji indicators
-      */
-      if (cfg.emojis && j >= emoji_col) {
-        struct emoji e;
-        if ((tattr.attr & TATTR_EMOJI) && !(tattr.attr & ATTR_FGMASK)) {
-          // previously marked subsequent emoji sequence component
-          e.len = 0;
-        }
-        else
-          e = match_emoji(d, term->cols - j);
-        if (e.len) {  // we have matched an emoji (sequence)
-          // avoid subsequent matching of a partial emoji subsequence
-          emoji_col = j + e.len;
-
-          // check whether emoji graphics exist for the emoji
-          bool ok = check_emoji(e);
-
-          // check whether all emoji components have the same attributes
-          bool equalattrs = true;
-          for (int i = 1; i < e.len && equalattrs; i++) {
-# define IGNATTR (ATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING)
-            if ((d[i].attr.attr & ~IGNATTR) != (d->attr.attr & ~IGNATTR)
-               || d[i].attr.truebg != d->attr.truebg
-               )
-              equalattrs = false;
-          }
-#ifdef debug_emojis
-          printf("matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
-#endif
-
-          // modify character data to trigger later emoji display
-          if (ok && equalattrs) {
-            d->attr.attr &= ~ATTR_FGMASK;
-            d->attr.attr |= TATTR_EMOJI | e.len;
-
-            //d->attr.truefg = (uint)e;
-            struct emoji * ee = &e;
-            uint em = *(uint *)ee;
-            d->attr.truefg = em;
-
-            // refresh cached copy to avoid display delay
-            if (tattr.attr & TATTR_SELECTED) {
-              tattr = d->attr;
-              // need to propagate this to enable emoji highlighting
-              tattr.attr |= TATTR_SELECTED;
-            }
-            else
-              tattr = d->attr;
-            // inhibit rendering of subsequent emoji sequence components
-            for (int i = 1; i < e.len; i++) {
-              d[i].attr.attr &= ~ATTR_FGMASK;
-              d[i].attr.attr |= TATTR_EMOJI;
-              d[i].attr.truefg = em;
-            }
-          }
-        }
       }
 
      /* Mark box drawing, block and some other characters 
