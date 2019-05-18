@@ -41,7 +41,7 @@ win_get_search_edit_wnd(void)
 }
 
 static int
-current_delta(struct term* term)
+current_delta(struct term* term, bool adjust)
 {
   if (term->results.length == 0) {
     return 0;
@@ -53,9 +53,28 @@ current_delta(struct term* term)
   if (y < term->disptop) {
     delta = y - term->disptop;
   }
-  if (y >= term->disptop + term->rows) {
+  else if (y >= term->disptop + term->rows) {
     delta = y - (term->disptop + term->rows - 1);
   }
+
+  if (adjust) {
+    //printf("search scroll to %d (top %d) by %d\n", y, term.disptop, delta);
+    int dist = abs(cfg.search_context);
+    if (dist > term->rows / 2)
+      dist = term->rows / 2;
+    if (delta > 0)
+      delta += dist;
+    else if (delta < 0)
+      delta -= dist;
+    else if (cfg.search_context < 0) {
+      if (y - term->disptop < dist)
+        delta = y - term->disptop - dist;
+      else if (term->disptop + term->rows - 1 - y < dist)
+        delta = dist - (term->disptop + term->rows - 1 - y);
+      //printf("                 -> %d\n", delta);
+    }
+  }
+
   return delta;
 }
 
@@ -66,7 +85,7 @@ scroll_to_result(struct term* term)
     return;
   }
 
-  int delta = current_delta(term);
+  int delta = current_delta(term, true);
 
   // Scroll if we must!
   if (delta != 0) {
@@ -80,7 +99,7 @@ next_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  if (current_delta(term) == 0)
+  if (current_delta(term, false) == 0)
     term->results.current = (term->results.current + 1) % term->results.length;
   scroll_to_result(term);
 }
@@ -91,7 +110,7 @@ prev_result(struct term* term)
   if (term->results.length == 0) {
     return;
   }
-  if (current_delta(term) == 0)
+  if (current_delta(term, false) == 0)
     term->results.current = (term->results.current + term->results.length - 1) % term->results.length;
   scroll_to_result(term);
 }

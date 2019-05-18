@@ -48,6 +48,16 @@ bool logging = false;
 #include <langinfo.h>
 #endif
 
+
+#define dont_debug_dir
+
+#ifdef debug_dir
+#define trace_dir(d)	show_info(d)
+#else
+#define trace_dir(d)	
+#endif
+
+
 static void
 childerror(struct term* term, char * action, bool from_fork, int errno_code, int code)
 {
@@ -195,6 +205,8 @@ child_create(struct child* child, struct term* term,
     char *argv[], struct winsize *winp, const char* path)
 {
   int pid;
+
+  trace_dir(asform("child_create: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
 
   child->dir = null;
   child->pty_fd = -1;
@@ -698,6 +710,7 @@ setup_sync()
 static void
 do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch)
 {
+  trace_dir(asform("do_child_fork: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
   setup_sync();
 
   void reset_fork_mode()
@@ -752,6 +765,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
       }
 
       chdir(set_dir);
+      trace_dir(asform("child: %s", set_dir));
       setenv("PWD", set_dir, true);  // avoid softlink resolution
       // prevent shell startup from setting current directory to $HOME
       // unless cloned/Alt+F2 (!launch)
@@ -814,13 +828,14 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
     if (shortcut) {
-      //show_info(asform("Starting <%s>", cs__wcstoutf(shortcut)));
+      trace_dir(asform("Starting <%s>", cs__wcstoutf(shortcut)));
       shell_exec(shortcut);
       //show_info("Started");
       sleep(5);  // let starting settle, or it will fail; 1s normally enough
       exit(0);
     }
 
+    trace_dir(asform("Starting exe <%s %s>", argv[0], argv[1]));
     execv("/proc/self/exe", argv);
 #else
     // /proc/self/exe isn't available before Cygwin 1.5, so use argv[0] instead.

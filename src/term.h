@@ -271,6 +271,7 @@ typedef enum {
   CSET_ASCII = 'B',   /* Normal ASCII charset */
   CSET_GBCHR = 'A',   /* UK variant */
   CSET_LINEDRW = '0', /* Line drawing charset */
+  CSET_VT52DRW = '2', /* VT52 "graphics" mode */
   CSET_TECH = '>',    /* DEC Technical */
   CSET_OEM = 'U',     /* OEM Codepage 437 */
   // definitions for DEC Supplemental support:
@@ -432,6 +433,7 @@ struct term {
   bool rvideo;            /* global reverse video flag */
   bool cursor_on;         /* cursor enabled flag */
   bool deccolm_allowed;   /* DECCOLM sequence for 80/132 cols allowed? */
+  bool deccolm_noclear;   /* DECCOLM does not clear screen */
   bool reset_132;         /* Flag ESC c resets to 80 cols */
   bool cblinker;          /* When blinking is the cursor on ? */
   bool tblinker;          /* When the blinking text is on */
@@ -439,7 +441,10 @@ struct term {
   bool blink_is_real;     /* Actually blink blinking text */
   bool echoing;           /* Does terminal want local echo? */
   bool insert;            /* Insert mode */
-  int marg_top, marg_bot; /* scroll margins */
+  int marg_top, marg_bot; /* scrolling region margins */
+  int marg_left, marg_right; /* horizontal margins */
+  bool lrmargmode;           /* enable horizontal margins */
+  bool attr_rect;            /* rectangular attribute change extent */
   bool printing, only_printing;  /* Are we doing ANSI printing? */
   int  print_state;       /* state of print-end-sequence scan */
   char *printbuf;         /* buffered data for printer */
@@ -484,12 +489,15 @@ struct term {
                              // off(default): sixel scrolling moves cursor to left of graphics
   bool private_color_registers;
   int  cursor_type;
+  bool cursor_blinkmode;
   int  cursor_blinks;
   int  cursor_blink_interval;
   bool cursor_invalid;
   bool hide_mouse;
 
   uchar esc_mod;  // Modifier character in escape sequences
+
+  uchar vt52_mode;
 
   uint csi_argc;
   uint csi_argv[32];
@@ -515,7 +523,9 @@ struct term {
     DCS_INTERMEDIATE,
     DCS_PASSTHROUGH,
     DCS_IGNORE,
-    DCS_ESCAPE
+    DCS_ESCAPE,
+    VT52_Y, VT52_X,
+    VT52_FG, VT52_BG
   } state;
 
   // Mouse mode
@@ -594,6 +604,8 @@ struct term {
   int mode_stack_len;
 };
 
+extern void scroll_rect(struct term* term, int topline, int botline, int lines);
+
 extern void term_resize(struct term* term, int, int);
 extern void term_scroll(struct term* term, int, int);
 extern void term_reset(struct term* term, bool full);
@@ -620,7 +632,6 @@ extern void term_write(struct term* term, const char *, uint len);
 extern void term_flush(struct term* term);
 extern void term_set_focus(struct term* term, bool has_focus, bool may_report);
 extern int  term_cursor_type(struct term* term);
-extern bool term_cursor_blinks(struct term* term);
 extern void term_hide_cursor(struct term* term);
 
 extern void term_set_search(struct term* term, wchar * needle);

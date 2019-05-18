@@ -162,6 +162,15 @@ mtime(void)
 }
 
 
+#define dont_debug_dir
+
+#ifdef debug_dir
+#define trace_dir(d)	show_info(d)
+#else
+#define trace_dir(d)	
+#endif
+
+
 #ifdef debug_resize
 #define SetWindowPos(wnd, after, x, y, cx, cy, flags)	{printf("SWP[%s] %ld %ld\n", __FUNCTION__, (long int)cx, (long int)cy); Set##WindowPos(wnd, after, x, y, cx, cy, flags);}
 static void
@@ -3840,6 +3849,7 @@ main(int argc, char *argv[])
     // (by sanitizing taskbar icon grouping, #784, mintty/wsltty#96) 
     // set proper directory
     chdir(getenv("FATTY_PWD"));
+    trace_dir(asform("FATTY_PWD: %s", getenv("FATTY_PWD")));
     unsetenv("FATTY_PWD");
   }
 
@@ -3893,8 +3903,10 @@ main(int argc, char *argv[])
       when '~':
         start_home = true;
         chdir(home);
+        trace_dir(asform("~: %s", home));
       when '': {
         int res = chdir(optarg);
+        trace_dir(asform("^D: %s", optarg));
         if (res == 0)
           setenv("PWD", optarg, true);  // avoid softlink resolution
         else {
@@ -3905,6 +3917,7 @@ main(int argc, char *argv[])
               char * dir = strdup(&optarg[1]);
               dir[strlen(dir) - 1] = '\0';
               res = chdir(dir);
+              trace_dir(asform("^D 2: %s", dir));
               if (res == 0)
                 setenv("PWD", optarg, true);  // avoid softlink resolution
               free(dir);

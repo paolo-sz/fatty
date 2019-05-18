@@ -159,6 +159,28 @@ term_schedule_tblink2(struct term* term)
 /*
  * Likewise with cursor blinks.
  */
+int
+term_cursor_type(struct term* term)
+{
+  return term->cursor_type == -1 ? cfg.cursor_type : term->cursor_type;
+}
+
+static bool
+term_cursor_blinks(struct term* term)
+{
+  return term->cursor_blinkmode
+      || (term->cursor_blinks == -1 ? cfg.cursor_blinks : term->cursor_blinks);
+}
+
+void
+term_hide_cursor(struct term* term)
+{
+  if (term->cursor_on) {
+    term->cursor_on = false;
+    win_update_term(term, false);
+  }
+}
+
 static void
 cblink_cb(void* data)
 {
@@ -241,6 +263,7 @@ term_reset(struct term* term, bool full)
   }
 
   term->state = NORMAL;
+  term->vt52_mode = 0;
 
   // DECSTR attributes and cursor states to be reset
   term_cursor_reset(&term->curs);
@@ -255,6 +278,9 @@ term_reset(struct term* term, bool full)
   term->insert = false;
   term->marg_top = 0;
   term->marg_bot = term->rows - 1;
+  term->marg_left = 0;
+  term->marg_right = term->cols - 1;
+  term->lrmargmode = false;
   term->app_cursor_keys = false;
 
   if (full) {
@@ -264,6 +290,8 @@ term_reset(struct term* term, bool full)
     term->app_wheel = false;
     term->app_control = 0;
     term->auto_repeat = cfg.auto_repeat;  // not supported by xterm
+    term->attr_rect = false;
+    term->deccolm_noclear = false;
   }
   term->modify_other_keys = 0;  // xterm resets this
 
@@ -876,6 +904,8 @@ term_resize(struct term* term, int newrows, int newcols)
 
   term->marg_top = 0;
   term->marg_bot = newrows - 1;
+  term->marg_left = 0;
+  term->marg_right = newcols - 1;
 
  /*
   * Resize the screen and scrollback. We only need to shift
@@ -1079,6 +1109,8 @@ term_check_boundary(struct term* term, int x, int y)
   if (x == term->cols)
     line->lattr &= ~LATTR_WRAPPED2;
   else if (line->chars[x].chr == UCSWIDE) {
+    if (x == term->marg_right + 1)
+      line->lattr &= ~LATTR_WRAPPED2;
     clear_cc(line, x - 1);
     clear_cc(line, x);
     line->chars[x - 1].chr = ' ';
@@ -1166,6 +1198,11 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   if (term->hovering) {
     term->hovering = false;
     win_update_term(term, true);
+  }
+
+  if (term->lrmargmode) {
+    scroll_rect(term, topline, botline, lines);
+    return;
   }
 
 #ifdef use_display_scrolling
@@ -1321,7 +1358,7 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
   bool erasing_lines_from_top =
     start.y == 0 && start.x == 0 && end.x == 0 && !line_only && !selective;
 
-  if (erasing_lines_from_top) {
+  if (erasing_lines_from_top && !term->lrmargmode) {
    /* If it's a whole number of lines, starting at the top, and
     * we're fully erasing them, erase by scrolling and keep the
     * lines in the scrollback. */
@@ -2649,23 +2686,3 @@ term_update_cs(struct term* term)
   );
 }
 
-int
-term_cursor_type(struct term* term)
-{
-  return term->cursor_type == -1 ? cfg.cursor_type : term->cursor_type;
-}
-
-bool
-term_cursor_blinks(struct term* term)
-{
-  return term->cursor_blinks == -1 ? cfg.cursor_blinks : term->cursor_blinks;
-}
-
-void
-term_hide_cursor(struct term* term)
-{
-  if (term->cursor_on) {
-    term->cursor_on = false;
-    win_update_term(term, false);
-  }
-}

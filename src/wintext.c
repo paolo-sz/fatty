@@ -408,7 +408,12 @@ adjust_font_weights(struct fontfam * ff)
     return;
   }
   if (!data.ansi_found && !data.cs_found) {
-    show_font_warning(ff, _("Font has limited support for character ranges"));
+    string l;
+    if (!strcmp(cfg.charset, "CP437") || ((l = getlocenvcat("LC_CTYPE")) && strstr(l, "CP437"))) {
+      // accept limited range
+    }
+    else
+      show_font_warning(ff, _("Font has limited support for character ranges"));
   }
 
   // find available widths closest to selected widths
@@ -1132,8 +1137,9 @@ do_update(void)
   update_skipped++;
   int output_speed = lines_scrolled / (term->rows ?: cfg.rows);
   lines_scrolled = 0;
-  if (update_skipped < cfg.display_speedup && cfg.display_speedup < 10
-      && output_speed > update_skipped
+  if ((update_skipped < cfg.display_speedup && cfg.display_speedup < 10
+       && output_speed > update_skipped
+      ) || win_is_iconic()
      )
   {
     win_set_timer(do_update_cb, null, update_timer);
@@ -3081,6 +3087,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     else if (graph == 0xE0)  // square root base: rather draw (partially)
       for (int i = 0; i < len; i++)
         text[i] = 0x2502;
+    else if (graph == 0xF7)  // VT52 fraction numerator
+      yt -= line_width;
   }
 
  /* Finally, draw the text */
@@ -3216,6 +3224,12 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
           xl = xr;
           xr = xb;
         }
+      }
+      if (graph == 0xF7) {  // VT52 fraction numerator
+        yt = y + (cell_height - line_width) * 10 / 16;
+        yb = y + (cell_height - line_width) * 8 / 16;
+        xl = x + line_width - 1;
+        xr = xl + char_width - 1;
       }
       // adjustments with scaling pen:
       xl ++; xr ++;
