@@ -98,7 +98,7 @@ ifneq ($(platform), msys)
   # some nested functions) as they cause some security software to choke
   SECUR=-Wtrampolines
 endif
-COMMONFLAGS := -Wall -Wextra -Wundef -Werror $(SECUR)
+COMMONFLAGS := -Wall -Wextra -Wundef $(SECUR) -D_WIN32_WINNT=0x0601 -DWINVER=0x0601
 CFLAGS := -std=gnu99 -include std.h
 CXXFLAGS := -std=gnu++11
 
@@ -193,10 +193,10 @@ rgb.t:	# /usr/share/X11/rgb.txt # X11 color names, from package 'rgb'
 	sed -e 's,	, ,g' -e 's/ *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([0-9][0-9]*\) *\([^ ].*[^ ]\) */	{\1, \2, \3, "\4"},/' /usr/share/X11/rgb.txt > rgb.t
 
 combdata=combining.t combdouble.t combined.t
-unidata=$(combdata) ambiguous.t casefold.t bidiclasses.t mirroring.t brackets.t canonical.t wide.t
+unidata=$(combdata) ambiguous.t scripts.t casefold.t bidiclasses.t mirroring.t brackets.t canonical.t wide.t unicodever.t
 emojidata=emojibase.t emojiseqs.t
 
-unicodedata=UnicodeData.txt EastAsianWidth.txt Blocks.txt CaseFolding.txt BidiMirroring.txt BidiBrackets.txt BidiCharacterTest.txt BidiTest.txt
+unicodedata=UnicodeData.txt EastAsianWidth.txt Blocks.txt Scripts.txt CaseFolding.txt BidiMirroring.txt BidiBrackets.txt BidiCharacterTest.txt BidiTest.txt NameAliases.txt
 unicodeemoji=emoji-data.txt emoji-sequences.txt emoji-variation-sequences.txt emoji-zwj-sequences.txt
 
 clean-unicode:
@@ -222,6 +222,9 @@ WIDTH-A:	# UnicodeData.txt Blocks.txt EastAsianWidth.txt
 
 wide.t:	# UnicodeData.txt Blocks.txt EastAsianWidth.txt
 	sh ./mkwide
+
+scripts.t:	# Scripts.txt
+	sh ./mkscripts
 
 casefold.t:	# CaseFolding.txt
 	sh ./mkcasefold > casefold.t
@@ -250,12 +253,20 @@ full-emoji-list.html:
 	$(WGET) http://www.unicode.org/emoji/charts/$@
 
 univer = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.[0-9][^0-9]*,\1.\2,' -e t -e d Blocks.txt`
+unibasever = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\..*,\1.0,' -e t -e d Blocks.txt`
+
+emoji-%.txt:	Blocks.txt
+	$(WGET) http://www.unicode.org/Public/emoji/$(unibasever)/$@
+
+unicodever = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.\([0-9]\)[^0-9]*,\1\2\3,' -e t -e d Blocks.txt`
+
+unicodever.t:	# Blocks.txt
+	echo "#define UNICODE_VERSION $(unicodever)" > unicodever.t
 
 univer:	Blocks.txt
 	echo $(univer)
-
-emoji-%.txt:	Blocks.txt
-	$(WGET) http://www.unicode.org/Public/emoji/$(univer)/$@
+	echo $(unibasever)
+	echo $(unicodever)
 
 %.txt:
 	$(WGET) http://www.unicode.org/Public/UNIDATA/$@
@@ -316,7 +327,7 @@ $(pdf): ../docs/$(NAME).1
 html := ../docs/$(NAME).1.html
 html: $(html)
 $(html): ../docs/$(NAME).1
-	groff -t -man -Thtml $< > $@
+	sed -f html.sed $< | groff -t -man -mwww -Thtml > $@
 
 clean:
 	#rm -rf *.d *.o $(NAME)*

@@ -105,7 +105,7 @@ sel_spread_half(struct term* term, pos p, bool forward)
       }
       release_line(line);
     }
-    when MS_SEL_WORD or MS_OPENING:
+    when MS_SEL_WORD case_or MS_OPENING:
       p = sel_spread_word(term, p, forward); 
     when MS_SEL_LINE:
       if (forward) {
@@ -532,7 +532,7 @@ term_mouse_release(struct term* term, mouse_button b, mod_keys mods, pos p)
       term->hovering = false;
       win_update(true);
     }
-    when MS_SEL_CHAR or MS_SEL_WORD or MS_SEL_LINE: {
+    when MS_SEL_CHAR case_or MS_SEL_WORD case_or MS_SEL_LINE: {
       // Finish selection.
       if (term->selected && cfg.copy_on_select)
         term_copy(term);
@@ -719,17 +719,20 @@ term_mouse_wheel(struct term* term, int delta, int lines_per_notch, mod_keys mod
           return;
         term_scroll(term, 0, -lines);
       }
-      else if (term->wheel_reporting) {
-        if (strstr(cfg.suppress_wheel, "scrollapp"))
+      else if (term->wheel_reporting || term->wheel_reporting_xterm) {
+        if (strstr(cfg.suppress_wheel, "scrollapp") && !term->wheel_reporting_xterm)
           return;
         // Send scroll distance as CSI a/b events
         bool up = lines > 0;
         lines = abs(lines);
         int pages = lines / lines_per_page;
         lines -= pages * lines_per_page;
-        if (term->app_wheel) {
+        if (term->app_wheel && !term->wheel_reporting_xterm) {
           send_keys(term, up ? "\e[1;2a" : "\e[1;2b", 6, pages);
           send_keys(term, up ? "\eOa" : "\eOb", 3, lines);
+        }
+        else if (term->vt52_mode) {
+          send_keys(term, up ? "\eA" : "\eB", 2, lines);
         }
         else {
           send_keys(term, up ? "\e[5~" : "\e[6~", 4, pages);

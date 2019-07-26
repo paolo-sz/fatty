@@ -244,11 +244,9 @@ term_cursor_reset(term_cursor *curs)
   curs->utf = false;
   for (uint i = 0; i < lengthof(curs->csets); i++)
     curs->csets[i] = CSET_ASCII;
+  curs->decsupp = CSET_DECSPGR;
   curs->cset_single = CSET_ASCII;
-  curs->decnrc_enabled = false;
 
-  curs->autowrap = true;
-  curs->rev_wrap = cfg.old_wrapmodes;
   curs->bidimode = 0;
 
   curs->origin = false;
@@ -271,6 +269,10 @@ term_reset(struct term* term, bool full)
   term_cursor_reset(&term->saved_cursors[1]);
   term_update_cs(term);
   term->erase_char = basic_erase_char;
+  // these used to be in term_cursor, thus affected by cursor restore
+  term->decnrc_enabled = false;
+  term->autowrap = true;
+  term->rev_wrap = cfg.old_wrapmodes;
 
   // DECSTR states to be reset (in addition to cursor states)
   // https://www.vt100.net/docs/vt220-rm/table4-10.html
@@ -280,14 +282,14 @@ term_reset(struct term* term, bool full)
   term->marg_bot = term->rows - 1;
   term->marg_left = 0;
   term->marg_right = term->cols - 1;
-  term->lrmargmode = false;
   term->app_cursor_keys = false;
+  term->app_scrollbar = false;
 
   if (full) {
+    term->lrmargmode = false;
     term->deccolm_allowed = cfg.enable_deccolm_init;  // not reset by xterm
     term->vt220_keys = vt220(cfg.term);  // not reset by xterm
     term->app_keypad = false;  // xterm only with RIS
-    term->app_wheel = false;
     term->app_control = 0;
     term->auto_repeat = cfg.auto_repeat;  // not supported by xterm
     term->attr_rect = false;
@@ -317,7 +319,9 @@ term_reset(struct term* term, bool full)
     term->report_font_changed = 0;
     term->report_ambig_width = 0;
     term->shortcut_override = term->escape_sends_fs = term->app_escape_key = false;
+    term->wheel_reporting_xterm = false;
     term->wheel_reporting = true;
+    term->app_wheel = false;
     term->echoing = false;
     term->bracketed_paste = false;
     term->wide_indic = false;
@@ -362,6 +366,8 @@ term_reset(struct term* term, bool full)
         term_do_scroll(term, 0, term->rows - 1, 1, true);
       }
     }
+    term->curs.x = 0;
+    term->curs.y = 0;
   }
 
   term->in_vbell = false;
@@ -1411,9 +1417,11 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
 
 struct emoji_base {
   void * res;  // filename (char*/wchar*) or cached image
-  uint tags: 11;
-  xchar ch: 21;
-} __attribute__((packed));
+  struct {
+    uint tags: 11;
+    xchar ch: 21;
+  } __attribute__((packed));
+};
 
 struct emoji_base emoji_bases[] = {
 #include "emojibase.t"
@@ -1815,11 +1823,31 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
     efn = emoji_bases[e.idx].res;
   }
 #ifdef debug_emojis
-  printf("emoji_show <%ls>\n", efn);
+  printf("emoji_show @%d:%d..%d seq %d idx %d <%ls>\n", y, x, elen, e.seq, e.idx, efn);
 #endif
   if (efn && *efn)
     win_emoji_show(x, y, efn, elen, lattr);
 }
+
+#define dont_debug_win_text_invocation
+
+#ifdef debug_win_text_invocation
+
+void
+_win_text(int line, int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
+{
+  if (*text != ' ') {
+    printf("[%d] %d:%d(len %d) attr %08llX", line, ty, tx, len, attr.attr);
+    for (int i = 0; i < len && i < 8; i++)
+      printf(" %04X", text[i]);
+    printf("\n");
+  }
+  win_text(tx, ty, text, len, attr, textattr, lattr, has_rtl, clearpad, phase);
+}
+
+#define win_text(tx, ty, text, len, attr, textattr, lattr, has_rtl, clearpad, phase) _win_text(__LINE__, tx, ty, text, len, attr, textattr, lattr, has_rtl, clearpad, phase)
+
+#endif
 
 void
 term_paint(struct term* term)
@@ -2067,13 +2095,16 @@ term_paint(struct term* term)
           tattr.attr != (dispchars[j].attr.attr & ~(ATTR_NARROW | DATTR_MASK))
               )
       {
-        if ((tattr.attr & ATTR_WIDE) == 0 && win_char_width(tchar) == 2
-            // do not tamper with graphics
-            && !line->lattr
-            // and restrict narrowing to ambiguous width chars
-            //&& ambigwide(tchar)
-            // but then they will be clipped...
-           ) {
+        if ((tattr.attr & ATTR_WIDE) == 0
+            && win_char_width(tchar, tattr.attr) == 2
+            // && !(line->lattr & LATTR_MODE) ? "do not tamper with graphics"
+            // && ambigwide(tchar) ? but then they will be clipped...
+           )
+        {
+          //printf("[%d:%d] narrow? %04X..%04X\n", i, j, tchar, chars[j + 1].chr);
+#ifdef failed_attempt_to_tame_narrowing
+          if (j + 1 < term.cols && chars[j + 1].chr != ' ')
+#endif
           tattr.attr |= ATTR_NARROW;
         }
         else if (tattr.attr & ATTR_WIDE
@@ -2083,20 +2114,23 @@ term_paint(struct term* term)
                  // for double-width characters 
                  // (if double-width by font substitution)
                  && cs_ambig_wide && !font_ambig_wide
-                 && win_char_width(tchar) == 1 // && !widerange(tchar)
+                 && win_char_width(tchar, tattr.attr) == 1
+                    //? && !widerange(tchar)
                  // and reassure to apply this only to ambiguous width chars
                  && ambigwide(tchar)
-                ) {
+                )
+        {
           tattr.attr |= ATTR_EXPAND;
         }
       }
-      else if (dispchars[j].attr.attr & ATTR_NARROW)
+      else if (dispchars[j].attr.attr & ATTR_NARROW) {
         tattr.attr |= ATTR_NARROW;
+      }
 
 #define dont_debug_width_scaling
 #ifdef debug_width_scaling
       if (tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE))
-        printf("%04X w %d enw %02X\n", tchar, win_char_width(tchar), (uint)(((tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE)) >> 24)));
+        printf("%04X w %d enw %02X\n", tchar, win_char_width(tchar, tattr.attr), (uint)(((tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE)) >> 24)));
 #endif
 
      /* FULL-TERMCHAR */

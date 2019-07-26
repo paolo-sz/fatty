@@ -819,7 +819,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
           tempType = currentOverride;
         levels[i] = currentEmbedding;
         trace_mark("PDI");
-      when WS or S: /* Whitespace is treated as neutral for now */
+      when WS case_or S: /* Whitespace is treated as neutral for now */
         if (currentOverride != ON)
           tempType = currentOverride;
       otherwise:
@@ -837,7 +837,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   bool skip[count];
   for (i = 0; i < count; i++) {
     switch (types[i]) {
-      when RLE or LRE or RLO or LRO or PDF or BN:
+      when RLE case_or LRE case_or RLO case_or LRO case_or PDF case_or BN:
         //types[i] = BN;
         types[i] = NSM;  // fixes 4594 test cases + 28 char test cases
         skip[i] = true;  // remove char from algorithm... (usage incomplete)
@@ -871,7 +871,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   for (i = 1; i < count; i++) {
     if (types[i] == NSM /*&& !skip[i]*/)
       switch (types[i - 1]) {
-        when LRI or RLI or FSI or PDI:
+        when LRI case_or RLI case_or FSI case_or PDI:
           types[i] = ON;
         otherwise:
           types[i] = types[i - 1];
@@ -963,7 +963,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   */
   for (i = 0; i < count; i++) {
     switch (types[i]) {
-      when ES or ET or CS:
+      when ES case_or ET case_or CS:
         types[i] = ON;
     }
   }

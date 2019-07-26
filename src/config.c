@@ -70,6 +70,7 @@ const config default_cfg = {
   .fontfams[8] = {.name = W(""), .weight = 400, .isbold = false},
   .fontfams[9] = {.name = W(""), .weight = 400, .isbold = false},
   .fontfams[10] = {.name = W(""), .weight = 400, .isbold = false},
+  .font_choice = W(""),
   .font_sample = W(""),
   .show_hidden_fonts = false,
   .font_smoothing = FS_DEFAULT,
@@ -108,6 +109,8 @@ const config default_cfg = {
   .copy_on_select = true,
   .copy_as_rtf = true,
   .copy_as_html = 0,
+  .copy_as_rtf_font = W(""),
+  .copy_as_rtf_font_size = 0,
   .clicks_place_cursor = false,
   .middle_click_action = MC_PASTE,
   .right_click_action = RC_MENU,
@@ -224,7 +227,8 @@ const config default_cfg = {
     [BOLD_CYAN_I]    = RGB(0x40, 0xFF, 0xFF),
     [BOLD_WHITE_I]   = RGB(0xFF, 0xFF, 0xFF)
   },
-  .sixel_clip_char = W(" ")
+  .sixel_clip_char = W(" "),
+  .baud = 0
 };
 
 config cfg, new_cfg, file_cfg;
@@ -282,6 +286,7 @@ options[] = {
 
   // Text
   {"Font", OPT_WSTRING, offcfg(font.name)},
+  {"FontChoice", OPT_WSTRING, offcfg(font_choice)},
   {"FontSample", OPT_WSTRING, offcfg(font_sample)},
   {"FontSize", OPT_INT | OPT_LEGACY, offcfg(font.size)},
   {"FontHeight", OPT_INT, offcfg(font.size)},
@@ -349,6 +354,8 @@ options[] = {
   {"CopyOnSelect", OPT_BOOL, offcfg(copy_on_select)},
   {"CopyAsRTF", OPT_BOOL, offcfg(copy_as_rtf)},
   {"CopyAsHTML", OPT_INT, offcfg(copy_as_html)},
+  {"CopyAsRTFFont", OPT_WSTRING, offcfg(copy_as_rtf_font)},
+  {"CopyAsRTFFontHeight", OPT_INT, offcfg(copy_as_rtf_font_size)},
   {"ClicksPlaceCursor", OPT_BOOL, offcfg(clicks_place_cursor)},
   {"MiddleClickAction", OPT_MIDDLECLICK, offcfg(middle_click_action)},
   {"RightClickAction", OPT_RIGHTCLICK, offcfg(right_click_action)},
@@ -454,6 +461,7 @@ options[] = {
   {"BoldAsRainbowSparkles", OPT_BOOL, offcfg(bold_as_special)},
   {"SelectionShowSize", OPT_INT, offcfg(selection_show_size)},
   {"HoverTitle", OPT_BOOL, offcfg(hover_title)},
+  {"Baud", OPT_INT, offcfg(baud)},
 
   // ANSI colours
   {"Black", OPT_COLOUR, offcfg(ansi_colours[BLACK_I])},
@@ -525,6 +533,8 @@ static opt_val
     {"alt", MDK_ALT},
     {"ctrl", MDK_CTRL},
     {"win", MDK_WIN},
+    {"super", MDK_SUPER},
+    {"hyper", MDK_HYPER},
     {0, 0}
   },
   [OPT_TRANS] = (opt_val[]) {
@@ -1296,13 +1306,13 @@ load_config(string filename, int to_save)
     if (file || (!rc_filename && to_save == 2) || to_save == 3) {
       clear_opts();
 
-      delete(rc_filename);
+      std_delete(rc_filename);
       rc_filename = path_posix_to_win_w(filename);
     }
   }
 
   if (free_filename)
-    delete(filename);
+    std_delete(filename);
 
   if (file) {
     while (fgets(linebuf, sizeof linebuf, file)) {
@@ -1381,7 +1391,7 @@ copy_config(char * tag, config * dst_p, const config * src_p)
           strset(dst_val_p, *(string *)src_val_p);
         when OPT_WSTRING:
           wstrset(dst_val_p, *(wstring *)src_val_p);
-        when OPT_INT or OPT_COLOUR:
+        when OPT_INT case_or OPT_COLOUR:
           *(int *)dst_val_p = *(int *)src_val_p;
         otherwise:
           *(char *)dst_val_p = *(char *)src_val_p;
@@ -1460,7 +1470,7 @@ save_config(void)
     free(up);
     if (len > 0) {
       win_show_error(msg);
-      delete(msg);
+      std_delete(msg);
     }
   }
   else {
@@ -1509,7 +1519,7 @@ save_config(void)
     fclose(file);
   }
 
-  delete(filename);
+  std_delete(filename);
 }
 
 
@@ -1533,7 +1543,7 @@ apply_config(bool save)
           changed = strcmp(*(string *)val_p, *(string *)new_val_p);
         when OPT_WSTRING:
           changed = wcscmp(*(wstring *)val_p, *(wstring *)new_val_p);
-        when OPT_INT or OPT_COLOUR:
+        when OPT_INT case_or OPT_COLOUR:
           changed = (*(int *)val_p != *(int *)new_val_p);
         otherwise:
           changed = (*(char *)val_p != *(char *)new_val_p);
@@ -1907,7 +1917,7 @@ lang_handler(control *ctrl, int event)
         dlg_editbox_set_w(ctrl, LOCALE);
       else
         dlg_editbox_set_w(ctrl, new_cfg.lang);
-    when EVENT_VALCHANGE or EVENT_SELCHANGE: {
+    when EVENT_VALCHANGE case_or EVENT_SELCHANGE: {
       int n = dlg_listbox_getcur(ctrl);
       if (n == 0)
         wstrset(&new_cfg.lang, W(""));
@@ -1955,7 +1965,7 @@ term_handler(control *ctrl, int event)
       if (terminfo_exists("fatty-direct"))
         dlg_listbox_add(ctrl, "fatty-direct");
       dlg_editbox_set(ctrl, new_cfg.term);
-    when EVENT_VALCHANGE or EVENT_SELCHANGE:
+    when EVENT_VALCHANGE case_or EVENT_SELCHANGE:
       dlg_editbox_get(ctrl, &new_cfg.term);
   }
 }
@@ -2008,7 +2018,7 @@ bell_handler(control *ctrl, int event)
         }
       }
       closemuicache();
-    when EVENT_VALCHANGE or EVENT_SELCHANGE: {
+    when EVENT_VALCHANGE case_or EVENT_SELCHANGE: {
       new_cfg.bell_type = dlg_listbox_getcur(ctrl) - 1;
 
       win_bell(win_active_terminal(), &new_cfg);
@@ -2336,14 +2346,14 @@ static void
 clearfontlist()
 {
   for (uint fi = 0; fi < fontlistn; fi++) {
-    delete(fontlist[fi].fn);
+    std_delete(fontlist[fi].fn);
     for (uint wi = 0; wi < fontlist[fi].weightsn; wi++) {
-      delete(fontlist[fi].weights[wi].style);
+      std_delete(fontlist[fi].weights[wi].style);
     }
-    delete(fontlist[fi].weights);
+    std_delete(fontlist[fi].weights);
   }
   fontlistn = 0;
-  delete(fontlist);
+  std_delete(fontlist);
   fontlist = 0;
 }
 
@@ -2494,7 +2504,7 @@ font_weight_handler(control *ctrl, int event)
         weight = fontlist[fi].weights[wi].weight;
         break;
       }
-    delete(wname);
+    std_delete(wname);
     new_cfg.font.weight = weight;
     new_cfg.font.isbold = weight >= FW_BOLD;
     display_font_sample();
@@ -2516,7 +2526,7 @@ font_size_handler(control *ctrl, int event)
     string size = newn(char, 3);
     dlg_editbox_get(ctrl, &size);
     new_cfg.font.size = atoi(size);
-    delete(size);
+    std_delete(size);
     display_font_sample();
   }
 }
@@ -2656,6 +2666,20 @@ font_handler(control *ctrl, int event)
     font_weight_handler(font_weights, EVENT_REFRESH);
     display_font_sample();
   }
+}
+
+static void
+modifier_handler(control *ctrl, int event)
+{
+  char *cp = ctrl->context;
+  int col = ctrl->column;
+  char mask = 1 << col;
+  //printf("mod %02X ev %d col %d <%s>\n", *cp, event, col, ctrl->label);
+  if (event == EVENT_REFRESH)
+    dlg_checkbox_set(ctrl, *cp & mask);
+  else if (event == EVENT_VALCHANGE)
+    *cp = (*cp & ~mask) | (dlg_checkbox_get(ctrl) << col);
+  //printf(" -> %02X\n", *cp);
 }
 
 
@@ -3072,6 +3096,8 @@ setup_config_box(controlbox * b)
     _("&Application"), true,
     null
   );
+#define appl_override_buttons
+#ifdef appl_override_buttons
   ctrl_radiobuttons(
     //__ Options - Mouse:
     s, _("Modifier for overriding default"), 5,
@@ -3088,6 +3114,38 @@ setup_config_box(controlbox * b)
     _("&Off"), 0,
     null
   );
+#else
+#warning needs some coding
+  ctrl_label(
+    //__ Options - Mouse:
+    s, _("Modifier for overriding default"));
+  ctrl_columns(s, 6, 20, 16, 16, 16, 16, 16);
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Shift"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 0;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Alt"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 1;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Ctrl"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 2;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Win"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 3;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Sup"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 4;
+  ctrl_checkbox(
+    //__ Options - Mouse:
+    s, _("&Hyp"), modifier_handler, &new_cfg.click_target_mod
+  )->column = 5;
+  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+#endif
 
  /*
   * The Window panel.
@@ -3131,6 +3189,7 @@ setup_config_box(controlbox * b)
     _("&Right"), 1,
     null
   );
+#ifdef scroll_mod_buttons
   ctrl_radiobuttons(
     //__ Options - Window:
     s, _("Modifier for scrolling"), 5,
@@ -3147,6 +3206,37 @@ setup_config_box(controlbox * b)
     _("&Off"), 0,
     null
   );
+#else
+  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+  ctrl_label(
+    //__ Options - Window:
+    s, _("Modifier for scrolling"));
+  ctrl_columns(s, 6, 20, 16, 16, 16, 16, 16);
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Shift"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 0;
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Alt"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 1;
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Ctrl"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 2;
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Win"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 3;
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Sup"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 4;
+  ctrl_checkbox(
+    //__ Options - Window:
+    s, _("&Hyp"), modifier_handler, &new_cfg.scroll_mod
+  )->column = 5;
+#endif
   ctrl_checkbox(
     //__ Options - Window:
     s, _("&PgUp and PgDn scroll without modifier"),

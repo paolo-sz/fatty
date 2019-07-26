@@ -346,7 +346,9 @@ child_create(struct child* child, struct term* term,
           dev += 3;
         else if (!strncmp(dev, "pts/", 4))
           dev += 4;
-        strncpy(ut.ut_id, dev, sizeof ut.ut_id);
+        //strncpy(ut.ut_id, dev, sizeof ut.ut_id);
+        for (uint i = 0; i < sizeof ut.ut_id && *dev; i++)
+          ut.ut_id[i] = *dev++;
 
         ut.ut_type = USER_PROCESS;
         ut.ut_pid = pid;
@@ -576,7 +578,7 @@ user_command(struct child* child, wstring commands, int n)
         // check for multi-line separation
         if (*cmdp == '\\' && cmdp[1] == '\n') {
           cmdp += 2;
-          while (isspace(*cmdp))
+          while (iswspace(*cmdp))
             cmdp++;
         }
       }
@@ -761,7 +763,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
         printf("fork wsl <%ls>\n", wcd);
 #endif
         set_dir = (string)cs__wcstombs(wcd);
-        delete(wcd);
+        std_delete(wcd);
       }
 
       chdir(set_dir);
@@ -779,7 +781,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
       }
 
       if (support_wsl)
-        delete(set_dir);
+        std_delete(set_dir);
     }
 
 #ifdef add_child_parameters
@@ -913,7 +915,7 @@ child_launch(struct child* child, int n, int argc, char * argv[], int moni)
         // check for multi-line separation
         if (*cmdp == '\\' && cmdp[1] == '\n') {
           cmdp += 2;
-          while (isspace(*cmdp))
+          while (iswspace(*cmdp))
             cmdp++;
         }
       }

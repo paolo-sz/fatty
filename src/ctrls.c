@@ -315,6 +315,14 @@ ctrl_pushbutton(controlset *s, char *label,
 }
 
 control *
+ctrl_label(controlset *s, char *label)
+{
+  control *c = ctrl_new(s, CTRL_LABEL, 0, 0);
+  c->label = label ? strdup(label) : null;
+  return c;
+}
+
+control *
 ctrl_fontsel(controlset *s, char *label,
              handler_fn handler, void *context)
 {
@@ -339,7 +347,7 @@ ctrl_free(control *ctrl)
   switch (ctrl->type) {
     when CTRL_RADIO:
       for (int i = 0; i < ctrl->radio.nbuttons; i++)
-        delete(ctrl->radio.labels[i]);
+        std_delete(ctrl->radio.labels[i]);
       free(ctrl->radio.labels);
       free(ctrl->radio.vals);
     when CTRL_COLUMNS:
@@ -405,7 +413,7 @@ dlg_stdintbox_handler(control *ctrl, int event)
       string val = 0;
       dlg_editbox_get(ctrl, &val);
       *ip = max(0, atoi(val));
-      delete(val);
+      std_delete(val);
   }
   else if (event == EVENT_REFRESH) {
     char buf[16];

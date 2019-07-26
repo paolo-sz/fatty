@@ -124,7 +124,7 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
   TranslateMessage(&mesg);
 
   switch (mesg.message) {
-    when WM_KEYDOWN or WM_SYSKEYDOWN:
+    when WM_KEYDOWN case_or WM_SYSKEYDOWN:
       switch (mesg.wParam) {
         when VK_ESCAPE:
           term_clear_search(term);
@@ -148,7 +148,7 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     when WM_CHAR:
       switch (mesg.wParam) {
         // Necessary to stop the beeping!
-        when VK_RETURN or VK_ESCAPE or VK_MENU:
+        when VK_RETURN case_or VK_ESCAPE case_or VK_MENU:
           return 0;
       }
     when WM_MBUTTONUP: {
@@ -243,13 +243,13 @@ win_toggle_search(bool show, bool focus)
   int barpos = margin;
   while (search_bar && * search_bar)
     switch (* search_bar ++) {
-      when 'x' or 'X':
+      when 'x' case_or 'X':
         place_field(& barpos, button_width, & pos_close);
       when '<':
         place_field(& barpos, button_width, & pos_prev);
       when '>':
         place_field(& barpos, button_width, & pos_next);
-      when 's' or 'S':
+      when 's' case_or 'S':
         place_field(& barpos, edit_width, & pos_edit);
     }
   place_field(& barpos, button_width, & pos_close);

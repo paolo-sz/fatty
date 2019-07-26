@@ -67,6 +67,7 @@ typedef struct {
   // Text
   font_spec font;
   font_spec fontfams[11];
+  wstring font_choice;
   wstring font_sample;
   bool show_hidden_fonts;
   char font_smoothing;
@@ -104,7 +105,9 @@ typedef struct {
   // Mouse
   bool copy_on_select;
   bool copy_as_rtf;
-  char copy_as_html;
+  int copy_as_html;
+  wstring copy_as_rtf_font;
+  int copy_as_rtf_font_size;
   bool clicks_place_cursor;
   char middle_click_action;
   char right_click_action;
@@ -203,6 +206,7 @@ typedef struct {
   bool bold_as_special;
   int selection_show_size;
   bool hover_title;
+  int baud;
   // Legacy
   bool use_system_colours;
   bool old_bold;

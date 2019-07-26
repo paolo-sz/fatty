@@ -113,7 +113,7 @@ static int wsl_fstab_len = 0;
 static char *
 skip(char * s)
 {
-  while (isspace(*s))
+  while (iswspace(*s))
     s++;
   return s;
 }
@@ -164,12 +164,12 @@ wslmntmapped(void)
         char * p1 = skip(linebuf);
         if (*p1 != '#') {
           char * x = p1;
-          while (!isspace(*x))
+          while (!iswspace(*x))
             x++;
           *x++ = 0;
           char * p2 = skip(x);
           x = p2;
-          while (!isspace(*x))
+          while (!iswspace(*x))
             x++;
           *x = 0;
           if (x-- > p2 && *x == '/')
@@ -247,14 +247,14 @@ dewsl(wchar * wpath)
   if (unwslp) {
     wchar * unwsl = cs__utftowcs(unwslp);
     free(unwslp);
-    delete(wpath);
+    std_delete(wpath);
     wpath = unwsl;
   }
   else if (wcsncmp(wpath, W("/mnt/"), 5) == 0) {
     wchar * unwsl = newn(wchar, wcslen(wpath) + 6);
     wcscpy(unwsl, W("/cygdrive"));
     wcscat(unwsl, wpath + 4);
-    delete(wpath);
+    std_delete(wpath);
     wpath = unwsl;
   }
   else if (*wpath == '/' && *wsl_basepath) {
@@ -268,7 +268,7 @@ dewsl(wchar * wpath)
     wchar * unwsl = newn(wchar, wcslen(wbase) + wcslen(wpath) + 1);
     wcscpy(unwsl, wbase);
     wcscat(unwsl, wpath);
-    delete(wpath);
+    std_delete(wpath);
     wpath = unwsl;
   }
   else if (*wpath == '/') {  // prepend %LOCALAPPDATA%\lxss[\rootfs]
@@ -296,7 +296,7 @@ dewsl(wchar * wpath)
       if (rootfs_mount)
         wcscat(unwsl, W("/rootfs"));
       wcscat(unwsl, wpath);
-      delete(wpath);
+      std_delete(wpath);
       wpath = unwsl;
     }
   }
@@ -350,7 +350,7 @@ win_open(wstring wpath, bool adjust_dir)
           cd = renewn(cd, wcslen(cd) + wcslen(wpath) + 2);
           cd[wcslen(cd)] = '/';
           wcscpy(&cd[wcslen(cd) + 1], wpath);
-          delete(wpath);
+          std_delete(wpath);
           wpath = cd;
         }
       }
@@ -361,7 +361,7 @@ win_open(wstring wpath, bool adjust_dir)
 #ifdef debug_wsl
     printf("open <%ls> <%ls>\n", wpath, conv_wpath);
 #endif
-    delete(wpath);
+    std_delete(wpath);
     if (conv_wpath)
       shell_exec(conv_wpath); // frees conv_wpath
     else
@@ -473,19 +473,21 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
       MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS,
                           (char[]){i}, 1, unitab + i, 1);
 
-    char * rtffontname = newn(char, wcslen(cfg.font.name) * 9 + 1);
+    wstring cfgfont = *cfg.copy_as_rtf_font ? cfg.copy_as_rtf_font : cfg.font.name;
+    int cfgsize = cfg.copy_as_rtf_font_size ? cfg.copy_as_rtf_font_size : cfg.font.size;
+    char * rtffontname = newn(char, wcslen(cfgfont) * 9 + 1);
     char * rtffnpoi = rtffontname;
-    for (uint i = 0; i < wcslen(cfg.font.name); i++)
-      if (!(cfg.font.name[i] & 0xFF80) && !strchr("\\;{}", cfg.font.name[i]))
-        *rtffnpoi++ = cfg.font.name[i];
+    for (uint i = 0; i < wcslen(cfgfont); i++)
+      if (!(cfgfont[i] & 0xFF80) && !strchr("\\;{}", cfgfont[i]))
+        *rtffnpoi++ = cfgfont[i];
       else
-        rtffnpoi += sprintf(rtffnpoi, "\\u%d '", cfg.font.name[i]);
+        rtffnpoi += sprintf(rtffnpoi, "\\u%d '", cfgfont[i]);
     *rtffnpoi = '\0';
     rtfsize = 100 + strlen(rtffontname);
     rtf = newn(char, rtfsize);
     rtflen = sprintf(rtf,
-      "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fmodern %s;}}\\f0\\fs%d",
-      rtffontname, cfg.font.size * 2);
+      "{\\rtf1\\ansi\\deff0{\\fonttbl{\\f0\\fmodern\\fprq1 %s;}}\\f0\\fs%d",
+      rtffontname, cfgsize * 2);
     free(rtffontname);
 
    /*
@@ -713,7 +715,8 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
     // determine HTML format level requested
     int level = 0;
     if (cfg.copy_as_html && !what)
-      level = cfg.copy_as_rtf ? 2 : 3;
+      //level = cfg.copy_as_rtf ? 2 : 3;
+      level = cfg.copy_as_html;
     else if (what == 'h')
       level = 1;
     else if (what == 'f')
@@ -785,7 +788,7 @@ matchconf(char * conf, char * item)
       // check for multi-line separation
       if (*cmdp == '\\' && cmdp[1] == '\n') {
         cmdp += 2;
-        while (isspace(*cmdp))
+        while (iswspace(*cmdp))
           cmdp++;
       }
     }
@@ -795,30 +798,27 @@ matchconf(char * conf, char * item)
   return 0;
 }
 
-static void
-paste_hdrop(HDROP drop)
+static uint buf_len, buf_pos;
+static char * buf;
+
+static void buf_init()
 {
-#if CYGWIN_VERSION_API_MINOR >= 222
-  // Update Cygwin locale to terminal locale.
-  cygwin_internal(CW_INT_SETLOCALE);
-#endif
-  uint n = DragQueryFileW(drop, -1, 0, 0);
+  buf_len = 32;
+  buf_pos = 0;
+  buf = newn(char, buf_len);
+}
 
-  uint buf_len = 32, buf_pos = 0;
-  char *buf = newn(char, buf_len);
-  void buf_add(char c) {
-    if (buf_pos >= buf_len)
-      buf = renewn(buf, buf_len *= 2);
-    buf[buf_pos++] = c;
-  }
+static void
+buf_add(char c)
+{
+  if (buf_pos >= buf_len)
+    buf = renewn(buf, buf_len *= 2);
+  buf[buf_pos++] = c;
+}
 
-  for (uint i = 0; i < n; i++) {
-    uint wfn_len = DragQueryFileW(drop, i, 0, 0);
-    wchar wfn[wfn_len + 1];
-    DragQueryFileW(drop, i, wfn, wfn_len + 1);
-#ifdef debug_dragndrop
-    printf("dropped file <%ls>\n", wfn);
-#endif
+static void
+buf_path(wchar * wfn)
+{
     char *fn = path_win_w_to_posix(wfn);
 
     bool has_tick = false, needs_quotes = false, needs_dollar = false;
@@ -864,7 +864,8 @@ paste_hdrop(HDROP drop)
         else if (strncmp(p, "/cygdrive/", 10) == 0) {
           // convert /cygdrive/X/path referring to mounted drive
           p += 5;
-          strncpy(p, "/mnt", 4);
+          //strncpy(p, "/mnt", 4);
+          memcpy(p, "/mnt", 4);
         }
       }
       else {
@@ -914,7 +915,8 @@ paste_hdrop(HDROP drop)
           p = mp;
         else if (strncmp(p, "/cygdrive/", 10) == 0) {
           p += 5;
-          strncpy(p, "/mnt", 4);
+          //strncpy(p, "/mnt", 4);
+          memcpy(p, "/mnt", 4);
         }
       }
     }
@@ -934,10 +936,30 @@ paste_hdrop(HDROP drop)
     }
     if (needs_quotes)
       buf_add('\'');
-    buf_add(' ');  // Filename separator
     free(fn);
+}
+
+static void
+paste_hdrop(HDROP drop)
+{
+#if CYGWIN_VERSION_API_MINOR >= 222
+  // Update Cygwin locale to terminal locale.
+  cygwin_internal(CW_INT_SETLOCALE);
+#endif
+  uint n = DragQueryFileW(drop, -1, 0, 0);
+
+  buf_init();
+  for (uint i = 0; i < n; i++) {
+    uint wfn_len = DragQueryFileW(drop, i, 0, 0);
+    wchar wfn[wfn_len + 1];
+    DragQueryFileW(drop, i, wfn, wfn_len + 1);
+#ifdef debug_dragndrop
+    printf("dropped file <%ls>\n", wfn);
+#endif
+    if (i)
+      buf_add(' ');  // Filename separator
+    buf_path(wfn);
   }
-  buf_pos--;  // Drop trailing space
 
   if (!support_wsl && *cfg.drop_commands) {
     // try to determine foreground program
@@ -972,6 +994,22 @@ paste_hdrop(HDROP drop)
 }
 
 static void
+paste_path(struct term* term, HANDLE data)
+{
+  wchar *s = GlobalLock(data);
+  buf_init();
+  buf_path(s);
+  GlobalUnlock(data);
+
+  if (term->bracketed_paste)
+    child_write(term->child, "\e[200~", 6);
+  child_send(term->child, buf, buf_pos);
+  free(buf);
+  if (term->bracketed_paste)
+    child_write(term->child, "\e[201~", 6);
+}
+
+static void
 paste_unicode_text(HANDLE data)
 {
   wchar *s = GlobalLock(data);
@@ -991,8 +1029,8 @@ paste_text(HANDLE data)
   term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
 }
 
-void
-win_paste(void)
+static void
+do_win_paste(bool do_path)
 {
   if (!OpenClipboard(null))
     return;
@@ -1007,10 +1045,10 @@ win_paste(void)
   }
   else if ((data = GetClipboardData(CF_UNICODETEXT))) {
     //printf("pasting CF_UNICODETEXT\n");
-    //TODO:
-    //if (GetKeyState(VK_CONTROL) & 0x80)
-    //  apply path conversion..., factored out from the loop in paste_hdrop
-    paste_unicode_text(data);
+    if (do_path)
+      paste_path(win_active_terminal(), data);
+    else
+      paste_unicode_text(data);
   }
   else if ((data = GetClipboardData(CF_TEXT))) {
     //printf("pasting CF_TEXT\n");
@@ -1018,6 +1056,18 @@ win_paste(void)
   }
 
   CloseClipboard();
+}
+
+void
+win_paste(void)
+{
+  do_win_paste(false);
+}
+
+void
+win_paste_path(void)
+{
+  do_win_paste(true);
 }
 
 
@@ -1080,7 +1130,7 @@ dt_drag_over(IDropTarget *unused(this),
              DWORD keys, POINTL unused(pos), DWORD *effect_p)
 {
   switch (dt_format.cfFormat) {
-    when CF_TEXT or CF_UNICODETEXT:
+    when CF_TEXT case_or CF_UNICODETEXT:
       *effect_p =
         *effect_p & (keys & MK_CONTROL ? DROPEFFECT_COPY : DROPEFFECT_MOVE)
         ?: *effect_p & (DROPEFFECT_COPY | DROPEFFECT_MOVE);

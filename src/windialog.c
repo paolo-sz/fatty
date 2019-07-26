@@ -612,7 +612,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       }
     }
 
-    when WM_COMMAND or WM_DRAWITEM: {
+    when WM_COMMAND case_or WM_DRAWITEM: {
       debug("WM_COMMAND");
       int ret = winctrl_handle_command(msg, wParam, lParam);
       debug("WM_COMMAND: handle");

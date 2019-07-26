@@ -36,6 +36,7 @@ char * fatty_debug;
 
 #include <mmsystem.h>  // PlaySound for MSys
 #include <shellapi.h>
+#include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 
 #ifdef __CYGWIN__
 #include <sys/cygwin.h>  // cygwin_internal
@@ -575,6 +576,47 @@ win_sys_style(bool focus)
 
 
 /*
+   Application scrollbar.
+ */
+static int scroll_len = 0;
+static int scroll_dif = 0;
+
+void
+win_set_scrollview(int pos, int len, int height)
+{
+  struct term* term = win_active_terminal();
+  bool prev = term->app_scrollbar;
+  term->app_scrollbar = pos;
+
+  if (term->app_scrollbar != prev)
+    win_update_scrollbar(false);
+
+  if (pos) {
+    if (len)
+      scroll_len = len;
+    else
+      len = scroll_len;
+    if (height >= 0)
+      scroll_dif = term->rows - height;
+    else if (!prev)
+      scroll_dif = 0;
+    SetScrollInfo(
+      wnd, SB_VERT,
+      &(SCROLLINFO){
+        .cbSize = sizeof(SCROLLINFO),
+        .fMask = SIF_ALL | SIF_DISABLENOSCROLL,
+        .nMin = 1,
+        .nMax = len,
+        .nPage = term->rows - scroll_dif,
+        .nPos = pos,
+      },
+      true  // redraw
+    );
+  }
+}
+
+
+/*
    Window title functions.
  */
 
@@ -585,7 +627,7 @@ win_set_icon(char * s, int icon_index)
   wstring icon_file = path_posix_to_win_w(s);
   //printf("win_set_icon <%ls>,%d\n", icon_file, icon_index);
   ExtractIconExW(icon_file, icon_index, &large_icon, &small_icon, 1);
-  delete(icon_file);
+  std_delete(icon_file);
   SetClassLongPtr(wnd, GCLP_HICONSM, (LONG_PTR)small_icon);
   SetClassLongPtr(wnd, GCLP_HICON, (LONG_PTR)large_icon);
   //SendMessage(wnd, WM_SETICON, ICON_SMALL, (LPARAM)small_icon);
@@ -768,7 +810,7 @@ void
 clear_tabs()
 {
   if (tabn)
-    delete(tabs);
+    std_delete(tabs);
   tabn = 0;
   tabs = 0;
 }
@@ -1182,20 +1224,37 @@ win_get_scrpos(int *xp, int *yp, bool with_borders)
   }
 }
 
+static int
+win_has_scrollbar(void)
+{
+  LONG style = GetWindowLong(wnd, GWL_STYLE);
+  if (style & WS_VSCROLL) {
+    LONG exstyle = GetWindowLong(wnd, GWL_EXSTYLE);
+    if (exstyle & WS_EX_LEFTSCROLLBAR)
+      return -1;
+    else
+      return 1;
+  }
+  else
+    return 0;
+}
+
 void
 win_get_pixels(int *height_p, int *width_p, bool with_borders)
 {
   RECT r;
   GetWindowRect(wnd, &r);
+  //printf("win_get_pixels: width %d win_has_scrollbar %d\n", r.right - r.left, win_has_scrollbar());
   if (with_borders) {
     *height_p = r.bottom - r.top;
-    *width_p = r.right - r.left
-             + (cfg.scrollbar ? GetSystemMetrics(SM_CXVSCROLL) : 0);
+    *width_p = r.right - r.left;
   }
   else {
     int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
     *height_p = r.bottom - r.top - extra_height - 2 * PADDING - sy;
-    *width_p = r.right - r.left - extra_width - 2 * PADDING;
+    *width_p = r.right - r.left - extra_width - 2 * PADDING
+             //- (cfg.scrollbar ? GetSystemMetrics(SM_CXVSCROLL) : 0);
+             - (win_has_scrollbar() ? GetSystemMetrics(SM_CXVSCROLL) : 0);
   }
 }
 
@@ -1559,7 +1618,7 @@ win_bell(struct term* term, config * conf)
 
   if (cfg.bell_flash_style & FLASH_FRAME)
     flash_border();
-  if (term->bell_taskbar && !win_active_terminal()->has_focus)
+  if (term->bell_taskbar && (!term->has_focus || win_is_iconic()))
     flash_taskbar(true);
   if (term->bell_popup)
     win_set_zorder(true);
@@ -1643,7 +1702,7 @@ win_adjust_borders(int t_width, int t_height)
   printf("win_adjust_borders w/h %d %d\n", width, height);
 #endif
 
-  if (cfg.scrollbar)
+  if ((win_active_terminal() && win_active_terminal()->app_scrollbar) || cfg.scrollbar)
     width += GetSystemMetrics(SM_CXVSCROLL);
 
   extra_width = width - (cr.right - cr.left);
@@ -1851,10 +1910,14 @@ void
 win_update_scrollbar(bool inner)
 {
   // enforce outer scrollbar if switched on
-  int scrollbar = win_active_terminal()->show_scrollbar ? (cfg.scrollbar || !inner) : 0;
+  int scrollbar = win_active_terminal()->show_scrollbar ? (cfg.scrollbar ?: !inner) : 0;
   // keep config consistent with enforced scrollbar
   if (scrollbar && !cfg.scrollbar)
     cfg.scrollbar = 1;
+  if (win_active_terminal()->app_scrollbar && !scrollbar) {
+    //printf("enforce application scrollbar %d->%d->%d\n", scrollbar, cfg.scrollbar, cfg.scrollbar ?: 1);
+    scrollbar = cfg.scrollbar ?: 1;
+  }
 
   LONG style = GetWindowLong(wnd, GWL_STYLE);
   SetWindowLong(wnd, GWL_STYLE,
@@ -2026,9 +2089,9 @@ show_message(char * msg, UINT type)
   if (fputs(outmsg, out) < 0 || fputs("\n", out) < 0 || fflush(out) < 0) {
     wchar * wmsg = cs__utftowcs(msg);
     message_box_w(0, wmsg, W(APPNAME), type, null);
-    delete(wmsg);
+    std_delete(wmsg);
   }
-  delete(outmsg);
+  std_delete(outmsg);
 }
 
 void
@@ -2077,11 +2140,11 @@ print_opterror(FILE * stream, string msg, bool utf8params, string p1, string p2)
   bool ok = false;
   if (fullmsg) {
     char * outmsg = cs__utftombs(fullmsg);
-    delete(fullmsg);
+    std_delete(fullmsg);
     ok = fprintf(stream, "%s.\n", outmsg);
     if (ok)
       ok = fflush(stream);
-    delete(outmsg);
+    std_delete(outmsg);
   }
   return ok;
 }
@@ -2280,7 +2343,7 @@ static struct {
         }
       }
 
-    when WM_COMMAND or WM_SYSCOMMAND: {
+    when WM_COMMAND case_or WM_SYSCOMMAND: {
 # ifdef debug_messages
       static struct {
         uint idm_;
@@ -2344,7 +2407,7 @@ static struct {
           else {
             default_size();
           }
-        when IDM_FULLSCREEN or IDM_FULLSCREEN_ZOOM: {
+        when IDM_FULLSCREEN case_or IDM_FULLSCREEN_ZOOM: {
           bool ctrl = GetKeyState(VK_CONTROL) & 0x80;
           bool shift = GetKeyState(VK_SHIFT) & 0x80;
           if (((wp & ~0xF) == IDM_FULLSCREEN_ZOOM && shift)
@@ -2390,27 +2453,89 @@ static struct {
       update_available_version(wp);
 
     when WM_VSCROLL:
-      switch (LOWORD(wp)) {
-        when SB_BOTTOM:   term_scroll(term, -1, 0);
-        when SB_TOP:      term_scroll(term, +1, 0);
-        when SB_LINEDOWN: term_scroll(term, 0, +1);
-        when SB_LINEUP:   term_scroll(term, 0, -1);
-        when SB_PAGEDOWN: term_scroll(term, 0, +max(1, term->rows - 1));
-        when SB_PAGEUP:   term_scroll(term, 0, -max(1, term->rows - 1));
-        when SB_PRIOR:    term_scroll(term, SB_PRIOR, 0);
-        when SB_NEXT:     term_scroll(term, SB_NEXT, 0);
-        when SB_THUMBPOSITION or SB_THUMBTRACK: {
-          SCROLLINFO info;
-          info.cbSize = sizeof(SCROLLINFO);
-          info.fMask = SIF_TRACKPOS;
-          GetScrollInfo(wnd, SB_VERT, &info);
-          term_scroll(term, 1, info.nTrackPos);
+      //printf("WM_VSCROLL %d\n", LOWORD(wp));
+      if (!term->app_scrollbar)
+        switch (LOWORD(wp)) {
+          when SB_LINEUP:   term_scroll(term, 0, -1);
+          when SB_LINEDOWN: term_scroll(term, 0, +1);
+          when SB_PAGEUP:   term_scroll(term, 0, -max(1, term->rows - 1));
+          when SB_PAGEDOWN: term_scroll(term, 0, +max(1, term->rows - 1));
+          when SB_THUMBPOSITION case_or SB_THUMBTRACK: {
+            SCROLLINFO info;
+            info.cbSize = sizeof(SCROLLINFO);
+            info.fMask = SIF_TRACKPOS;
+            GetScrollInfo(wnd, SB_VERT, &info);
+            term_scroll(term, 1, info.nTrackPos);
+          }
+          when SB_TOP:      term_scroll(term, +1, 0);
+          when SB_BOTTOM:   term_scroll(term, -1, 0);
+          //when SB_ENDSCROLL: ;
+          // these two may be used by mintty keyboard shortcuts (not by Windows)
+          when SB_PRIOR:    term_scroll(term, SB_PRIOR, 0);
+          when SB_NEXT:     term_scroll(term, SB_NEXT, 0);
+        }
+      else
+        switch (LOWORD(wp)) {
+          when SB_LINEUP:
+            //win_key_down(VK_UP, 1);
+            win_csi_seq(term->child, "65", "#e");
+          when SB_LINEDOWN:
+            //win_key_down(VK_DOWN, 1);
+            win_csi_seq(term->child, "66", "#e");
+          when SB_PAGEUP:
+            //win_key_down(VK_PRIOR, 1);
+            win_csi_seq(term->child, "5", "#e");
+          when SB_PAGEDOWN:
+            //win_key_down(VK_NEXT, 1);
+            win_csi_seq(term->child, "6", "#e");
+          when SB_TOP:
+            child_printf(term->child, "\e[0#d");
+          when SB_BOTTOM:
+            child_printf(term->child, "\e[%u#d", scroll_len);
+          when SB_THUMBPOSITION case_or SB_THUMBTRACK: {
+            SCROLLINFO info;
+            info.cbSize = sizeof(SCROLLINFO);
+            info.fMask = SIF_TRACKPOS;
+            GetScrollInfo(wnd, SB_VERT, &info);
+            child_printf(term->child, "\e[%u#d", info.nTrackPos);
+          }
+        }
+
+    when WM_MOUSEWHEEL: {
+      // check whether in client area (terminal pane) or over scrollbar...
+      POINT wpos = {.x = GET_X_LPARAM(lp), .y = GET_Y_LPARAM(lp)};
+      ScreenToClient(wnd, &wpos);
+      int height, width;
+      win_get_pixels(&height, &width, false);
+      height += 2 * PADDING;
+      width += 2 * PADDING;
+      int delta = GET_WHEEL_DELTA_WPARAM(wp);  // positive means up
+      //printf("%d %d %d %d %d\n", wpos.y, wpos.x, height, width, delta);
+      if (wpos.y >= 0 && wpos.y < height) {
+        if (wpos.x >= 0 && wpos.x < width)
+          win_mouse_wheel(wp, lp);
+        else {
+          int hsb = win_has_scrollbar();
+          if (hsb && term->app_scrollbar) {
+            int wsb = GetSystemMetrics(SM_CXVSCROLL);
+            if ((hsb > 0 && wpos.x >= width && wpos.x < width + wsb)
+             || (hsb < 0 && wpos.x < 0 && wpos.x >= - wsb)
+               )
+            {
+              if (delta > 0) // mouse wheel up
+                //win_key_down(VK_UP, 1);
+                win_csi_seq(term->child, "65", "#e");
+              else // mouse wheel down
+                //win_key_down(VK_DOWN, 1);
+                win_csi_seq(term->child, "66", "#e");
+            }
+          }
         }
       }
+    }
 
     when WM_MOUSEMOVE: win_mouse_move(false, lp);
     when WM_NCMOUSEMOVE: win_mouse_move(true, lp);
-    when WM_MOUSEWHEEL: win_mouse_wheel(wp, lp);
     when WM_LBUTTONDOWN: win_mouse_click(MBT_LEFT, lp);
     when WM_RBUTTONDOWN: win_mouse_click(MBT_RIGHT, lp);
     when WM_MBUTTONDOWN: win_mouse_click(MBT_MIDDLE, lp);
@@ -2428,16 +2553,16 @@ static struct {
         when XBUTTON2: win_mouse_release(MBT_5, lp);
       }
 
-    when WM_KEYDOWN or WM_SYSKEYDOWN:
+    when WM_KEYDOWN case_or WM_SYSKEYDOWN:
       //printf("[%ld] WM_KEY %02X\n", mtime(), (int)wp);
       if (win_key_down(wp, lp))
         return 0;
 
-    when WM_KEYUP or WM_SYSKEYUP:
+    when WM_KEYUP case_or WM_SYSKEYUP:
       if (win_key_up(wp, lp))
         return 0;
 
-    when WM_CHAR or WM_SYSCHAR:
+    when WM_CHAR case_or WM_SYSCHAR:
       child_sendw(term->child, &(wchar){wp}, 1);
       return 0;
 
@@ -2494,7 +2619,7 @@ static struct {
         return 1;
       }
 
-    when WM_THEMECHANGED or WM_WININICHANGE or WM_SYSCOLORCHANGE:
+    when WM_THEMECHANGED case_or WM_WININICHANGE case_or WM_SYSCOLORCHANGE:
       // Size of window border (border, title bar, scrollbar) changed by:
       //   Personalization of window geometry (e.g. Title Bar Size)
       //     -> Windows sends WM_SYSCOLORCHANGE
@@ -2677,7 +2802,7 @@ static struct {
     when WM_DRAWITEM:
       win_paint_tabs(lp, 0);
 
-    when WM_EXITSIZEMOVE or WM_CAPTURECHANGED: { // after mouse-drag resizing
+    when WM_EXITSIZEMOVE case_or WM_CAPTURECHANGED: { // after mouse-drag resizing
       trace_resize(("# WM_EXITSIZEMOVE (resizing %d) VK_SHIFT %02X\n", resizing, (uchar)GetKeyState(VK_SHIFT)));
       bool shift = GetKeyState(VK_SHIFT) & 0x80;
 
@@ -2901,6 +3026,19 @@ hook_windows(int id, HOOKPROC hookproc, bool global)
 }
 
 #endif
+
+bool
+win_get_ime(void)
+{
+  return ImmGetOpenStatus(imc);
+}
+
+void
+win_set_ime(bool open)
+{
+  ImmSetOpenStatus(imc, open);
+  win_set_ime_open(open);
+}
 
 
 void
@@ -3303,7 +3441,7 @@ waccess(wstring fn, int amode)
 {
   string f = path_win_w_to_posix(fn);
   bool ok = access(f, amode) == 0;
-  delete(f);
+  std_delete(f);
   return ok;
 }
 
@@ -3315,12 +3453,15 @@ select_WSL(char * wsl)
   // set --rootfs implicitly
   int err = getlxssinfo(false, wslname, &wsl_guid, &wsl_basepath, &wsl_icon);
   if (!err) {
+    // set --title
+    if (title_settable)
+      set_arg_option("Title", strdup(wsl && *wsl ? wsl : "WSL"));
     // set --icon if WSL specific icon exists
     if (wsl_icon) {
       if (!icon_is_from_shortcut && waccess(wsl_icon, R_OK))
         cfg.icon = wsl_icon;
       else
-        delete(wsl_icon);
+        std_delete(wsl_icon);
     }
     // set implicit options --wsl -o Locale=C -o Charset=UTF-8
     support_wsl = true;
@@ -3395,7 +3536,7 @@ wslicon(wchar * params)
       int err = getlxssinfo(false, wslname, &guid, &basepath, &icon);
       free(wslname);
       if (!err) {
-        delete(basepath);
+        std_delete(basepath);
         free(guid);
       }
     }
@@ -3448,7 +3589,7 @@ enum_commands(wstring commands, CMDENUMPROC cmdenum)
       // check for multi-line separation
       if (*cmdp == '\\' && cmdp[1] == '\n') {
         cmdp += 2;
-        while (isspace(*cmdp))
+        while (iswspace(*cmdp))
           cmdp++;
       }
     }
@@ -3810,7 +3951,7 @@ main(int argc, char *argv[])
   if (wsltty_appx && lappdata && *lappdata) {
     string rc_file = asform("%s/.fattyrc", lappdata);
     load_config(rc_file, 2);
-    delete(rc_file);
+    std_delete(rc_file);
   }
 #endif
   // try Windows config location (#201)
@@ -3818,17 +3959,17 @@ main(int argc, char *argv[])
   if (appdata && *appdata) {
     string rc_file = asform("%s/fatty/config", appdata);
     load_config(rc_file, true);
-    delete(rc_file);
+    std_delete(rc_file);
   }
   if (!support_wsl) {
     // try XDG config base directory default location (#525)
     string rc_file = asform("%s/.config/fatty/config", home);
     load_config(rc_file, true);
-    delete(rc_file);
+    std_delete(rc_file);
     // try home config file
     rc_file = asform("%s/.fattyrc", home);
     load_config(rc_file, 2);
-    delete(rc_file);
+    std_delete(rc_file);
   }
 
   char *tablist[32];
@@ -3933,7 +4074,7 @@ main(int argc, char *argv[])
           config_dir = strdup(optarg);
           string rc_file = asform("%s/config", config_dir);
           load_config(rc_file, 2);
-          delete(rc_file);
+          std_delete(rc_file);
         }
       when '?':
         option_error(__("Unknown option '%s'"), optopt ? shortopt : longopt, 0);
@@ -3986,7 +4127,7 @@ main(int argc, char *argv[])
         border_style = strdup(optarg);
       when 'R':
         switch (*optarg) {
-          when 's' or 'o':
+          when 's' case_or 'o':
             report_geom = strdup(optarg);
           when 'm':
             report_moni = true;
@@ -4382,7 +4523,7 @@ main(int argc, char *argv[])
       else
         show_iconwarn(null);
     }
-    delete(icon_file);
+    std_delete(icon_file);
   }
 
   // Expand AppID placeholders

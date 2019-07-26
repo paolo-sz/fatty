@@ -319,7 +319,7 @@ cs_set_mode(cs_mode new_mode)
 static void
 update_locale(void)
 {
-  delete(default_locale);
+  std_delete(default_locale);
 
   string locale = term_locale ?: config_locale ?: env_locale;
   string dot = strchr(locale, '.');
@@ -330,7 +330,7 @@ update_locale(void)
   if (!set_locale) {
     locale = asform("C.%s", charset);
     set_locale = setlocale(LC_CTYPE, locale);
-    delete(locale);
+    std_delete(locale);
   }
 
   valid_default_locale = set_locale;
@@ -352,7 +352,7 @@ update_locale(void)
       // with an ambig-narrow locale setting
       string l = default_locale;
       default_locale = asform("%s@cjkwide", l);
-      delete(l);
+      std_delete(l);
       // indicate @cjkwide to locale lib
       setlocale(LC_CTYPE, default_locale);
       // in case it's not accepted, yet indicate @cjkwide to shell
@@ -374,7 +374,7 @@ cs_get_locale(void)
 void
 cs_set_locale(string locale)
 {
-  delete(term_locale);
+  std_delete(term_locale);
   term_locale = *locale ? strdup(locale) : 0;
   update_locale();
 }
@@ -382,7 +382,7 @@ cs_set_locale(string locale)
 void
 cs_reconfig(void)
 {
-  delete(config_locale);
+  std_delete(config_locale);
   if (*cfg.locale) {
     config_locale =
       asform("%s%s%s", cfg.locale, *cfg.charset ? "." : "", cfg.charset);
@@ -394,7 +394,7 @@ cs_reconfig(void)
         // with an ambig-wide locale setting
         string l = config_locale;
         config_locale = asform("%s@cjknarrow", l);
-        delete(l);
+        std_delete(l);
       }
     }
 #endif
@@ -587,7 +587,7 @@ cs__utftombs(char * s)
   else {
     wchar * w = cs__utftowcs(s);
     char * mbs = cs__wcstombs(w);
-    delete(w);
+    std_delete(w);
     return mbs;
   }
 }

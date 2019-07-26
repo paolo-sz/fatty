@@ -36,7 +36,7 @@ _realloc(void *aptr, size_t nbytes)
 #define new(type) ((type *) malloc(sizeof(type)))
 #define newn(type, n) ((type *) calloc((n), sizeof(type)))
 #define renewn(p, n) ((typeof(p)) _realloc((p), sizeof(*p) * (n)))
-static inline void delete(const void *p) { free((void *)p); }
+static inline void std_delete(const void *p) { free((void *)p); }
 
 
 extern char * tmpdir(void);
@@ -72,10 +72,10 @@ extern int vasprintf(char **, const char *, va_list);
 extern char *asform(const char *fmt, ...);
 
 
-#define WINVER 0x500  // Windows 2000
+//#define WINVER 0x500  // Windows 2000
 //#define WINVER 0x601  // Windows 7
-#define _WIN32_WINNT WINVER
-#define _WIN32_IE WINVER
+//#define _WIN32_WINNT WINVER
+//#define _WIN32_IE WINVER
 
 #include <windef.h>
 
@@ -141,7 +141,7 @@ extern void wstrset(wstring *sp, wstring s);
 
 
 #define when break; case
-#define or : case
+#define case_or : case
 #define otherwise break; default
 
 #ifdef TRACE
