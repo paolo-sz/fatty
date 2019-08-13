@@ -1435,7 +1435,7 @@ static struct function_def cmd_defs[] = {
   {"toggle-logging", {IDM_TOGLOG}, mflags_logging},
   {"toggle-char-info", {IDM_TOGCHARINFO}, mflags_char_info},
   {"export-html", {IDM_HTML}, 0},
-  {"print-screen", {.fct = print_screen}, 0},
+  //{"print-screen", {.fct = print_screen}, 0},
   {"toggle-vt220", {.fct = toggle_vt220}, mflags_vt220},
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},

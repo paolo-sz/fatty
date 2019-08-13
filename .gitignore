@@ -1,2 +1,5 @@
 build
 fatty.exe
+bin/
+*.bak
+*~

@@ -2400,21 +2400,21 @@ do_csi(struct term* term, uchar c)
         term->printing = true;
         term->only_printing = !term->esc_mod;
         term->print_state = 0;
-        if (*cfg.printer == '*')
-          printer_start_job(printer_get_default());
-        else
-          printer_start_job(cfg.printer);
+        /* if (*cfg.printer == '*') */
+        /*   printer_start_job(printer_get_default()); */
+        /* else */
+        /*   printer_start_job(cfg.printer); */
       }
       else if (arg0 == 4 && term->printing) {
         // Drop escape sequence from print buffer and finish printing.
-        while (term->printbuf[--term->printbuf_pos] != '\e');
-        term_print_finish(term);
+        /* while (term->printbuf[--term->printbuf_pos] != '\e'); */
+        /* term_print_finish(term); */
       }
       else if (arg0 == 10 && !term->esc_mod) {
         term_export_html(false);
       }
       else if (arg0 == 0 && !term->esc_mod) {
-        print_screen();
+        //print_screen();
       }
     when 'g':        /* TBC: clear tabs */
       if (!arg0)
@@ -3309,14 +3309,14 @@ do_cmd(struct term* term)
 void
 term_print_finish(struct term* term)
 {
-  if (term->printing) {
-    printer_write(term->printbuf, term->printbuf_pos);
-    free(term->printbuf);
-    term->printbuf = 0;
-    term->printbuf_size = term->printbuf_pos = 0;
-    printer_finish_job();
-    term->printing = term->only_printing = false;
-  }
+  /* if (term->printing) { */
+  /*   printer_write(term->printbuf, term->printbuf_pos); */
+  /*   free(term->printbuf); */
+  /*   term->printbuf = 0; */
+  /*   term->printbuf_size = term->printbuf_pos = 0; */
+  /*   printer_finish_job(); */
+  /*   term->printing = term->only_printing = false; */
+  /* } */
 }
 
 static void
@@ -3335,33 +3335,33 @@ term_do_write(struct term* term, const char *buf, uint len)
    /*
     * If we're printing, add the character to the printer buffer.
     */
-    if (term->printing) {
-      if (term->printbuf_pos >= term->printbuf_size) {
-        term->printbuf_size = term->printbuf_size * 4 + 4096;
-        term->printbuf = renewn(term->printbuf, term->printbuf_size);
-      }
-      term->printbuf[term->printbuf_pos++] = c;
+    /* if (term->printing) { */
+    /*   if (term->printbuf_pos >= term->printbuf_size) { */
+    /*     term->printbuf_size = term->printbuf_size * 4 + 4096; */
+    /*     term->printbuf = renewn(term->printbuf, term->printbuf_size); */
+    /*   } */
+    /*   term->printbuf[term->printbuf_pos++] = c; */
 
-     /*
-      * If we're in print-only mode, we use a much simpler state machine 
-      * designed only to recognise the ESC[4i termination sequence.
-      */
-      if (term->only_printing) {
-        if (c == '\e')
-          term->print_state = 1;
-        else if (c == '[' && term->print_state == 1)
-          term->print_state = 2;
-        else if (c == '4' && term->print_state == 2)
-          term->print_state = 3;
-        else if (c == 'i' && term->print_state == 3) {
-          term->printbuf_pos -= 4;
-          term_print_finish(term);
-        }
-        else
-          term->print_state = 0;
-        continue;
-      }
-    }
+    /*  /\* */
+    /*   * If we're in print-only mode, we use a much simpler state machine  */
+    /*   * designed only to recognise the ESC[4i termination sequence. */
+    /*   *\/ */
+    /*   if (term->only_printing) { */
+    /*     if (c == '\e') */
+    /*       term->print_state = 1; */
+    /*     else if (c == '[' && term->print_state == 1) */
+    /*       term->print_state = 2; */
+    /*     else if (c == '4' && term->print_state == 2) */
+    /*       term->print_state = 3; */
+    /*     else if (c == 'i' && term->print_state == 3) { */
+    /*       term->printbuf_pos -= 4; */
+    /*       term_print_finish(term); */
+    /*     } */
+    /*     else */
+    /*       term->print_state = 0; */
+    /*     continue; */
+    /*   } */
+    /* } */
 
     switch (term->state) {
       when NORMAL: {
@@ -4004,10 +4004,10 @@ term_do_write(struct term* term, const char *buf, uint len)
   win_schedule_update();
 
   // Print
-  if (term->printing) {
-    printer_write(term->printbuf, term->printbuf_pos);
-    term->printbuf_pos = 0;
-  }
+  /* if (term->printing) { */
+  /*   printer_write(term->printbuf, term->printbuf_pos); */
+  /*   term->printbuf_pos = 0; */
+  /* } */
 }
 
 /* Empty the input buffer */
