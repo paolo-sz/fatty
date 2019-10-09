@@ -42,9 +42,6 @@ term_selecting(struct term* term)
 
 extern void term_update_cs(struct term* term);
 
-extern void clear_emoji_data(void);
-extern char * get_emoji_description(termchar *);
-
 extern int termchars_equal(termchar * a, termchar * b);
 extern int termchars_equal_override(termchar * a, termchar * b, uint bchr, cattr battr);
 extern int termattrs_equal_fg(cattr * a, cattr * b);

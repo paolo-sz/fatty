@@ -624,7 +624,7 @@ extern void term_clear_scrollback(struct term* term);
 extern void term_mouse_click(struct term* term, mouse_button, mod_keys, pos, int count);
 extern void term_mouse_release(struct term* term, mouse_button, mod_keys, pos);
 extern void term_mouse_move(struct term* term, mod_keys, pos);
-extern void term_mouse_wheel(struct term* term, int delta, int lines_per_notch, mod_keys, pos);
+extern void term_mouse_wheel(struct term* term, bool horizontal, int delta, int lines_per_notch, mod_keys, pos);
 extern void term_select_all(struct term* term);
 extern void term_paint(struct term* term);
 extern void term_invalidate(struct term* term, int left, int top, int right, int bottom);
@@ -651,7 +651,9 @@ extern void term_update_search(struct term* term);
 extern void term_clear_results(struct term* term);
 extern void term_clear_search(struct term* term);
 
+extern void clear_emoji_data(void);
 extern char * get_emoji_description(termchar *);
+
 
 extern void term_export_html(bool do_open);
 

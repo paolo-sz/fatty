@@ -176,7 +176,7 @@ const config default_cfg = {
   .suspbuf_max = 8080,
   .trim_selection = true,
   .charwidth = 0,
-  .char_narrowing = 70,
+  .char_narrowing = 80,
   .emojis = 0,
   .emoji_placement = 0,
   .app_id = W(""),
@@ -529,10 +529,14 @@ static opt_val
     {0, 0}
   },
   [OPT_EMOJI_PLACEMENT] = (opt_val[]) {
-    {"stretch", EMPL_STRETCH},
-    {"align", EMPL_ALIGN},
-    {"middle", EMPL_MIDDLE},
-    {"full", EMPL_FULL},
+    //__ Options - Text - Emojis - Placement
+    {__("stretch"), EMPL_STRETCH},
+    //__ Options - Text - Emojis - Placement
+    {__("align"), EMPL_ALIGN},
+    //__ Options - Text - Emojis - Placement
+    {__("middle"), EMPL_MIDDLE},
+    //__ Options - Text - Emojis - Placement
+    {__("full"), EMPL_FULL},
     {0, 0}
   },
   [OPT_MOD] = (opt_val[]) {
@@ -1785,7 +1789,9 @@ add_file_resources(control *ctrl, wstring pattern, bool dirs)
       while (ok) {
         if (dirs && (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
           if (ffd.cFileName[0] != '.' && !!wcscmp(ffd.cFileName, W("common")))
-            dlg_listbox_add_w(ctrl, ffd.cFileName);
+            // exclude the [0-7] links left over by the `getemojis` script
+            if (wcslen(ffd.cFileName) > 1)
+              dlg_listbox_add_w(ctrl, ffd.cFileName);
         }
         else if (!dirs) {
           //LARGE_INTEGER filesize = {.LowPart = ffd.nFileSizeLow, .HighPart = ffd.nFileSizeHigh};
@@ -2769,9 +2775,9 @@ opt_handler(control *ctrl, int event, char * popt, opt_val * ovals)
     when EVENT_REFRESH:
       dlg_listbox_clear(ctrl);
       while (ovals->name) {
-        dlg_listbox_add(ctrl, ovals->name);
+        dlg_listbox_add(ctrl, _(ovals->name));
         if (*popt == ovals->val)
-          dlg_editbox_set(ctrl, ovals->name);
+          dlg_editbox_set(ctrl, _(ovals->name));
         ovals++;
       }
     when EVENT_VALCHANGE case_or EVENT_SELCHANGE: {

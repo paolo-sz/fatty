@@ -1072,18 +1072,14 @@ win_mouse_move(bool nc, LPARAM lp)
 }
 
 void
-win_mouse_wheel(WPARAM wp, LPARAM lp)
+win_mouse_wheel(POINT wpos, bool horizontal, int delta)
 {
-  // WM_MOUSEWHEEL reports screen coordinates rather than client coordinates
-  POINT wpos = {.x = GET_X_LPARAM(lp), .y = GET_Y_LPARAM(lp)};
-  ScreenToClient(wnd, &wpos);
   pos tpos = translate_pos(wpos.x, wpos.y);
 
-  int delta = GET_WHEEL_DELTA_WPARAM(wp);  // positive means up
   int lines_per_notch;
   SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines_per_notch, 0);
 
-  term_mouse_wheel(win_active_terminal(), delta, lines_per_notch, get_mods(), tpos);
+  term_mouse_wheel(win_active_terminal(), horizontal, delta, lines_per_notch, get_mods(), tpos);
 }
 
 void
@@ -1269,6 +1265,15 @@ static void scroll_LEFT()
   { SendMessage(wnd, WM_VSCROLL, SB_PRIOR, 0); }
 static void scroll_RIGHT()
   { SendMessage(wnd, WM_VSCROLL, SB_NEXT, 0); }
+
+static void switch_NEXT()
+  { win_switch(false, true); }
+static void switch_PREV()
+  { win_switch(true, true); }
+static void switch_visible_NEXT()
+  { win_switch(false, false); }
+static void switch_visible_PREV()
+  { win_switch(true, false); }
 
 static void
 nop()
@@ -1486,6 +1491,11 @@ static struct function_def cmd_defs[] = {
   {"scroll_lndn", {.fct = scroll_DOWN}, 0},
   {"scroll_prev", {.fct = scroll_LEFT}, 0},
   {"scroll_next", {.fct = scroll_RIGHT}, 0},
+
+  {"switch-prev", {.fct = switch_PREV}, 0},
+  {"switch-next", {.fct = switch_NEXT}, 0},
+  {"switch-visible-prev", {.fct = switch_visible_PREV}, 0},
+  {"switch-visible-next", {.fct = switch_visible_NEXT}, 0},
 
   {"void", {.fct = nop}, 0}
 };
