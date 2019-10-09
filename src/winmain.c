@@ -108,6 +108,8 @@ bool title_settable = true;
 static string border_style = 0;
 static string report_geom = 0;
 static bool report_moni = false;
+bool report_child_pid = false;
+static bool report_winpid = false;
 static int monitor = 0;
 static bool center = false;
 static bool right = false;
@@ -192,7 +194,13 @@ trace_winsize(char * tag)
 static HRESULT (WINAPI * pDwmIsCompositionEnabled)(BOOL *) = 0;
 static HRESULT (WINAPI * pDwmExtendFrameIntoClientArea)(HWND, const MARGINS *) = 0;
 static HRESULT (WINAPI * pDwmEnableBlurBehindWindow)(HWND, void *) = 0;
+static HRESULT (WINAPI * pDwmSetWindowAttribute)(HWND, DWORD, LPCVOID, DWORD) = 0;
+
 static HRESULT (WINAPI * pSetWindowCompositionAttribute)(HWND, void *) = 0;
+static BOOL (WINAPI * pSystemParametersInfo)(UINT, UINT, PVOID, UINT) = 0;
+
+static BOOLEAN (WINAPI * pShouldAppsUseDarkMode)(void) = 0; /* undocumented */
+static HRESULT (WINAPI * pSetWindowTheme)(HWND, const wchar_t *, const wchar_t *) = 0;
 
 // Helper for loading a system library. Using LoadLibrary() directly is insecure
 // because Windows might be searching the current working directory first.
@@ -215,6 +223,8 @@ load_dwm_funcs(void)
 {
   HMODULE dwm = load_sys_library("dwmapi.dll");
   HMODULE user32 = load_sys_library("user32.dll");
+  HMODULE uxtheme = load_sys_library("uxtheme.dll");
+
   if (dwm) {
     pDwmIsCompositionEnabled =
       (void *)GetProcAddress(dwm, "DwmIsCompositionEnabled");
@@ -222,10 +232,20 @@ load_dwm_funcs(void)
       (void *)GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
     pDwmEnableBlurBehindWindow =
       (void *)GetProcAddress(dwm, "DwmEnableBlurBehindWindow");
+    pDwmSetWindowAttribute = 
+      (void *)GetProcAddress(dwm, "DwmSetWindowAttribute");
   }
   if (user32) {
     pSetWindowCompositionAttribute =
       (void *)GetProcAddress(user32, "SetWindowCompositionAttribute");
+    pSystemParametersInfo =
+      (void *)GetProcAddress(user32, "SystemParametersInfoW");
+  }
+  if (uxtheme) {
+    pShouldAppsUseDarkMode = 
+      (void *)GetProcAddress(uxtheme, MAKEINTRESOURCEA(132)); /* ordinal */
+    pSetWindowTheme = 
+      (void *)GetProcAddress(uxtheme, "SetWindowTheme");
   }
 }
 
@@ -1346,28 +1366,30 @@ win_update_glass(bool opaque)
   if (pSetWindowCompositionAttribute) {
     enum AccentState
     {
-        ACCENT_DISABLED = 0,
-        ACCENT_ENABLE_GRADIENT = 1,
-        ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
-        ACCENT_ENABLE_BLURBEHIND = 3,
-        ACCENT_INVALID_STATE = 4
+      ACCENT_DISABLED = 0,
+      ACCENT_ENABLE_GRADIENT = 1,
+      ACCENT_ENABLE_TRANSPARENTGRADIENT = 2,
+      ACCENT_ENABLE_BLURBEHIND = 3,
+      ACCENT_INVALID_STATE = 4
     };
     enum WindowCompositionAttribute
     {
-        WCA_ACCENT_POLICY = 19
+      WCA_ACCENT_POLICY = 19
     };
     struct ACCENTPOLICY
     {
-      enum AccentState nAccentState;
+      //enum AccentState nAccentState;
+      int nAccentState;
       int nFlags;
       int nColor;
       int nAnimationId;
     };
     struct WINCOMPATTRDATA
     {
-      enum WindowCompositionAttribute nAttribute;
+      //enum WindowCompositionAttribute attribute;
+      DWORD attribute;
       PVOID pData;
-      ULONG ulDataSize;
+      ULONG dataSize;
     };
     struct ACCENTPOLICY policy = {
       enabled ? ACCENT_ENABLE_BLURBEHIND : ACCENT_DISABLED,
@@ -2461,6 +2483,12 @@ static struct {
         when IDM_NEXTTAB: win_tab_change(+1);
         when IDM_MOVELEFT: win_tab_move(-1);
         when IDM_MOVERIGHT: win_tab_move(+1);
+        when IDM_KEY_DOWN_UP: {
+          bool on = lp & 0x10000;
+          int vk = lp & 0xFFFF;
+          //printf("IDM_KEY_DOWN_UP -> do_win_key_toggle %02X\n", vk);
+          do_win_key_toggle(vk, on);
+        }
       }
     }
 
@@ -2566,6 +2594,16 @@ static struct {
       switch (HIWORD(wp)) {
         when XBUTTON1: win_mouse_release(MBT_4, lp);
         when XBUTTON2: win_mouse_release(MBT_5, lp);
+      }
+    when WM_NCLBUTTONDOWN:
+      if (wp == HTCAPTION && (GetKeyState(VK_CONTROL) & 0x80)) {
+        win_title_menu();
+        return 0;
+      }
+    when WM_NCRBUTTONDOWN:
+      if (wp == HTCAPTION && (cfg.geom_sync > 0 || (GetKeyState(VK_CONTROL) & 0x80))) {
+        win_title_menu();
+        return 0;
       }
 
     when WM_KEYDOWN case_or WM_SYSKEYDOWN:
@@ -2725,6 +2763,7 @@ static struct {
 
     when WM_MOVING:
       trace_resize(("# WM_MOVING VK_SHIFT %02X\n", (uchar)GetKeyState(VK_SHIFT)));
+      win_destroy_tip();
       zoom_token = -4;
       moving = true;
 
@@ -3316,6 +3355,21 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
   if (!lxss)
     return 1;
 
+#ifdef use_wsl_getdistconf
+  typedef enum
+  {
+    WSL_DISTRIBUTION_FLAGS_NONE = 0,
+    //...
+  } WSL_DISTRIBUTION_FLAGS;
+  HRESULT (WINAPI * pWslGetDistributionConfiguration)
+           (PCWSTR name, ULONG *distVersion, ULONG *defaultUID,
+            WSL_DISTRIBUTION_FLAGS *,
+            PSTR **defaultEnvVars, ULONG *defaultEnvVarCount
+           ) =
+    // this works only in 64 bit mode
+    load_library_func("wslapi.dll", "WslGetDistributionConfiguration");
+#endif
+
   wchar * legacy_icon()
   {
     // "%LOCALAPPDATA%/lxss/bash.ico"
@@ -3363,16 +3417,35 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
       rootfs = wcsdup(bp);
       icon = legacy_icon();
     }
+
+    wchar * name = getregstr(lxss, guid, W("DistributionName"));
+#ifdef use_wsl_getdistconf
+    // this has currently no benefit, and it does not work in 32-bit cygwin
+    if (pWslGetDistributionConfiguration) {
+      ULONG ver, uid, varc;
+      WSL_DISTRIBUTION_FLAGS flags;
+      PSTR * vars;
+      if (S_OK == pWslGetDistributionConfiguration(name, &ver, &uid, &flags, &vars, &varc)) {
+        for (uint i = 0; i < varc; i++)
+          CoTaskMemFree(vars[i]);
+        CoTaskMemFree(vars);
+        //printf("%d %ls %d uid %d %X\n", (int)res, name, (int)ver, (int)uid, (uint)flags);
+      }
+    }
+#endif
+
     if (list) {
-      printf("WSL distribution name [7m%ls[m\n", getregstr(lxss, guid, W("DistributionName")));
+      printf("WSL distribution name [7m%ls[m\n", name);
       printf("-- guid %ls\n", guid);
       printf("-- flag %u\n", getregval(lxss, guid, W("Flags")));
       printf("-- root %ls\n", rootfs);
-      printf("-- pack %ls\n", pn);
+      if (pn)
+        printf("-- pack %ls\n", pn);
       if (pfn)
         printf("-- full %ls\n", pfn);
       printf("-- icon %ls\n", icon);
     }
+
     *wsl_ver = 1 + ((getregval(lxss, guid, W("Flags")) >> 3) & 1);
     *wsl_guid = cs__wcstoutf(guid);
     *wsl_rootfs = rootfs;
@@ -4164,6 +4237,12 @@ main(int argc, char *argv[])
             exit_fatty(0);
           }
 #endif
+          when 'p':
+            report_child_pid = true;
+          when 'P':
+            report_winpid = true;
+          otherwise:
+            option_error(__("Unknown option '%s'"), optarg, 0);
         }
       when 'u': cfg.create_utmp = true;
       when '':
@@ -4687,6 +4766,27 @@ main(int argc, char *argv[])
                         x, y, width, height,
                         null, null, inst, null);
   trace_winsize("createwindow");
+
+  // Dark mode support
+  if (pShouldAppsUseDarkMode) {
+    HIGHCONTRASTW hc;
+    hc.cbSize = sizeof hc;
+    pSystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0);
+    //printf("High Contrast scheme <%ls>\n", hc.lpszDefaultScheme);
+
+    if (!(hc.dwFlags & HCF_HIGHCONTRASTON) && pShouldAppsUseDarkMode()) {
+      pSetWindowTheme(wnd, W("DarkMode_Explorer"), NULL);
+      BOOL dark = 1;
+
+#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
+#define DWMWA_USE_IMMERSIVE_DARK_MODE 19
+#endif
+
+      pDwmSetWindowAttribute(wnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
+                             &dark, sizeof dark);
+    }
+  }
+
   // Workaround for failing title parameter:
   if (pEnableNonClientDpiScaling)
     SetWindowTextW(wnd, wtitle);
@@ -4992,6 +5092,14 @@ main(int argc, char *argv[])
   // Install keyboard hook.
   hook_windows(WH_KEYBOARD_LL, hookprockbll, true);
 #endif
+
+  if (report_winpid) {
+    DWORD wpid = -1;
+    DWORD parent = GetWindowThreadProcessId(wnd, &wpid);
+    (void)parent;
+    printf("%d %d\n", getpid(), (int)wpid);
+    fflush(stdout);
+  }
 
   // Message loop.
   do {

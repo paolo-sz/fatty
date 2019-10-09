@@ -17,6 +17,7 @@
 
 static HMENU ctxmenu = NULL;
 static HMENU sysmenu;
+static int sysmenulen;
 static uint super_key = 0;
 static uint hyper_key = 0;
 static uint newwin_key = 0;
@@ -606,6 +607,15 @@ win_update_menus(bool callback)
     check_commands(ctxmenu, cfg.ctx_user_commands, IDM_CTXMENUFUNCTION);
   if (*cfg.sys_user_commands)
     check_commands(sysmenu, cfg.sys_user_commands, IDM_SYSMENUFUNCTION);
+
+#ifdef vary_sysmenu
+  static bool switcher_in_sysmenu = false;
+  if (!switcher_in_sysmenu) {
+    add_switcher(sysmenu, true, false, true);
+    switcher_in_sysmenu = true;
+  }
+#endif
+  (void)sysmenulen;
 }
 
 static bool
@@ -721,6 +731,8 @@ win_init_menus(void)
   }
 
   InsertMenuW(sysmenu, SC_CLOSE, MF_SEPARATOR, 0, 0);
+
+  sysmenulen = GetMenuItemCount(sysmenu);
 }
 
 static void
@@ -811,6 +823,12 @@ void
 win_popup_menu(mod_keys mods)
 {
   open_popup_menu(false, null, mods);
+}
+
+void
+win_title_menu(void)
+{
+  open_popup_menu(false, "Ws", 0);
 }
 
 
@@ -1484,13 +1502,11 @@ function_def(char * cmd)
 
 /* Keyboard handling */
 
-/*
 static void
 send_syscommand2(WPARAM cmd, LPARAM p)
 {
   SendMessage(wnd, WM_SYSCOMMAND, cmd, p);
 }
-*/
 
 static void
 send_syscommand(WPARAM cmd)
@@ -3102,8 +3118,9 @@ win_key_up(WPARAM wp, LPARAM lp)
 }
 
 static int
-win_key_fake(uchar vk)
+win_key_fake(int vk)
 {
+  //printf("-> win_key_fake %02X\n", vk);
   INPUT ki[2];
   ki[0].type = INPUT_KEYBOARD;
   ki[1].type = INPUT_KEYBOARD;
@@ -3120,11 +3137,24 @@ win_key_fake(uchar vk)
   return SendInput(2, ki, sizeof(INPUT));
 }
 
-static void
-win_vk(int vk, bool on)
+void
+do_win_key_toggle(int vk, bool on)
 {
-  if ((GetKeyState(vk) & 1) != on)
+  // this crap does not work
+  return;
+
+  // use some heuristic combination to detect the toggle state
+  int delay = 33333;
+  usleep(delay);
+  int st = GetKeyState(vk);  // volatile; save in case of debugging
+  int ast = GetAsyncKeyState(vk);  // volatile; save in case of debugging
+  //uchar kbd[256];
+  //GetKeyboardState(kbd);
+  //printf("do_win_key_toggle %02X %d (st %02X as %02X kb %02X)\n", vk, on, st, ast, kbd[vk]);
+  if (((st | ast) & 1) != on) {
     win_key_fake(vk);
+    usleep(delay);
+  }
   /* It is possible to switch the LED only and revert the actual 
      virtual input state of the current thread as it was by using 
      SetKeyboardState in win_key_down, but this "fix" would only 
@@ -3133,14 +3163,22 @@ win_vk(int vk, bool on)
    */
 }
 
+static void
+win_key_toggle(int vk, bool on)
+{
+  //printf("send IDM_KEY_DOWN_UP %02X\n", vk | (on ? 0x10000 : 0));
+  send_syscommand2(IDM_KEY_DOWN_UP, vk | (on ? 0x10000 : 0));
+}
+
 void
 win_led(int led, bool set)
 {
+  //printf("\n[%ld] win_led %d %d\n", mtime(), led, set);
   int led_keys[] = {VK_NUMLOCK, VK_CAPITAL, VK_SCROLL};
   if (led <= 0)
     for (uint i = 0; i < lengthof(led_keys); i++)
-      win_vk(led_keys[i], set);
+      win_key_toggle(led_keys[i], set);
   else if (led <= (int)lengthof(led_keys))
-    win_vk(led_keys[led - 1], set);
+    win_key_toggle(led_keys[led - 1], set);
 }
 

@@ -1203,7 +1203,7 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
     win_update_term(term, true);
   }
 
-  if (term->lrmargmode) {
+  if (term->lrmargmode && (term->marg_left || term->marg_right != term->cols - 1)) {
     scroll_rect(term, topline, botline, lines);
     return;
   }
@@ -1357,11 +1357,16 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
   if (!from_begin || !to_end)
     term_check_boundary(term, curs->x, curs->y);
 
+#ifdef scrollback_erase_lines
+#warning this behaviour is not compatible with xterm
  /* Lines scrolled away shouldn't be brought back on if the terminal resizes. */
   bool erasing_lines_from_top =
     start.y == 0 && start.x == 0 && end.x == 0 && !line_only && !selective;
 
-  if (erasing_lines_from_top && !term->lrmargmode) {
+  if (erasing_lines_from_top && 
+      !(term->lrmargmode && (term->marg_left || term->marg_right != term->cols - 1))
+     )
+  {
    /* If it's a whole number of lines, starting at the top, and
     * we're fully erasing them, erase by scrolling and keep the
     * lines in the scrollback. */
@@ -1379,7 +1384,9 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
     if (!term->on_alt_screen)
       term->tempsblines = 0;
   }
-  else {
+  else
+#endif
+  {
     termline *line = term->lines[start.y];
     while (poslt(start, end)) {
       int cols = min(line->cols, line->size);
