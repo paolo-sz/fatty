@@ -20,17 +20,19 @@ static size_t tempfile_num = 0;
 static size_t const TEMPFILE_MAX_SIZE = 1024 * 1024 * 16;  /* 16MB */
 static size_t const TEMPFILE_MAX_NUM = 16;
 
+// protection limit against exhaustion of resources (Windows handles)
+// if we'd create ~10000 "CompatibleDCs", handle handling will fail...
+static int cdc = 999;
+
+
 static tempfile_t *
 tempfile_new(void)
 {
-  tempfile_t *tempfile;
-  FILE *fp;
-
-  fp = tmpfile();
+  FILE *fp = tmpfile();
   if (!fp)
     return NULL;
 
-  tempfile = malloc(sizeof(tempfile_t));
+  tempfile_t *tempfile = malloc(sizeof(tempfile_t));
   //printf("tempfile alloc %d -> %p\n", (int)sizeof(tempfile_t), tempfile);
   if (!tempfile)
     return NULL;
@@ -70,9 +72,8 @@ tempfile_deref(tempfile_t *tempfile)
 static size_t
 tempfile_size(tempfile_t *tempfile)
 {
-  fpos_t fsize = 0;
-
   fseek(tempfile->fp, 0L, SEEK_END);
+  fpos_t fsize = 0;
   fgetpos(tempfile->fp, &fsize);
 
   return (size_t)fsize;
@@ -81,15 +82,13 @@ tempfile_size(tempfile_t *tempfile)
 static tempfile_t *
 tempfile_get(void)
 {
-  size_t size;
-
   if (!tempfile_current) {
     tempfile_current = tempfile_new();
     return tempfile_current;
   }
 
   /* get file size */
-  size = tempfile_size(tempfile_current);
+  size_t size = tempfile_size(tempfile_current);
 
   /* if the file size reaches TEMPFILE_MAX_SIZE, return new temporary file */
   if (size > TEMPFILE_MAX_SIZE) {
@@ -106,10 +105,8 @@ tempfile_get(void)
 static bool
 tempfile_write(tempfile_t *tempfile, unsigned char *p, size_t pos, size_t size)
 {
-  size_t nbytes;
-
   fseek((FILE *)tempfile->fp, pos, SEEK_SET);
-  nbytes = fwrite(p, 1, size, tempfile->fp);
+  size_t nbytes = fwrite(p, 1, size, tempfile->fp);
   if (nbytes != size)
     return false;
 
@@ -119,11 +116,9 @@ tempfile_write(tempfile_t *tempfile, unsigned char *p, size_t pos, size_t size)
 static bool
 tempfile_read(tempfile_t *tempfile, unsigned char *p, size_t pos, size_t size)
 {
-  size_t nbytes;
-
   fflush((FILE *)tempfile->fp);
   fseek((FILE *)tempfile->fp, pos, SEEK_SET);
-  nbytes = fread(p, 1, size, (FILE *)tempfile->fp);
+  size_t nbytes = fread(p, 1, size, (FILE *)tempfile->fp);
   if (nbytes != size)
     return false;
 
@@ -135,14 +130,11 @@ tempfile_read(tempfile_t *tempfile, unsigned char *p, size_t pos, size_t size)
 static temp_strage_t *
 strage_create(void)
 {
-  temp_strage_t *strage;
-  tempfile_t *tempfile;
-
-  tempfile = tempfile_get();
+  tempfile_t *tempfile = tempfile_get();
   if (!tempfile)
     return NULL;
 
-  strage = malloc(sizeof(temp_strage_t));
+  temp_strage_t *strage = malloc(sizeof(temp_strage_t));
   //printf("strage alloc %d -> %p\n", (int)sizeof(temp_strage_t), strage);
   if (!strage)
     return NULL;
@@ -178,9 +170,7 @@ winimg_new(imglist **ppimg, unsigned char *pixels,
            int left, int top, int width, int height,
            int pixelwidth, int pixelheight)
 {
-  imglist *img;
-
-  img = (imglist *)malloc(sizeof(imglist));
+  imglist *img = (imglist *)malloc(sizeof(imglist));
   //printf("winimg alloc %d -> %p\n", (int)sizeof(imglist), img);
   if (!img)
     return false;
@@ -206,38 +196,49 @@ winimg_new(imglist **ppimg, unsigned char *pixels,
 void
 winimg_lazyinit(imglist *img)
 {
-  BITMAPINFO bmpinfo;
-  unsigned char *pixels;
-  HDC dc;
-  size_t size;
-
   if (img->hdc)
     return;
 
-  size = img->pixelwidth * img->pixelheight * 4;
+  HDC dc = GetDC(wnd);
+  if (!dc)
+    return;
 
-  dc = GetDC(wnd);
+  if (!cdc)
+    return;
+#ifdef debug_sixel_list
+  printf("creating device context, capacity %d->\n", cdc);
+#endif
+  cdc--;
 
-  bmpinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-  bmpinfo.bmiHeader.biWidth = img->pixelwidth;
-  bmpinfo.bmiHeader.biHeight = - img->pixelheight;
-  bmpinfo.bmiHeader.biPlanes = 1;
-  bmpinfo.bmiHeader.biBitCount = 32;
-  bmpinfo.bmiHeader.biCompression = BI_RGB;
-  bmpinfo.bmiHeader.biSizeImage = 0;
   img->hdc = CreateCompatibleDC(dc);
-  img->hbmp = CreateDIBSection(dc, &bmpinfo, DIB_RGB_COLORS, (void*)&pixels, NULL, 0);
-  /*HGDIOBJ res =*/ SelectObject(img->hdc, img->hbmp);
-  if (img->pixels) {
-    CopyMemory(pixels, img->pixels, size);
-    //printf("winimg_lazyinit free pixels %p\n", img->pixels); fflush(stdout);
-    free(img->pixels);
-  } else {
-    // resume from hibernation
-    assert(img->strage);
-    strage_read(img->strage, pixels, size);
+  if (img->hdc) {
+    BITMAPINFO bmpinfo;
+    unsigned char *pixels;
+
+    bmpinfo.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
+    bmpinfo.bmiHeader.biWidth = img->pixelwidth;
+    bmpinfo.bmiHeader.biHeight = - img->pixelheight;
+    bmpinfo.bmiHeader.biPlanes = 1;
+    bmpinfo.bmiHeader.biBitCount = 32;
+    bmpinfo.bmiHeader.biCompression = BI_RGB;
+    bmpinfo.bmiHeader.biSizeImage = 0;
+    img->hbmp = CreateDIBSection(dc, &bmpinfo, DIB_RGB_COLORS, (void*)&pixels, NULL, 0);
+    if (img->hbmp) {
+      /*HGDIOBJ res =*/
+      SelectObject(img->hdc, img->hbmp);
+      size_t size = img->pixelwidth * img->pixelheight * 4;
+      if (img->pixels) {
+        CopyMemory(pixels, img->pixels, size);
+        //printf("winimg_lazyinit free pixels %p\n", img->pixels); fflush(stdout);
+        free(img->pixels);
+      } else {
+        // resume from hibernation
+        assert(img->strage);
+        strage_read(img->strage, pixels, size);
+      }
+      img->pixels = pixels;
+    }
   }
-  img->pixels = pixels;
 
   ReleaseDC(wnd, dc);
 }
@@ -246,15 +247,12 @@ winimg_lazyinit(imglist *img)
 static void
 winimg_hibernate(imglist *img)
 {
-  size_t size;
-  temp_strage_t *strage;
-
-  size = img->pixelwidth * img->pixelheight * 4;
+  size_t size = img->pixelwidth * img->pixelheight * 4;
 
   if (!img->hdc)
     return;
 
-  strage = strage_create();
+  temp_strage_t *strage = strage_create();
   if (!strage)
     return;
 
@@ -264,6 +262,10 @@ winimg_hibernate(imglist *img)
   }
 
   // delete allocated DIB section.
+  cdc++;
+#ifdef debug_sixel_list
+  printf("release dc, capacity ->%d\n", cdc);
+#endif
   DeleteDC(img->hdc);
   DeleteObject(img->hbmp);
   img->pixels = NULL;
@@ -277,6 +279,10 @@ void
 winimg_destroy(imglist *img)
 {
   if (img->hdc) {
+    cdc++;
+#ifdef debug_sixel_list
+  printf("release dc, capacity ->%d\n", cdc);
+#endif
     DeleteDC(img->hdc);
     DeleteObject(img->hbmp);
   } else if (img->pixels) {
@@ -285,20 +291,22 @@ winimg_destroy(imglist *img)
   } else {
     strage_destroy(img->strage);
   }
-  //printf("winimg_destroy free img %p\n", img);
+#ifdef debug_sixel_list
+  printf("winimg_destroy free img %p\n", img);
+#endif
   free(img);
 }
 
 void
 winimgs_clear(struct term* term)
 {
-  imglist *img, *prev;
-
   // clear parser state
   sixel_parser_deinit(term->imgs.parser_state);
   //printf("winimgs_clear free state %p\n", term.imgs.parser_state);
   free(term->imgs.parser_state);
   term->imgs.parser_state = NULL;
+
+  imglist *img, *prev;
 
   // clear images in current screen
   for (img = term->imgs.first; img; ) {
@@ -323,14 +331,7 @@ winimgs_clear(struct term* term)
 void
 winimg_paint(struct term* term)
 {
-  imglist *img;
-  imglist *prev = NULL;
-  int left, top;
-  int x, y;
-  termchar *dchar;
-  bool update_flag;
-  HDC dc;
-  RECT rc;
+  imglist * img;
 
   /* free disk space if number of tempfile exceeds TEMPFILE_MAX_NUM */
   while (tempfile_num > TEMPFILE_MAX_NUM && term->imgs.first) {
@@ -339,52 +340,59 @@ winimg_paint(struct term* term)
     winimg_destroy(img);
   }
 
-  dc = GetDC(wnd);
+  HDC dc = GetDC(wnd);
 
+  RECT rc;
   GetClientRect(wnd, &rc);
   IntersectClipRect(dc, rc.left + PADDING, rc.top + PADDING,
-                    rc.left + PADDING + term->cols * cell_width,
+                    rc.left + PADDING +term->cols * cell_width,
                     rc.top + PADDING + term->rows * cell_height);
+
+#ifdef debug_sixel_list
+  if (term->imgs.first)
+    printf("winimg_paint loop\n");
+#endif
+
+  imglist * prev = 0;
   for (img = term->imgs.first; img;) {
+    imglist * distrimg = 0;
     // if the image is out of scrollback, collect it
     if (img->top + img->height - term->virtuallines < - term->sblines) {
-      if (img == term->imgs.first)
-        term->imgs.first = img->next;
-      if (img == term->imgs.last)
-        term->imgs.last = prev;
-      if (prev)
-        prev->next = img->next;
-      prev = img;
-      img = img->next;
-      winimg_destroy(prev);
+#ifdef debug_sixel_list
+      printf("destroy scrolled out\n");
+#endif
+      distrimg = img;
     } else {
       // if the image is scrolled out, serialize it into a temp file.
-      left = img->left;
-      top = img->top - term->virtuallines - term->disptop;
+      int left = img->left;
+      int top = img->top - term->virtuallines - term->disptop;
       if (top + img->height < 0 || top > term->rows) {
         winimg_hibernate(img);
       } else {
         // create DC handle if it is not initialized, or resume from hibernate
         winimg_lazyinit(img);
-        for (y = max(0, top); y < min(top + img->height, term->rows); ++y) {
+        bool keep_flag = false;
+        for (int y = max(0, top); y < min(top + img->height, term->rows); ++y) {
           int wide_factor = (term->displines[y]->lattr & LATTR_MODE) == LATTR_NORM ? 1: 2;
-          for (x = left; x < min(left + img->width, term->cols); ++x) {
-            dchar = &term->displines[y]->chars[x];
+          for (int x = left; x < min(left + img->width, term->cols); ++x) {
+            termchar *dchar = &term->displines[y]->chars[x];
 
-            // if sixel image is overwirtten by characters,
+            // if sixel image is overwritten by characters,
             // exclude the area from the clipping rect.
-            update_flag = false;
+            bool clip_flag = false;
             if (dchar->chr != SIXELCH)
-              update_flag = true;
+              clip_flag = true;
+            else if (dchar->attr.attr == (ulong)img)
+              keep_flag = true;
             if (dchar->attr.attr & (TATTR_RESULT | TATTR_CURRESULT | TATTR_MARKED | TATTR_CURMARKED))
-              update_flag = true;
-            if (term->selected && !update_flag) {
+              clip_flag = true;
+            if (term->selected && !clip_flag) {
               pos scrpos = {y + term->disptop, x, false};
-              update_flag = term->sel_rect
+              clip_flag = term->sel_rect
                   ? posPle(term->sel_start, scrpos) && posPlt(scrpos, term->sel_end)
                   : posle(term->sel_start, scrpos) && poslt(scrpos, term->sel_end);
             }
-            if (update_flag)
+            if (clip_flag)
               ExcludeClipRect(dc,
                               x * wide_factor * cell_width + PADDING,
                               y * cell_height + PADDING,
@@ -392,10 +400,34 @@ winimg_paint(struct term* term)
                               (y + 1) * cell_height + PADDING);
           }
         }
-        StretchBlt(dc, left * cell_width + PADDING, top * cell_height + PADDING,
-                   img->width * cell_width, img->height * cell_height, img->hdc,
-                   0, 0, img->pixelwidth, img->pixelheight, SRCCOPY);
+#ifdef debug_sixel_list
+        printf("display img\n");
+#endif
+        if (keep_flag)
+          StretchBlt(dc, left * cell_width + PADDING, top * cell_height + PADDING,
+                     img->width * cell_width, img->height * cell_height, img->hdc,
+                     0, 0, img->pixelwidth, img->pixelheight, SRCCOPY);
+        else {
+          //destroy and remove
+#ifdef debug_sixel_list
+          printf("destroy overlapped\n");
+#endif
+          distrimg = img;
+        }
       }
+    }
+    if (distrimg) {
+      if (img == term->imgs.first)
+        term->imgs.first = img->next;
+      if (prev)
+        prev->next = img->next;
+      if (img == term->imgs.last)
+        term->imgs.last = prev;
+
+      img = img->next;
+      winimg_destroy(distrimg);
+    }
+    else {
       prev = img;
       img = img->next;
     }
@@ -448,8 +480,12 @@ gpcheck(char * tag, GpStatus s)
 #define gpcheck(tag, s)	(void)s
 #endif
 
+#include <fcntl.h>
+#include "charset.h"  // path_win_w_to_posix
+static IStream * (WINAPI * pSHCreateMemStream)(void *, UINT) = 0;
+
 void
-win_emoji_show(int x, int y, wchar * efn, int elen, ushort lattr)
+win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr)
 {
   GpStatus s;
 
@@ -458,13 +494,42 @@ win_emoji_show(int x, int y, wchar * efn, int elen, ushort lattr)
   if (!gis) {
     s = GdiplusStartup(&gis, &gi, NULL);
     gpcheck("startup", s);
+
+    HMODULE shc = GetModuleHandleA("shlwapi");
+    pSHCreateMemStream = (void *)GetProcAddress(shc, "SHCreateMemStream");
   }
 
   bool use_stream = true;
   IStream * fs = 0;
-  if (use_stream) {
+  if (*bufpoi && pSHCreateMemStream) {  // use cached image data
+    fs = pSHCreateMemStream(*bufpoi, *buflen);
+    s = fs ? Ok : NotImplemented;
+  }
+  else if (use_stream) {
     s = GdipCreateStreamOnFile(efn, 0 /* FileMode.Open */, &fs);
     gpcheck("stream", s);
+    if (s && pSHCreateMemStream) {
+      char * fn = path_win_w_to_posix(efn);
+      int f = open(fn, O_BINARY | O_RDONLY);
+      free(fn);
+      if (f) {
+        struct stat stat;
+        if (0 == fstat(f, &stat)) {
+          char * img = newn(char, stat.st_size);
+          int len;
+          char * p = img;
+          while ((len = read(f, p, stat.st_size - (p - img))) > 0) {
+            p += len;
+          }
+          *bufpoi = img;
+          *buflen = p - img;
+          fs = pSHCreateMemStream(img, p - img);
+          if (fs)
+            s = Ok;
+        }
+        close(f);
+      }
+    }
   }
   else
     s = NotImplemented;
@@ -545,9 +610,12 @@ win_emoji_show(int x, int y, wchar * efn, int elen, ushort lattr)
 
 #else
 
-void win_emoji_show(int x, int y, wchar * efn, int elen, ushort lattr)
+void
+win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr)
 {
-  (void)x; (void)y; (void)efn; (void)elen; (void)lattr;
+  (void)x; (void)y;
+  (void)efn; (void)bufpoi; (void)buflen;
+  (void)elen; (void)lattr;
 }
 
 #endif

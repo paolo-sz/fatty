@@ -18,7 +18,8 @@
 # - DMALLOC: define to enable the dmalloc heap debugging library
 #
 # The values of DEBUG and DMALLOC variables do not matter, it's just about
-# whether they're defined, so e.g. 'make DEBUG=1' will trigger a debug build.
+# whether they're defined; a debug build can be built with
+#	make DEBUG=1
 
 #############################################################################
 NAME := fatty
@@ -120,6 +121,7 @@ LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -
 #override LDLIBS += -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid
 
 ifdef DEBUG
+  CPPFLAGS += -Wno-trampolines
   COMMONFLAGS += -g
 else
   CPPFLAGS += -DNDEBUG

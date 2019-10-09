@@ -1058,9 +1058,6 @@ term_resize(struct term* term, int newrows, int newcols)
 void
 term_switch_screen(struct term* term, bool to_alt, bool reset)
 {
-  imglist *first, *last;
-  long long int offset;
-
   if (to_alt == term->on_alt_screen)
     return;
 
@@ -1071,9 +1068,9 @@ term_switch_screen(struct term* term, bool to_alt, bool reset)
   term->other_lines = oldlines;
 
   /* swap image list */
-  first = term->imgs.first;
-  last = term->imgs.last;
-  offset = term->virtuallines;
+  imglist * first = term->imgs.first;
+  imglist * last = term->imgs.last;
+  long long int offset = term->virtuallines;
   term->imgs.first = term->imgs.altfirst;
   term->imgs.last = term->imgs.altlast;
   term->virtuallines = term->altvirtuallines;
@@ -1416,7 +1413,9 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
 #define EM_base 16
 
 struct emoji_base {
-  void * res;  // filename (char*/wchar*) or cached image
+  wchar * efn;  // image filename
+  void * buf;  // cached image
+  int buflen;  // cached image
   struct {
     uint tags: 11;
     xchar ch: 21;
@@ -1470,7 +1469,9 @@ emoji_tags(int i)
 #endif
 
 struct emoji_seq {
-  void * res;   // filename (char*/wchar*) or cached image
+  wchar * efn;  // image filename
+  void * buf;   // cached image
+  int buflen;   // cached image
   echar chs[8]; // code points
   char * name;  // short name in emoji-sequences.txt, emoji-zwj-sequences.txt
 };
@@ -1487,6 +1488,33 @@ struct emoji {
 } __attribute__((packed));
 
 #define dont_debug_emojis 1
+
+void
+clear_emoji_data()
+{
+  for (uint i = 0; i < lengthof(emoji_bases); i++) {
+    if (emoji_bases[i].efn) {
+      free(emoji_bases[i].efn);
+      emoji_bases[i].efn = 0;
+    }
+    if (emoji_bases[i].buf) {
+      free(emoji_bases[i].buf);
+      emoji_bases[i].buf = 0;
+      emoji_bases[i].buflen = 0;
+    }
+  }
+  for (uint i = 0; i < lengthof(emoji_seqs); i++) {
+    if (emoji_seqs[i].efn) {
+      free(emoji_seqs[i].efn);
+      emoji_seqs[i].efn = 0;
+    }
+    if (emoji_seqs[i].buf) {
+      free(emoji_seqs[i].buf);
+      emoji_seqs[i].buf = 0;
+      emoji_seqs[i].buflen = 0;
+    }
+  }
+}
 
 /*
    Get emoji sequence "short name".
@@ -1522,10 +1550,10 @@ check_emoji(struct emoji e)
 {
   wchar * * efnpoi;
   if (e.seq) {
-    efnpoi = (wchar * *)&emoji_seqs[e.idx].res;
+    efnpoi = (wchar * *)&emoji_seqs[e.idx].efn;
   }
   else {
-    efnpoi = (wchar * *)&emoji_bases[e.idx].res;
+    efnpoi = (wchar * *)&emoji_bases[e.idx].efn;
   }
   if (*efnpoi) { // emoji resource was checked before
     return **efnpoi;  // ... successfully?
@@ -1612,7 +1640,7 @@ fallback:;
       goto fallback;
     }
 
-    * efnpoi = W("");  // indicate "checked but not found"
+    * efnpoi = wcsdup(W(""));  // indicate "checked but not found"
     return false;
   }
 }
@@ -1816,17 +1844,23 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
 {
   (void)eattr;
   wchar * efn;
+  void * * bufpoi;
+  int * buflen;
   if (e.seq) {
-    efn = emoji_seqs[e.idx].res;
+    efn = emoji_seqs[e.idx].efn;
+    bufpoi = &emoji_seqs[e.idx].buf;
+    buflen = &emoji_seqs[e.idx].buflen;
   }
   else {
-    efn = emoji_bases[e.idx].res;
+    efn = emoji_bases[e.idx].efn;
+    bufpoi = &emoji_bases[e.idx].buf;
+    buflen = &emoji_bases[e.idx].buflen;
   }
 #ifdef debug_emojis
   printf("emoji_show @%d:%d..%d seq %d idx %d <%ls>\n", y, x, elen, e.seq, e.idx, efn);
 #endif
   if (efn && *efn)
-    win_emoji_show(x, y, efn, elen, lattr);
+    win_emoji_show(x, y, efn, bufpoi, buflen, elen, lattr);
 }
 
 #define dont_debug_win_text_invocation
@@ -2437,6 +2471,9 @@ term_paint(struct term* term)
                     || (tattr.truefg != attr.truefg)
                     || (tattr.truebg != attr.truebg)
                     || (tattr.ulcolr != attr.ulcolr);
+
+      if (tattr.attr & TATTR_EMOJI)
+        trace_run("emoji"), break_run = true;
 
       inline bool has_comb(termchar * tc)
       {

@@ -176,6 +176,7 @@ const config default_cfg = {
   .suspbuf_max = 8080,
   .trim_selection = true,
   .charwidth = 0,
+  .char_narrowing = 70,
   .emojis = 0,
   .emoji_placement = 0,
   .app_id = W(""),
@@ -229,7 +230,9 @@ const config default_cfg = {
   },
   .sixel_clip_char = W(" "),
   .baud = 0,
-  .bloom = 0
+  .bloom = 0,
+  .old_xbuttons = false,
+  .old_options = ""
 };
 
 config cfg, new_cfg, file_cfg;
@@ -429,6 +432,7 @@ options[] = {
   {"SuspendWhileSelecting", OPT_INT, offcfg(suspbuf_max)},
   {"TrimSelection", OPT_BOOL, offcfg(trim_selection)},
   {"Charwidth", OPT_CHARWIDTH, offcfg(charwidth)},
+  {"CharNarrowing", OPT_INT, offcfg(char_narrowing)},
   {"Emojis", OPT_EMOJIS, offcfg(emojis)},
   {"EmojiPlacement", OPT_EMOJI_PLACEMENT, offcfg(emoji_placement)},
   {"AppID", OPT_WSTRING, offcfg(app_id)},
@@ -464,6 +468,8 @@ options[] = {
   {"HoverTitle", OPT_BOOL, offcfg(hover_title)},
   {"Baud", OPT_INT, offcfg(baud)},
   {"Bloom", OPT_INT, offcfg(bloom)},
+  {"OldXButtons", OPT_BOOL, offcfg(old_xbuttons)},
+  {"OldOptions", OPT_STRING, offcfg(old_options)},
 
   // ANSI colours
   {"Black", OPT_COLOUR, offcfg(ansi_colours[BLACK_I])},
@@ -1675,6 +1681,37 @@ getregstr(HKEY key, wstring subkey, wstring attribute)
 #endif
 }
 
+uint
+getregval(HKEY key, wstring subkey, wstring attribute)
+{
+#if CYGWIN_VERSION_API_MINOR < 74
+  (void)key;
+  (void)subkey;
+  (void)attribute;
+  return 0;
+#else
+  // RegGetValueW is easier but not supported on Windows XP
+  HKEY sk = 0;
+  RegOpenKeyW(key, subkey, &sk);
+  if (!sk)
+    return 0;
+  DWORD type;
+  DWORD len;
+  int res = RegQueryValueExW(sk, attribute, 0, &type, 0, &len);
+  if (res)
+    return 0;
+  if (type == REG_DWORD) {
+    DWORD val;
+    len = sizeof(DWORD);
+    res = RegQueryValueExW(sk, attribute, 0, &type, (void *)&val, &len);
+    RegCloseKey(sk);
+    if (!res)
+      return (uint)val;
+  }
+  return 0;
+#endif
+}
+
 static wchar *
 muieventlabel(wchar * event)
 {
@@ -1747,7 +1784,7 @@ add_file_resources(control *ctrl, wstring pattern, bool dirs)
     if (ok) {
       while (ok) {
         if (dirs && (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
-          if (ffd.cFileName[0] != '.' && 0 != wcscmp(ffd.cFileName, W("common")))
+          if (ffd.cFileName[0] != '.' && !!wcscmp(ffd.cFileName, W("common")))
             dlg_listbox_add_w(ctrl, ffd.cFileName);
         }
         else if (!dirs) {
@@ -2712,6 +2749,7 @@ emojis_handler(control *ctrl, int event)
       new_cfg.emojis = 0;
     else {
       new_cfg.emojis = 0;
+      emojis = newn(char, 1);
       dlg_editbox_get(ctrl, &emojis);
       for (opt_val * o = opt_vals[OPT_EMOJIS]; o->name; o++) {
         if (!strcasecmp(emojis, o->name)) {
@@ -2719,6 +2757,7 @@ emojis_handler(control *ctrl, int event)
           break;
         }
       }
+      std_delete(emojis);
     }
   }
 }
@@ -2907,18 +2946,7 @@ setup_config_box(controlbox * b)
     (font_sample = ctrl_pushbutton(s, null, apply_handler, 0
     ))->column = 0;
 
-    s = ctrl_new_set(b, _("Text"), null, 
-                     //__ Options - Text:
-                     _("Emojis"));
-    ctrl_columns(s, 2, 50, 50);
-    ctrl_combobox(
-      //__ Options - Text:
-      s, _("Style"), 100, emojis_handler, 0
-    )->column = 0;
-    ctrl_combobox(
-      //__ Options - Text:
-      s, _("Placement"), 100, emoji_placement_handler, 0
-    )->column = 1;
+    // emoji style here, right after font?
 
     s = ctrl_new_set(b, _("Text"), null, null);
     ctrl_columns(s, 2, 50, 50);
@@ -2938,15 +2966,7 @@ setup_config_box(controlbox * b)
       s, null, dlg_stdfontsel_handler, &new_cfg.font
     );
 
-    s = ctrl_new_set(b, _("Text"), null, _("Emojis"));
-    ctrl_columns(s, 2, 50, 50);
-    ctrl_combobox(
-      s, _("Style"), 100, emojis_handler, 0
-    )->column = 0;
-    ctrl_combobox(
-      //__ Options - Text:
-      s, _("Placement"), 100, emoji_placement_handler, 0
-    )->column = 1;
+    // emoji style here, right after font?
 
     s = ctrl_new_set(b, _("Text"), null, null);
     ctrl_columns(s, 2, 50, 50);
@@ -2990,6 +3010,22 @@ setup_config_box(controlbox * b)
   (charset_box = ctrl_combobox(
     s, _("&Character set"), 100, charset_handler, 0
   ))->column = 1;
+
+  // emoji style here, after locale?
+  if (!strstr(cfg.old_options, "emoj")) {
+    s = ctrl_new_set(b, _("Text"), null, 
+                     //__ Options - Text:
+                     _("Emojis"));
+    ctrl_columns(s, 2, 50, 50);
+    ctrl_combobox(
+      //__ Options - Text - Emojis:
+      s, _("Style"), 100, emojis_handler, 0
+    )->column = 0;
+    ctrl_combobox(
+      //__ Options - Text - Emojis:
+      s, _("Placement"), 100, emoji_placement_handler, 0
+    )->column = 1;
+  }
 
  /*
   * The Keys panel.
@@ -3074,70 +3110,72 @@ setup_config_box(controlbox * b)
   //__ Options - Mouse: panel title
                       _("Mouse functions"), null);
   ctrl_columns(s, 2, 50, 50);
+  if (strstr(cfg.old_options, "sel")) {
 #ifdef copy_as_html_checkbox
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Cop&y on select"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_on_select
-  )->column = 0;
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Copy as &rich text"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
-  )->column = 1;
-  ctrl_columns(s, 2, 50, 50);
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Copy as &HTML"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_as_html
-  )->column = 1;
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Cop&y on select"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+    )->column = 0;
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Copy as &rich text"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+    )->column = 1;
+    ctrl_columns(s, 2, 50, 50);
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Copy as &HTML"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_as_html
+    )->column = 1;
 #else
 #ifdef copy_as_html_right
-  ctrl_radiobuttons(
-    //__ Options - Mouse:
-    s, _("Copy as &HTML"), 2,
-    dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
-    _("&None"), 0,
-    _("&Partial"), 1,
-    _("&Default"), 2,
-    _("&Full"), 3,
-    null
-  )->column = 1;
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Cop&y on select"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_on_select
-  )->column = 0;
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Copy as &rich text"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
-  )->column = 0;
+    ctrl_radiobuttons(
+      //__ Options - Mouse:
+      s, _("Copy as &HTML"), 2,
+      dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+      _("&None"), 0,
+      _("&Partial"), 1,
+      _("&Default"), 2,
+      _("&Full"), 3,
+      null
+    )->column = 1;
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Cop&y on select"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+    )->column = 0;
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Copy as &rich text"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+    )->column = 0;
 #else
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Cop&y on select"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_on_select
-  )->column = 0;
-  ctrl_checkbox(
-    //__ Options - Mouse:
-    s, _("Copy as &rich text"),
-    dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
-  )->column = 1;
-  ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
-  ctrl_columns(s, 2, 100, 0);
-  ctrl_radiobuttons(
-    //__ Options - Mouse:
-    s, _("Copy as &HTML"), 4,
-    dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
-    _("&None"), 0,
-    _("&Partial"), 1,
-    _("&Default"), 2,
-    _("&Full"), 3,
-    null
-  );
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Cop&y on select"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+    )->column = 0;
+    ctrl_checkbox(
+      //__ Options - Mouse:
+      s, _("Copy as &rich text"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+    )->column = 1;
+    ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+    ctrl_columns(s, 2, 100, 0);
+    ctrl_radiobuttons(
+      //__ Options - Mouse:
+      s, _("Copy as &HTML"), 4,
+      dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+      _("&None"), 0,
+      _("&Partial"), 1,
+      _("&Default"), 2,
+      _("&Full"), 3,
+      null
+    );
 #endif
 #endif
+  }
   ctrl_checkbox(
     //__ Options - Mouse:
     s, _("Clic&ks place command line cursor"),
@@ -3214,31 +3252,125 @@ setup_config_box(controlbox * b)
     s, _("Modifier for overriding default"));
   ctrl_columns(s, 6, 20, 16, 16, 16, 16, 16);
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Shift:
     s, _("&Shift"), modifier_handler, &new_cfg.click_target_mod
   )->column = 0;
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Alt:
     s, _("&Alt"), modifier_handler, &new_cfg.click_target_mod
   )->column = 1;
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Control:
     s, _("&Ctrl"), modifier_handler, &new_cfg.click_target_mod
   )->column = 2;
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Win:
     s, _("&Win"), modifier_handler, &new_cfg.click_target_mod
   )->column = 3;
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Super:
     s, _("&Sup"), modifier_handler, &new_cfg.click_target_mod
   )->column = 4;
   ctrl_checkbox(
-    //__ Options - Mouse:
+    //__ Options - Modifier - Hyper:
     s, _("&Hyp"), modifier_handler, &new_cfg.click_target_mod
   )->column = 5;
   ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
 #endif
+
+  if (!strstr(cfg.old_options, "sel")) {
+   /*
+    * The Selection and clipboard panel.
+    */
+    //__ Options - Selection: treeview label
+    s = ctrl_new_set(b, _("Selection"), 
+    //__ Options - Selection: panel title
+                        _("Selection and clipboard"), null);
+    ctrl_columns(s, 2, 100, 0);
+    ctrl_checkbox(
+      //__ Options - Selection:
+      s, _("Clear selection on input"),
+      dlg_stdcheckbox_handler, &new_cfg.input_clears_selection
+    );
+
+#define copy_as_html_single_line
+
+    //__ Options - Selection: treeview label
+    s = ctrl_new_set(b, _("Selection"), null,
+    //__ Options - Selection: section title
+                        _("Clipboard"));
+    ctrl_columns(s, 2, 50, 50);
+    ctrl_checkbox(
+      //__ Options - Selection:
+      s, _("Cop&y on select"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_on_select
+    )->column = 0;
+    ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+    ctrl_columns(s, 2, 50, 50);
+    ctrl_checkbox(
+      //__ Options - Selection:
+      s, _("Copy as &rich text"),
+      dlg_stdcheckbox_handler, &new_cfg.copy_as_rtf
+    )->column = 0;
+#ifndef copy_as_html_single_line
+    ctrl_radiobuttons(
+      //__ Options - Selection:
+      s, _("Copy as &HTML"), 2,
+      dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+      _("&None"), 0,
+      _("&Partial"), 1,
+      _("&Default"), 2,
+      _("&Full"), 3,
+      null
+    )->column = 1;
+#else
+    ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+    ctrl_columns(s, 2, 100, 0);
+    ctrl_radiobuttons(
+      //__ Options - Selection:
+      s, _("Copy as &HTML"), 4,
+      dlg_stdradiobutton_handler, &new_cfg.copy_as_html,
+      _("&None"), 0,
+      _("&Partial"), 1,
+      _("&Default"), 2,
+      _("&Full"), 3,
+      null
+    );
+#endif
+
+    ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+    ctrl_columns(s, 2, 50, 50);
+    ctrl_checkbox(
+      //__ Options - Selection:
+      s, _("Trim space from selection"),
+      dlg_stdcheckbox_handler, &new_cfg.trim_selection
+    );
+    ctrl_checkbox(
+      //__ Options - Selection:
+      s, _("Allow setting selection"),
+      dlg_stdcheckbox_handler, &new_cfg.allow_set_selection
+    );
+
+    //__ Options - Selection: treeview label
+    s = ctrl_new_set(b, _("Selection"), null,
+    //__ Options - Selection: section title
+                        _("Window"));
+    ctrl_columns(s, 2, 100, 0);
+    // window-related
+    ctrl_editbox(
+      //__ Options - Selection:
+      s, _("Show size while selecting (0..12)"), 24,
+      dlg_stdintbox_handler, &new_cfg.selection_show_size
+    );
+#define dont_config_suspbuf
+#ifdef config_suspbuf
+    ctrl_editbox(
+      //__ Options - Selection:
+      s, _("Suspend output while selecting"), 24,
+      dlg_stdintbox_handler, &new_cfg.suspbuf_max
+    );
+#endif
+  }
 
  /*
   * The Window panel.
@@ -3306,27 +3438,27 @@ setup_config_box(controlbox * b)
     s, _("Modifier for scrolling"));
   ctrl_columns(s, 6, 20, 16, 16, 16, 16, 16);
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Shift:
     s, _("&Shift"), modifier_handler, &new_cfg.scroll_mod
   )->column = 0;
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Alt:
     s, _("&Alt"), modifier_handler, &new_cfg.scroll_mod
   )->column = 1;
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Control:
     s, _("&Ctrl"), modifier_handler, &new_cfg.scroll_mod
   )->column = 2;
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Win:
     s, _("&Win"), modifier_handler, &new_cfg.scroll_mod
   )->column = 3;
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Super:
     s, _("&Sup"), modifier_handler, &new_cfg.scroll_mod
   )->column = 4;
   ctrl_checkbox(
-    //__ Options - Window:
+    //__ Options - Modifier - Hyper:
     s, _("&Hyp"), modifier_handler, &new_cfg.scroll_mod
   )->column = 5;
 #endif
