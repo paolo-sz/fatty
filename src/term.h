@@ -209,10 +209,11 @@ typedef unsigned long long cattrflags;
 
 typedef struct {
   cattrflags attr;
-  int link;
   colour truebg;
   colour truefg;
   colour ulcolr;
+  int link;
+  int imgi;
 } cattr;
 
 extern const cattr CATTR_DEFAULT;
@@ -264,6 +265,8 @@ extern int sblines(struct term* term);
 extern termline *fetch_line(struct term* term, int y);
 extern void release_line(termline *);
 
+
+/* Terminal state */
 typedef struct {
   int width;
   ushort lattr;
@@ -313,6 +316,7 @@ typedef struct {
   bool r;
 } pos;
 
+
 typedef enum {
   MBT_LEFT = 1, MBT_MIDDLE = 2, MBT_RIGHT = 3, MBT_4 = 4, MBT_5 = 5
 } mouse_button;
@@ -330,6 +334,7 @@ typedef struct {
   int capacity;
 } circbuf;
 
+/* Searching */
 typedef struct {
   int x;
   int y;
@@ -348,37 +353,42 @@ typedef struct {
 } termresults;
 
 
+/* Images */
 typedef struct {
-  void *fp;
+  void * fp;
   uint ref_counter;
   uint amount;
 } tempfile_t;
 
 typedef struct {
-  tempfile_t *tempfile;
+  tempfile_t * tempfile;
   size_t position;
 } temp_strage_t;
 
 typedef struct imglist {
-  unsigned char *pixels;
-  void *hdc;
-  void *hbmp;
-  temp_strage_t *strage;
+  int imgi;
+  int cell_width, cell_height;
+  unsigned char * pixels;
+  void * hdc;
+  void * hbmp;
+  temp_strage_t * strage;
   int top;
   int left;
   int width;
   int height;
   int pixelwidth;
   int pixelheight;
-  struct imglist *next;
+  struct imglist * next;
+  char * id;
+  int len;
 } imglist;
 
 typedef struct {
-  void *parser_state;
-  imglist *first;
-  imglist *last;
-  imglist *altfirst;
-  imglist *altlast;
+  void * parser_state;
+  imglist * first;
+  imglist * last;
+  imglist * altfirst;
+  imglist * altlast;
 } termimgs;
 
 struct mode_entry {
@@ -650,6 +660,8 @@ extern void term_schedule_search_update(struct term* term);
 extern void term_update_search(struct term* term);
 extern void term_clear_results(struct term* term);
 extern void term_clear_search(struct term* term);
+
+extern uchar scriptfont(ucschar ch);
 
 extern void clear_emoji_data(void);
 extern char * get_emoji_description(termchar *);

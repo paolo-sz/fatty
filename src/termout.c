@@ -843,6 +843,16 @@ mapfont(char * script, uchar f)
   for (uint i = 0; i < lengthof(scriptfonts); i++)
     if (0 == strcmp(scriptfonts[i].scriptname, script))
       scriptfonts[i].font = f;
+  if (0 == strcmp(script, "CJK")) {
+    mapfont("Han", f);
+    mapfont("Hangul", f);
+    mapfont("Katakana", f);
+    mapfont("Hiragana", f);
+    mapfont("Bopomofo", f);
+    mapfont("Kanbun", f);
+    mapfont("Fullwidth", f);
+    mapfont("Halfwidth", f);
+  }
 }
 
 static char *
@@ -891,7 +901,7 @@ init_scriptfonts(void)
   scriptfonts_init = true;
 }
 
-static uchar
+uchar
 scriptfont(ucschar ch)
 {
   if (!*cfg.font_choice)
@@ -922,6 +932,10 @@ write_ucschar(struct term* term, wchar hwc, wchar wc, int width)
   cattrflags attr = term->curs.attr.attr;
   ucschar c = hwc ? combine_surrogates(hwc, wc) : wc;
   uchar cf = scriptfont(c);
+#ifdef debug_scriptfonts
+  if (c && cf)
+    printf("scriptfont %04X: %d\n", c, cf);
+#endif
   if (cf && cf <= 10 && !(attr & FONTFAM_MASK))
     term->curs.attr.attr = attr | ((cattrflags)cf << ATTR_FONTFAM_SHIFT);
 
@@ -2747,6 +2761,49 @@ do_csi(struct term* term, uchar c)
   }
 }
 
+/*
+ * Fill image area with sixel placeholder characters and set cursor.
+ */
+static void
+fill_image_space(struct term* term, imglist * img)
+{
+  cattrflags attr0 = term->curs.attr.attr;
+  // refer SIXELCH cells to image for display/discard management
+  term->curs.attr.imgi = img->imgi;
+
+  short x0 = term->curs.x;
+  if (term->sixel_display) {  // sixel display mode
+    short y0 = term->curs.y;
+    term->curs.y = 0;
+    for (int y = 0; y < img->height && y < term->rows; ++y) {
+      term->curs.y = y;
+      term->curs.x = 0;
+      //printf("SIXELCH @%d imgi %d\n", y, term.curs.attr.imgi);
+      for (int x = x0; x < x0 + img->width && x < term->cols; ++x)
+        write_char(term, SIXELCH, 1);
+    }
+    term->curs.y = y0;
+    term->curs.x = x0;
+  } else {  // sixel scrolling mode
+    for (int i = 0; i < img->height; ++i) {
+      term->curs.x = x0;
+      //printf("SIXELCH @%d imgi %d\n", term.curs.y, term.curs.attr.imgi);
+      for (int x = x0; x < x0 + img->width && x < term->cols; ++x)
+        write_char(term, SIXELCH, 1);
+      if (i == img->height - 1) {  // in the last line
+        if (!term->sixel_scrolls_right) {
+          write_linefeed(term);
+          term->curs.x = term->sixel_scrolls_left ? 0: x0;
+        }
+      } else {
+        write_linefeed(term);
+      }
+    }
+  }
+
+  term->curs.attr.attr = attr0;
+}
+
 static void
 do_dcs(struct term* term)
 {
@@ -2832,7 +2889,8 @@ do_dcs(struct term* term)
       int pixelheight = st->image.height;
 
       imglist * img;
-      if (!winimg_new(&img, pixels, left, top, width, height, pixelwidth, pixelheight) != 0) {
+      if (!winimg_new(&img, 0, pixels, 0, left, top, width, height, pixelwidth, pixelheight, false)) {
+        free(pixels);
         sixel_parser_deinit(st);
         //printf("free state 4 %p\n", term.imgs.parser_state);
         free(term->imgs.parser_state);
@@ -2840,39 +2898,10 @@ do_dcs(struct term* term)
         return;
       }
 
-      short x0 = term->curs.x;
-      cattrflags attr0 = term->curs.attr.attr;
+      fill_image_space(term, img);
 
-      // fill with space characters
-      term->curs.attr.attr = (ulong)img;
-      if (term->sixel_display) {  // sixel display mode
-        short y0 = term->curs.y;
-        term->curs.y = 0;
-        for (int y = 0; y < img->height && y < term->rows; ++y) {
-          term->curs.y = y;
-          term->curs.x = 0;
-          for (int x = x0; x < x0 + img->width && x < term->cols; ++x)
-            write_char(term, SIXELCH, 1);
-        }
-        term->curs.y = y0;
-        term->curs.x = x0;
-      } else {  // sixel scrolling mode
-        for (int i = 0; i < img->height; ++i) {
-          term->curs.x = x0;
-          for (int x = x0; x < x0 + img->width && x < term->cols; ++x)
-            write_char(term, SIXELCH, 1);
-          if (i == img->height - 1) {  // in the last line
-            if (!term->sixel_scrolls_right) {
-              write_linefeed(term);
-              term->curs.x = term->sixel_scrolls_left ? 0: x0;
-            }
-          } else {
-            write_linefeed(term);
-          }
-        }
-      }
-      term->curs.attr.attr = attr0;
-
+      // add image to image list;
+      // replace previous for optimisation in some cases
       if (term->imgs.first == NULL) {
         term->imgs.first = term->imgs.last = img;
       } else {
@@ -2893,6 +2922,7 @@ do_dcs(struct term* term)
               printf("img replace\n");
 #endif
               memcpy(cur->pixels, img->pixels, img->pixelwidth * img->pixelheight * 4);
+              cur->imgi = img->imgi;
               winimg_destroy(img);
               return;
             }
@@ -2912,6 +2942,7 @@ do_dcs(struct term* term)
                        img->pixels + y * img->pixelwidth * 4,
                        img->pixelwidth * 4);
               }
+              cur->imgi = img->imgi;
               winimg_destroy(img);
               return;
             }
@@ -3308,6 +3339,129 @@ do_cmd(struct term* term)
       }
       else
         term->curs.attr.link = -1;
+    }
+    when 1337: {  // iTerm2 image protocol
+                  // https://www.iterm2.com/documentation-images.html
+      char * payload = strchr(s, ':');
+      if (payload) {
+        *payload = 0;
+        payload++;
+      }
+
+      // verify protocol
+      if (0 == strncmp("File=", s, 5))
+        s += 5;
+      else
+        return;
+
+      char * name = 0;
+      int width = 0;
+      int height = 0;
+      int pixelwidth = 0;
+      int pixelheight = 0;
+      bool pAR = true;
+
+      // process parameters
+      while (s && *s) {
+        char * nxt = strchr(s, ';');
+        if (nxt) {
+          *nxt = 0;
+          nxt++;
+        }
+        char * sval = strchr(s, '=');
+        if (sval) {
+          *sval = 0;
+          sval++;
+        }
+        else
+          sval = "";
+        int val = atoi(sval);
+        char * suf = sval;
+        while (isdigit((uchar)*suf))
+          suf++;
+        bool pix = 0 == strcmp("px", suf);
+        bool per = 0 == strcmp("%", suf);
+        //printf("<%s>=<%s>%d<%s>\n", s, sval, val, suf);
+
+        if (0 == strcmp("name", s))
+          name = s;  // can serve as cache id
+        else if (0 == strcmp("width", s)) {
+          if (pix) {
+            pixelwidth = val;
+            width = (val - 1) / cell_width + 1;
+          }
+          else if (per) {
+            width = term->cols * val / 100;
+            pixelwidth = width * cell_width;
+          }
+          else {
+            width = val;
+            pixelwidth = val * cell_width;
+          }
+        }
+        else if (0 == strcmp("height", s)) {
+          if (pix) {
+            pixelheight = val;
+            height = (val - 1) / cell_height + 1;
+          }
+          else if (per) {
+            height = term->rows * val / 100;
+            pixelheight = height * cell_height;
+          }
+          else {
+            height = val;
+            pixelheight = val * cell_height;
+          }
+        }
+        else if (0 == strcmp("preserveAspectRatio", s)) {
+          pAR = val;
+        }
+
+        s = nxt;
+      }
+
+      if (payload) {
+#ifdef strip_newlines
+#warning not applicable as preprocessing OSC would not pass it here
+        char * from = strpbrk(payload, "\r\n");
+        if (from) {  // strip new lines
+          char * to = from;
+          while (*from) {
+            if (*from >= ' ')
+              *to++ = *from;
+            from++;
+          }
+          *to = 0;
+        }
+#endif
+        int len = strlen(payload);
+        int datalen = len - (len / 4);
+        void * data = malloc(datalen);
+        if (!data)
+          return;
+        datalen = base64_decode_clip(payload, len, data, datalen);
+        if (datalen > 0) {
+          // OK
+          imglist * img;
+          short left = term->curs.x;
+          short top = term->virtuallines + term->curs.y;
+          if (winimg_new(&img, name, data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR)) {
+            fill_image_space(term, img);
+
+            if (term->imgs.first == NULL) {
+              term->imgs.first = term->imgs.last = img;
+            } else {
+              // append image to list
+              term->imgs.last->next = img;
+              term->imgs.last = img;
+            }
+          }
+          else
+            free(data);
+        }
+        else
+          free(data);
+      }
     }
   }
 }
