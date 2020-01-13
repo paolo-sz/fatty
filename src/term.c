@@ -342,6 +342,7 @@ term_reset(struct term* term, bool full)
   term->sixel_scrolls_left = 0;
 
   term->cursor_type = -1;
+  term->cursor_size = 0;
   term->cursor_blinks = -1;
   term->cursor_blink_interval = 0;
   if (full) {
@@ -1271,6 +1272,13 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
     scroll_pos(&term->sel_start);
     scroll_pos(&term->sel_anchor);
     scroll_pos(&term->sel_end);
+
+    // Move graphics if within the scroll region
+    for (imglist * cur = term->imgs.first; cur; cur = cur->next) {
+      if (cur->top - term->virtuallines >= topline) {
+        cur->top += lines;
+      }
+    }
   }
   else {
     int seltop = topline;

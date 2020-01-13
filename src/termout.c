@@ -970,8 +970,7 @@ contains(string s, int i)
       s++;
     int si = -1;
     int len;
-    sscanf(s, "%d%n", &si, &len);
-    if (len <= 0)
+    if (sscanf(s, "%d%n", &si, &len) <= 0)
       return false;
     s += len;
     if (si == i && (!*s || *s == ','))
@@ -2562,6 +2561,8 @@ do_csi(struct term* term, uchar c)
         term->cursor_blink_interval = arg1;
       term->cursor_invalid = true;
       term_schedule_cblink(term);
+    when CPAIR('?', 'c'):  /* Cursor size (Linux console) */
+      term->cursor_size = arg0;
     when CPAIR('"', 'q'):  /* DECSCA: select character protection attribute */
       switch (arg0) {
         when 0 case_or 2: term->curs.attr.attr &= ~ATTR_PROTECTED;
@@ -2889,7 +2890,7 @@ do_dcs(struct term* term)
       int pixelheight = st->image.height;
 
       imglist * img;
-      if (!winimg_new(&img, 0, pixels, 0, left, top, width, height, pixelwidth, pixelheight, false)) {
+      if (!winimg_new(&img, 0, pixels, 0, left, top, width, height, pixelwidth, pixelheight, false, 0, 0, 0, 0)) {
         free(pixels);
         sixel_parser_deinit(st);
         //printf("free state 4 %p\n", term.imgs.parser_state);
@@ -2897,6 +2898,8 @@ do_dcs(struct term* term)
         term->imgs.parser_state = NULL;
         return;
       }
+      img->cwidth = st->max_x;
+      img->cheight = st->max_y;
 
       fill_image_space(term, img);
 
@@ -3360,6 +3363,10 @@ do_cmd(struct term* term)
       int pixelwidth = 0;
       int pixelheight = 0;
       bool pAR = true;
+      int crop_x = 0;
+      int crop_y = 0;
+      int crop_width = 0;
+      int crop_height = 0;
 
       // process parameters
       while (s && *s) {
@@ -3416,6 +3423,36 @@ do_cmd(struct term* term)
         else if (0 == strcmp("preserveAspectRatio", s)) {
           pAR = val;
         }
+        else if (0 == strcmp("cropX", s) || 0 == strcmp("cropLeft", s)) {
+          if (pix) {
+            crop_x = val;
+          }
+        }
+        else if (0 == strcmp("cropY", s) || 0 == strcmp("cropTop", s)) {
+          if (pix) {
+            crop_y = val;
+          }
+        }
+        else if (0 == strcmp("cropWidth", s)) {
+          if (pix) {
+            crop_width = val;
+          }
+        }
+        else if (0 == strcmp("cropHeight", s)) {
+          if (pix) {
+            crop_height = val;
+          }
+        }
+        else if (0 == strcmp("cropRight", s)) {
+          if (pix) {
+            crop_width = - val;
+          }
+        }
+        else if (0 == strcmp("cropBottom", s)) {
+          if (pix) {
+            crop_height = - val;
+          }
+        }
 
         s = nxt;
       }
@@ -3445,7 +3482,7 @@ do_cmd(struct term* term)
           imglist * img;
           short left = term->curs.x;
           short top = term->virtuallines + term->curs.y;
-          if (winimg_new(&img, name, data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR)) {
+          if (winimg_new(&img, name, data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height)) {
             fill_image_space(term, img);
 
             if (term->imgs.first == NULL) {
@@ -3864,6 +3901,16 @@ term_do_write(struct term* term, const char *buf, uint len)
           term->curs.attr.attr &= ~FONTFAM_MASK;
           term->curs.attr.attr |= (cattrflags)gcode << ATTR_FONTFAM_SHIFT;
         }
+#ifdef draw_powerline_geometric_symbols
+#warning graphical results of this approach are unpleasant; not enabled
+        else if (wc >= 0xE0B0 && wc <= 0xE0BF && wc != 0xE0B5 && wc != 0xE0B7) {
+          // draw geometric full-cell Powerline symbols,
+          // to avoid artefacts at their borders (#943)
+          term->curs.attr.attr &= ~FONTFAM_MASK;
+          term->curs.attr.attr |= (cattrflags)13 << ATTR_FONTFAM_SHIFT;
+          term->curs.attr.attr |= (cattrflags)15 << ATTR_GRAPH_SHIFT;
+        }
+#endif
 
         write_ucschar(term, 0, wc, width);
         term->curs.attr.attr = asav;

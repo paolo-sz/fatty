@@ -241,7 +241,8 @@ winimg_len(imglist *img)
 bool
 winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
            int left, int top, int width, int height,
-           int pixelwidth, int pixelheight, bool preserveAR)
+           int pixelwidth, int pixelheight, bool preserveAR,
+           int crop_x, int crop_y, int crop_width, int crop_height)
 {
   imglist *img = (imglist *)malloc(sizeof(imglist));
   //printf("winimg alloc %d -> %p\n", (int)sizeof(imglist), img);
@@ -270,8 +271,8 @@ winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
   img->len = len;
   if (len) {  // image format, not sixel
     img->id = id ? strdup(id) : 0;
-    img->cell_width = cell_width;
-    img->cell_height = cell_height;
+    img->cwidth = cell_width;
+    img->cheight = cell_height;
 
 #if CYGWIN_VERSION_API_MINOR >= 74
     if (!pixelwidth || !pixelheight || preserveAR) {
@@ -303,6 +304,38 @@ winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
 
       if (s != Ok)
         return false;
+
+      // cropping pre-adjustment
+      if (crop_width > 0)
+        pw = crop_width;
+      else if (crop_width < 0) {
+        crop_width = - crop_width;
+        pw -= crop_width;
+      }
+      if (crop_height > 0)
+        ph = crop_height;
+      else if (crop_height < 0) {
+        crop_height = - crop_height;
+        ph -= crop_height;
+      }
+      if (crop_x)
+        pw -= crop_x;
+      if (crop_y)
+        ph -= crop_y;
+      if (crop_x || crop_y || crop_width || crop_height) {
+        if (!crop_width)
+          crop_width = pw - crop_x;
+        if (!crop_height)
+          crop_height = ph - crop_y;
+      }
+
+      if (pw <= 0 || ph <= 0)
+        return false;
+
+      img->crop_x = crop_x;
+      img->crop_y = crop_y;
+      img->crop_width = crop_width;
+      img->crop_height = crop_height;
 
       /*
 	case	given			effective
@@ -511,9 +544,6 @@ draw_img(struct term* term, HDC dc, imglist * img)
       gpcheck("load stream", s);
     }
 
-    // cropping not yet supported
-    int crop_left = 0, crop_top = 0, crop_width = 0, crop_height = 0;
-
     // position
     int left = img->left * cell_width;
     int top = (img->top - term->virtuallines - term->disptop) * cell_height;
@@ -524,12 +554,12 @@ draw_img(struct term* term, HDC dc, imglist * img)
 
     int coord_transformed = 0;
     XFORM old_xform;
-    if (img->cell_width != cell_width || img->cell_height != cell_height) {
+    if (img->cwidth != cell_width || img->cheight != cell_height) {
       coord_transformed = SetGraphicsMode(dc, GM_ADVANCED);
       if (coord_transformed && GetWorldTransform(dc, &old_xform)) {
         XFORM xform =
-          (XFORM){(float)cell_width / (float)img->cell_width, 0.0,
-                  0.0, (float)cell_height / (float)img->cell_height,
+          (XFORM){(float)cell_width / (float)img->cwidth, 0.0,
+                  0.0, (float)cell_height / (float)img->cheight,
                   left, top};
         coord_transformed = SetWorldTransform(dc, &xform);
         left = 0;
@@ -545,31 +575,44 @@ draw_img(struct term* term, HDC dc, imglist * img)
       SetWorldTransform(dc, &old_xform);
 
 #ifdef fill_bg_gdiplus
-    // attempt to reduce flickering; replace FillRect below;
-    // does not work, still flickering;
-    // also, scaling and cropping is still buggy
+    // fill image area background (in case it's smaller or transparent);
+    // background image brush should be used if configured;
+    // that'll be tricky since we've transformed coordinates here,
+    // so better do the padding before, in the GDI domain (FillRect below)
     GpSolidFill * br;
     colour bg = colours[term.rvideo ? FG_COLOUR_I : BG_COLOUR_I];
-    bg = RGB(90, 150, 222);  // test background filling
+    //bg = RGB(90, 150, 222);  // test background filling
     s = GdipCreateSolidFill(0xFF000000 | red(bg) << 16 | green(bg) << 8 | blue(bg), &br);
     gpcheck("brush create", s);
-    // this does not fill the canvas:
-    s = GdipFillRectangleI(gr, br, left, top, width, height);
-    // this is doubly scaled:
-    s = GdipFillRectangleI(gr, br, left, top, img->width * cell_width, img->height * cell_height);
+
+    // determine area size for padding
+    int awidth = img->width * img->cwidth;
+    int aheight = img->height * img->cheight;
+    s = GdipFillRectangleI(gr, br, left + width, top, awidth - width, height);
     gpcheck("brush fill", s);
+    s = GdipFillRectangleI(gr, br, left, top + height, awidth, aheight - height);
+    gpcheck("brush fill", s);
+
     s = GdipDeleteBrush(br);
     gpcheck("brush delete", s);
 #endif
 
-    if (crop_left || crop_top || crop_width || crop_height)
+    GpImageAttributes * iattr = 0;
+    //GdipCreateImageAttributes(&iattr);
+#ifdef debug_cropping
+    printf("draw %3d %3d %3d %3d crop %3d %3d %3d %3d\n", left, top, width, height, img->crop_x, img->crop_y, img->crop_width, img->crop_height);
+#endif
+    if (img->crop_x || img->crop_y || img->crop_width || img->crop_height)
       s = GdipDrawImageRectRectI(gr, gimg,
                                  left, top, width, height,
-                                 crop_left, crop_top, crop_width, crop_height,
-                                 UnitPixel, 0, 0, 0);
+                                 img->crop_x, img->crop_y,
+                                 img->crop_width, img->crop_height,
+                                 UnitPixel, iattr, 0, 0);
     else
       s = GdipDrawImageRectI(gr, gimg, left, top, width, height);
     gpcheck("draw", s);
+    //GdipDisposeImageAttributes(iattr);
+
     s = GdipFlush(gr, FlushIntentionFlush);
     gpcheck("flush", s);
 
@@ -639,7 +682,8 @@ winimgs_paint(struct term* term)
         // if all cells are overwritten, flag for deletion
         bool disp_flag = false;
         for (int y = max(0, top); y < min(top + img->height, term->rows); ++y) {
-          int wide_factor = (term->displines[y]->lattr & LATTR_MODE) == LATTR_NORM ? 1: 2;
+          int wide_factor =
+            (term->displines[y]->lattr & LATTR_MODE) == LATTR_NORM ? 1 : 2;
           for (int x = left; x < min(left + img->width, term->cols); ++x) {
             termchar *dchar = &term->displines[y]->chars[x];
 
@@ -651,6 +695,7 @@ winimgs_paint(struct term* term)
             else if (img->imgi - dchar->attr.imgi >= 0)
               // need to keep newer image, as sync may take a while
               disp_flag = true;
+            // if cell is overlaid by selection or cursor, exclude
             if (dchar->attr.attr & (TATTR_RESULT | TATTR_CURRESULT | TATTR_MARKED | TATTR_CURMARKED))
               clip_flag = true;
             if (term->selected && !clip_flag) {
@@ -669,25 +714,76 @@ winimgs_paint(struct term* term)
         }
 
         // fill image area background (in case it's smaller or transparent)
-#ifndef fill_bg_gdiplus
+        // calculate area for padding
         int ytop = max(0, top) * cell_height + PADDING;
         int ybot = min(top + img->height, term->rows) * cell_height + PADDING;
         int xlft = left * cell_width + PADDING;
         int xrgt = min(left + img->width, term->cols) * cell_width + PADDING;
-        colour bg = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
-        //bg = RGB(90, 150, 222);  // test background filling
-        HBRUSH br = CreateSolidBrush(bg);
-        FillRect(dc, &(RECT){xlft, ytop, xrgt, ybot}, br);
-        DeleteObject(br);
-#endif
+        if (img->len) {
+          // better background handling implemented below; this version 
+          // would expose artefacts if a transparent image is scrolled
+        }
+        else {
+          // determine image size for padding
+          int iwidth;
+          int iheight;
+          if (img->len) {
+            // image: actual picture size
+            iwidth = img->pixelwidth * cell_width / img->cwidth;
+            iheight = img->pixelheight * cell_height / img->cheight;
+          }
+          else {
+            // sixel: actual picture size
+            iwidth = img->cwidth * cell_width * img->width / img->pixelwidth;
+            iheight = img->cheight * cell_height * img->height / img->pixelheight;
+          }
+          int ibot = max(0, top * cell_height + iheight) + PADDING;
+          // fill either background image or colour
+          if (*cfg.background) {
+            fill_background(dc, &(RECT){xlft + iwidth, ytop, xrgt, ibot});
+            fill_background(dc, &(RECT){xlft, ibot, xrgt, ybot});
+          }
+          else {
+            colour bg = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
+            //bg = RGB(90, 150, 222);  // test background filling
+            HBRUSH br = CreateSolidBrush(bg);
+            FillRect(dc, &(RECT){xlft + iwidth, ytop, xrgt, ibot}, br);
+            FillRect(dc, &(RECT){xlft, ibot, xrgt, ybot}, br);
+            DeleteObject(br);
+          }
+          if (!img->len) {
+            // sixel needs this in addition
+            ExcludeClipRect(dc, xlft + iwidth, ytop, xrgt, ibot);
+            ExcludeClipRect(dc, xlft, ibot, xrgt, ybot);
+          }
+        }
 
         // now display, keep, or delete the image data
         if (disp_flag) {
 #ifdef debug_img_list
           printf("paint: display img\n");
 #endif
-          if (img->len)
-            draw_img(term, dc, img);
+          if (img->len) {
+            //draw_img(dc, img);
+            // underlay image with background;
+            // do it in a copy to avoid flickering
+            HDC hdc = CreateCompatibleDC(dc);
+            HBITMAP hbm = CreateCompatibleBitmap(dc, xrgt, ybot);
+            (void)SelectObject(hdc, hbm);
+            if (*cfg.background)
+              fill_background(hdc, &(RECT){0, 0, xrgt, ybot});
+            else {
+              colour bg = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
+              //bg = RGB(90, 150, 222);  // test background filling
+              HBRUSH br = CreateSolidBrush(bg);
+              FillRect(hdc, &(RECT){0, 0, xrgt, ybot}, br);
+            }
+            draw_img(term, hdc, img);
+            BitBlt(dc, xlft, ytop, xrgt - xlft, ybot - ytop,
+                       hdc, xlft, ytop, SRCCOPY);
+            DeleteObject(hbm);
+            DeleteDC(hdc);
+          }
           else
             StretchBlt(dc,
                        left * cell_width + PADDING, top * cell_height + PADDING,
