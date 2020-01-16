@@ -2807,6 +2807,7 @@ static struct {
       win_show_mouse();
       term_set_focus(term, false, false);
       win_sys_style(false);
+      win_destroy_tip();
       DestroyCaret();
       win_update(false);
 
