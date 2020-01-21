@@ -127,23 +127,6 @@ void child_proc() {
     }
 }
 
-static void kill_all_tabs() {
-    for (Tab& tab : win_tabs()) {
-        if (tab.chld.get()) {
-            child_terminate(tab.chld.get());
-        }
-    }
-}
-
-void child_kill() { 
-    kill_all_tabs();
-    win_callback(1000, []() {
-        // We are still here even after a second?
-        // Really, lets just die. It would be really annoying not to...
-        exit_fatty(1);
-    });
-}
-
 void child_terminate(struct child *child) {
     pid_t pid = child->pid;
     if (pid) {

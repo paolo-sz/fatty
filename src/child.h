@@ -26,7 +26,6 @@ extern void open_logfile(bool toggling);
 extern void toggle_logging(void);
 extern void child_free(struct child* child);
 extern void child_proc(void);
-extern void child_kill(void);
 extern void child_terminate(struct child* child);
 extern void child_write(struct child* child, const char *, uint len);
 extern void child_break(struct child* child);

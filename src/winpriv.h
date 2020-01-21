@@ -146,6 +146,7 @@ void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool para
 bool win_should_die();
 extern void win_close(void);
 extern void win_tab_close(struct term** term);
+void win_tab_close_all();
 
 extern char * geturl(int n);
 

@@ -530,6 +530,19 @@ extern "C" {
       set_active_tab(x);
   }
   
+  void win_tab_close_all() {
+      for (Tab& tab : tabs) {
+          if (tab.chld.get()) {
+              child_terminate(tab.chld.get());
+          }
+      }
+      win_callback(1000, []() {
+          // We are still here even after a second?
+          // Really, lets just die. It would be really annoying not to...
+          exit_fatty(1);
+      });
+}
+
 } /* extern C */
 
 std::vector<Tab>& win_tabs() {
@@ -541,6 +554,7 @@ static void lambda_callback(void* data) {
     (*callback)();
     delete callback;
 }
+
 void win_callback(unsigned int ticks, std::function<void()> callback) {
     win_set_timer(lambda_callback, new std::function<void()>(callback), ticks);
 }

@@ -2148,7 +2148,7 @@ win_close(void)
     }
   }
   if (!cfg.confirm_exit || confirm_exit())
-    child_kill();
+    win_tab_close_all();
 }
 
 void
