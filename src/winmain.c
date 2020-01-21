@@ -2139,17 +2139,29 @@ win_close(void)
   if (term_initialized) term = win_active_terminal();
   if (win_tab_count() > 1) {
     switch (confirm_multi_tab()) {
-      when IDNO:
-        if (!cfg.confirm_exit || confirm_tab_exit()) {
-          child_terminate(term->child);
-        }
+      when IDNO: {
+        win_tab_close(&term);
         return;
+      }
       when IDCANCEL:
         return;
     }
   }
   if (!cfg.confirm_exit || confirm_exit())
     child_kill();
+}
+
+void
+win_tab_close(struct term** term)
+{
+  if (win_tab_count() > 1) {
+    if (!cfg.confirm_exit || confirm_tab_exit()) {
+      win_tab_delete(*term, false);
+      *term = win_active_terminal();
+    }
+  } else {
+    win_close();
+  }
 }
 
 
@@ -2525,7 +2537,7 @@ static struct {
 //        }
         when IDM_COPYTITLE: win_copy_title();
         when IDM_NEWTAB: win_tab_create();
-        when IDM_KILLTAB: child_terminate(term->child);
+        when IDM_KILLTAB: win_tab_close(&term);
         when IDM_PREVTAB: win_tab_change(-1);
         when IDM_NEXTTAB: win_tab_change(+1);
         when IDM_MOVELEFT: win_tab_move(-1);
@@ -5179,7 +5191,5 @@ main(int argc, char *argv[])
         DispatchMessage(&msg);
     }
     child_proc();
-    win_tab_clean();
   } while (!win_should_die());
-  win_tab_clean();
 }

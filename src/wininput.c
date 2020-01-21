@@ -2299,7 +2299,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
         when 'T': win_tab_create();
-        when 'W': child_terminate(term->child);
+        when 'W': win_tab_close(&term);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': if (!transparency_pending) {
                     previous_transparency = cfg.transparency;
@@ -2943,9 +2943,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
       else if (shift && ctrl && key == 'T')
-	    win_tab_create();
+        win_tab_create();
       else if (shift && ctrl && key == 'W')
-	    child_terminate(term->child);
+        win_tab_close(&term);
       else if (term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
         // only in modify-other-keys mode 2
