@@ -134,7 +134,7 @@ extern "C" {
 
       SendMessage(tab_wnd, TCM_SETCURSEL, index, 0);
       Tab* active = &tabs.at(active_tab);
-      for (auto& tab : tabs) {
+      for (Tab& tab : tabs) {
           term_set_focus(tab.terminal.get(), &tab == active, false);
       }
       active->info.attention = false;
@@ -168,7 +168,7 @@ extern "C" {
   }
   
   void win_tab_move(int amount) {
-      auto new_idx = rel_index(amount);
+      unsigned int new_idx = rel_index(amount);
       std::swap(tabs[active_tab], tabs[new_idx]);
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
@@ -181,7 +181,7 @@ extern "C" {
   }
   
   static std::vector<Tab>::iterator tab_by_term(struct term* term) {
-      auto match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
+      std::vector<Tab>::iterator match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
               return tab.terminal.get() == term; });
       return match;
   }
@@ -234,7 +234,7 @@ extern "C" {
   }
   
   void win_tab_create() {
-      auto& t = *tabs[active_tab].terminal;
+      struct term t = *tabs[active_tab].terminal;
       std::stringstream cwd_path;
       cwd_path << "/proc/" << t.child->pid << "/cwd";
       char* cwd = realpath(cwd_path.str().c_str(), 0);
@@ -245,7 +245,7 @@ extern "C" {
   }
   
   void win_tab_delete(struct term* term, bool point_blank) {
-      auto tab_it = tab_by_term(term);
+      std::vector<Tab>::iterator tab_it = tab_by_term(term);
       if (tab_it == tabs.end()) return;
       Tab& tab = *tab_it;
       struct term *terminal = tab.terminal.get();
@@ -285,7 +285,7 @@ extern "C" {
   void win_tab_clean() {
       bool invalidate = false;
       for (;;) {
-          auto it = std::find_if(tabs.begin(), tabs.end(), [](Tab& x) {
+          std::vector<Tab>::iterator it = std::find_if(tabs.begin(), tabs.end(), [](Tab& x) {
                   return x.chld->pid == 0; });
           if (it == tabs.end()) break;
           invalidate = true;
@@ -320,7 +320,7 @@ extern "C" {
   }
   
   void win_tab_attention(struct term* term) {
-      auto tab_it = tab_by_term(term);
+      std::vector<Tab>::iterator tab_it = tab_by_term(term);
       if (tab_it == tabs.end()) return;
       Tab& tab = *tab_it;
       tab.info.attention = true;
@@ -328,7 +328,7 @@ extern "C" {
   }
   
   void win_tab_set_title(struct term* term, wchar_t* title) {
-      auto tab_it = tab_by_term(term);
+      std::vector<Tab>::iterator tab_it = tab_by_term(term);
       if (tab_it == tabs.end()) return;
       Tab& tab = *tab_it;
       if (tab.info.titles[tab.info.titles_i] != title) {
@@ -349,7 +349,7 @@ extern "C" {
   }
   
   void win_tab_title_push(struct term* term) {
-    auto tab_it = tab_by_term(term);
+    std::vector<Tab>::iterator tab_it = tab_by_term(term);
     if (tab_it == tabs.end()) return;
     Tab& tab = *tab_it;
     if (tab.info.titles_i == lengthof(tab.info.titles))
@@ -359,7 +359,7 @@ extern "C" {
   }
     
   wchar_t* win_tab_title_pop(struct term* term) {
-    auto tab_it = tab_by_term(term);
+    std::vector<Tab>::iterator tab_it = tab_by_term(term);
     if (tab_it == tabs.end()) return wcsdup(L"");
     Tab& tab = *tab_it;
     if (!tab.info.titles_i)

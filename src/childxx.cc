@@ -28,7 +28,7 @@ extern int cs_wcstombs(char *s, const wchar *ws, size_t len);
 
 
 void child_onexit(int sig) {
-    for (auto& tab : win_tabs()) {
+    for (Tab& tab : win_tabs()) {
         if (tab.chld->pid)
             kill(-tab.chld->pid, SIGHUP);
     }
@@ -149,7 +149,7 @@ void child_terminate(struct child *child, bool point_blank) {
 }
 
 bool child_is_any_parent() {
-    auto& tabs = win_tabs();
+    std::vector<Tab>& tabs = win_tabs();
     return std::any_of(tabs.begin(), tabs.end(), [](Tab& tab) {
         return child_is_parent(tab.chld.get());
     });
