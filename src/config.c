@@ -128,7 +128,7 @@ const config default_cfg = {
   .scroll_mod = MDK_SHIFT,
   .pgupdn_scroll = false,
   .lang = W(""),
-  .search_bar = "",
+  .search_bar = W(""),
   .search_context = 0,
   // Terminal
   .term = "xterm",
@@ -194,6 +194,8 @@ const config default_cfg = {
   .menu_altmouse = "ls",
   .menu_menu = "bs",
   .menu_ctrlmenu = "e|ls",
+  .menu_title_ctrl_l = "Ws",
+  .menu_title_ctrl_r = "Ws",
   .geom_sync = 0,
   .col_spacing = 0,
   .row_spacing = 0,
@@ -378,7 +380,7 @@ options[] = {
   {"ScrollMod", OPT_MOD, offcfg(scroll_mod)},
   {"PgUpDnScroll", OPT_BOOL, offcfg(pgupdn_scroll)},
   {"Language", OPT_WSTRING, offcfg(lang)},
-  {"SearchBar", OPT_STRING, offcfg(search_bar)},
+  {"SearchBar", OPT_WSTRING, offcfg(search_bar)},
   {"SearchContext", OPT_INT, offcfg(search_context)},
 
   // Terminal
@@ -438,6 +440,7 @@ options[] = {
   {"AppID", OPT_WSTRING, offcfg(app_id)},
   {"AppName", OPT_WSTRING, offcfg(app_name)},
   {"AppLaunchCmd", OPT_WSTRING, offcfg(app_launch_cmd)},
+
   {"DropCommands", OPT_WSTRING | OPT_KEEPCR, offcfg(drop_commands)},
   {"UserCommands", OPT_WSTRING | OPT_KEEPCR, offcfg(user_commands)},
   {"CtxMenuFunctions", OPT_WSTRING | OPT_KEEPCR, offcfg(ctx_user_commands)},
@@ -450,6 +453,9 @@ options[] = {
   {"MenuMouse5", OPT_STRING, offcfg(menu_altmouse)},
   {"MenuMenu", OPT_STRING, offcfg(menu_menu)},
   {"MenuCtrlMenu", OPT_STRING, offcfg(menu_ctrlmenu)},
+  {"MenuTitleCtrlLeft", OPT_STRING, offcfg(menu_title_ctrl_l)},
+  {"MenuTitleCtrlRight", OPT_STRING, offcfg(menu_title_ctrl_r)},
+
   {"SessionGeomSync", OPT_INT, offcfg(geom_sync)},
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},

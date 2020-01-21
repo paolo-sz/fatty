@@ -124,7 +124,7 @@ typedef struct {
   char scroll_mod;
   bool pgupdn_scroll;
   wstring lang;
-  string search_bar;
+  wstring search_bar;
   int search_context;
   // Terminal
   string term;
@@ -192,6 +192,8 @@ typedef struct {
   string menu_altmouse;
   string menu_menu;
   string menu_ctrlmenu;
+  string menu_title_ctrl_l;
+  string menu_title_ctrl_r;
   int geom_sync;
   int col_spacing, row_spacing;
   int padding;

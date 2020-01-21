@@ -752,6 +752,8 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
         free(htmlcb);
         GlobalUnlock(clipdatahtml);
         SetClipboardData(CF_HTML, clipdatahtml);
+      }
+      else {
         GlobalFree(clipdatahtml);
       }
     }
