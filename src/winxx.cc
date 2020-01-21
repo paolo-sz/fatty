@@ -79,6 +79,8 @@ Tab& Tab::operator=(Tab&& t) {
 }
 
 extern "C" {
+  
+  wchar_t null_wstring[4] = L"";
 
   void win_set_timer(CallbackFn cb, void* data, uint ticks) {
       auto result = callbacks.insert(std::make_tuple(cb, data));
@@ -360,7 +362,7 @@ extern "C" {
     
   wchar_t* win_tab_title_pop(struct term* term) {
     std::vector<Tab>::iterator tab_it = tab_by_term(term);
-    if (tab_it == tabs.end()) return wcsdup(L"");
+    if (tab_it == tabs.end()) return null_wstring;
     Tab& tab = *tab_it;
     if (!tab.info.titles_i)
       tab.info.titles_i = lengthof(tab.info.titles);
@@ -381,9 +383,7 @@ extern "C" {
   void
   win_tab_restore_title(struct term* term)
   {
-    wchar_t *title = win_tab_title_pop(term);
-    win_tab_set_title(term, title);
-    free(title);
+    win_tab_set_title(term, win_tab_title_pop(term));
   }
   
   bool win_should_die() {
