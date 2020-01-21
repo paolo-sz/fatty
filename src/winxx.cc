@@ -433,66 +433,59 @@ extern "C" {
   };
   
   void win_paint_tabs(LPARAM lp, int width) {
-      RECT loc_tabrect;
+      RECT loc_tabrect, tabrect;
+      unsigned int Index;
+      HDC tab_dc;
+      
       GetWindowRect(tab_wnd, &loc_tabrect);
-      if (width) 
+      if (width) {
         loc_tabrect.right = loc_tabrect.left + width;
-      else
+        SetWindowPos(tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
+      } else {
         width = loc_tabrect.right - loc_tabrect.left;
-      SetWindowPos(tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
+        ShowWindow(tab_wnd, tab_bar_visible ? SW_SHOW : SW_HIDE);
+      }
   
       if (!tab_bar_visible) return;
   
-      HDC dc = GetDC(wnd);
-      SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
-      const auto brush = CreateSolidBrush(cfg.bg_colour);
-      FillRect(dc, &loc_tabrect, brush);
-      DeleteObject(brush);
-      ReleaseDC(wnd, dc);
-      
       if (lp == 0) return;
   
-      LPDRAWITEMSTRUCT lpdis = (DRAWITEMSTRUCT *)lp;
-        
+      // bounding rectangle of current tab
+      tabrect = ((DRAWITEMSTRUCT *)lp)->rcItem;
+      
+      if ((tabrect.right < 0) || (tabrect.left > width)) return;
+  
       // index of tab being drawn
-      unsigned int Index = (unsigned int)lpdis->itemID;
+      Index = (unsigned int)((DRAWITEMSTRUCT *)lp)->itemID;
       if (Index >= tabs.size()) return;
   
       // device context to draw on
-      dc = lpdis->hDC;
-      if (dc == NULL) return;
-  
-      // bounding rectangle of current tab
-      RECT tabrect = lpdis->rcItem;
-  
-      const auto bg = cfg.tab_bg_colour;
-      const auto fg = cfg.tab_fg_colour;
-      const auto active_bg = cfg.tab_active_bg_colour;
-      const auto attention_bg = cfg.tab_attention_bg_colour;
+      tab_dc = ((DRAWITEMSTRUCT *)lp)->hDC;
+      if (tab_dc == NULL) return;
   
       const int tabwidth = tabrect.right - tabrect.left;
       const int tabheight = tabrect.bottom - tabrect.top;
   
       SetRect(&loc_tabrect, 0, 0, tabwidth, tabheight);
-      HDC bufdc = CreateCompatibleDC(dc);
+      HDC bufdc = CreateCompatibleDC(tab_dc);
       SetBkMode(bufdc, TRANSPARENT);
-      SetTextColor(bufdc, fg);
+      SetTextColor(bufdc, cfg.tab_fg_colour);
       SetTextAlign(bufdc, TA_CENTER);
       {
-          auto brush = CreateSolidBrush(bg);
-          auto obrush = SelectWObj(bufdc, brush);
-          auto open = SelectWObj(bufdc, CreatePen(PS_SOLID, 0, fg));
-          auto obuf = SelectWObj(bufdc,
-                  CreateCompatibleBitmap(dc, tabwidth, tabheight));
+          HBRUSH     brush = CreateSolidBrush(cfg.tab_bg_colour);
+          SelectWObj obrush = SelectWObj(bufdc, brush);
+          SelectWObj open = SelectWObj(bufdc, CreatePen(PS_SOLID, 0, cfg.tab_fg_colour));
+          SelectWObj obuf = SelectWObj(bufdc,
+                                       CreateCompatibleBitmap(tab_dc, tabwidth, tabheight));
   
-          auto ofont = SelectWObj(bufdc, new_tab_font());
+          SelectWObj ofont = SelectWObj(bufdc, new_tab_font());
   
           if (Index == active_tab) {
-              auto activebrush = CreateSolidBrush(active_bg);
+              HBRUSH  activebrush = CreateSolidBrush(cfg.tab_active_bg_colour);
               FillRect(bufdc, &loc_tabrect, activebrush);
               DeleteObject(activebrush);
           } else if (tabs[Index].info.attention) {
-              auto activebrush = CreateSolidBrush(attention_bg);
+              HBRUSH  activebrush = CreateSolidBrush(cfg.tab_attention_bg_colour);
               FillRect(bufdc, &loc_tabrect, activebrush);
               DeleteObject(activebrush);
           } else {
@@ -500,13 +493,13 @@ extern "C" {
           }
   
           if (Index == active_tab) {
-              auto _f = SelectWObj(bufdc, new_active_tab_font());
+              SelectWObj _f = SelectWObj(bufdc, new_active_tab_font());
               TextOutW(bufdc, tabwidth/2, (tabheight - tab_font_size()) / 2, win_tab_get_title(Index), wcslen(win_tab_get_title(Index)));
           } else {
               TextOutW(bufdc, tabwidth/2, (tabheight - tab_font_size()) / 2, win_tab_get_title(Index), wcslen(win_tab_get_title(Index)));
           }
   
-          BitBlt(dc, tabrect.left, tabrect.top, tabwidth, tabheight,
+          BitBlt(tab_dc, tabrect.left, tabrect.top, tabwidth, tabheight,
                   bufdc, 0, 0, SRCCOPY);
       }
       DeleteDC(bufdc);
