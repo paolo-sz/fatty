@@ -2156,7 +2156,7 @@ win_tab_close(struct term** term)
 {
   if (win_tab_count() > 1) {
     if (!cfg.confirm_exit || confirm_tab_exit()) {
-      win_tab_delete(*term, false);
+      win_tab_delete(*term);
       *term = win_active_terminal();
     }
   } else {

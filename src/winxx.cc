@@ -244,7 +244,7 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
-  void win_tab_delete(struct term* term, bool point_blank) {
+  void win_tab_delete(struct term* term) {
       std::vector<Tab>::iterator tab_it = tab_by_term(term);
       if (tab_it == tabs.end()) return;
       Tab& tab = *tab_it;
@@ -270,7 +270,7 @@ extern "C" {
         SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab + 1, 0);
       }
       SendMessage(tab_wnd, TCM_DELETEITEM, tab.info.idx, 0);
-      child_terminate(child, point_blank);
+      child_terminate(child);
       for (unsigned int i = old_active_tab; i < tabs.size(); i++) {
         tabs.at(i).info.idx--;
       }

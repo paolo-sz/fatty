@@ -127,25 +127,34 @@ void child_proc() {
     }
 }
 
-static void kill_all_tabs(bool point_blank) {
+static void kill_all_tabs() {
     for (Tab& tab : win_tabs()) {
-        child_terminate(tab.chld.get(), point_blank);
+        if (tab.chld.get()) {
+            child_terminate(tab.chld.get());
+        }
     }
 }
 
 void child_kill() { 
-    kill_all_tabs(false);
-    win_callback(500, []() {
-        // We are still here even after half a second?
+    kill_all_tabs();
+    win_callback(1000, []() {
+        // We are still here even after a second?
         // Really, lets just die. It would be really annoying not to...
-        kill_all_tabs(true);
         exit_fatty(1);
     });
 }
 
-void child_terminate(struct child *child, bool point_blank) {
-    kill(-child->pid, point_blank ? SIGKILL : SIGHUP);
-    child->pid = 0;
+void child_terminate(struct child *child) {
+    pid_t pid = child->pid;
+    if (pid) {
+      kill(-pid, SIGHUP);
+      win_callback(500, [pid]() {
+          // We are still here even after half a second?
+          // Really, lets just die. It would be really annoying not to...
+          kill(-pid, SIGKILL);
+      });
+      child->pid = 0;
+    }
 }
 
 bool child_is_any_parent() {

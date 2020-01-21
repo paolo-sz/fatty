@@ -126,7 +126,7 @@ int win_active_tab();
 void win_tab_change(int change);
 void win_tab_move(int amount);
 void win_tab_create();
-void win_tab_delete(struct term* term, bool point_blank);
+void win_tab_delete(struct term* term);
 void win_tab_clean();
 void win_tab_attention(struct term* term);
 void win_tab_set_title(struct term* term, wchar_t* title);
