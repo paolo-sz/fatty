@@ -438,6 +438,17 @@ extern "C" {
       HDC tab_dc;
       
       GetWindowRect(tab_wnd, &loc_tabrect);
+
+      if (!IsWindowVisible(tab_wnd) && tab_bar_visible) {
+        HDC dc = GetDC(wnd);
+        SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
+        const auto brush = CreateSolidBrush(cfg.bg_colour);
+        FillRect(dc, &loc_tabrect, brush);
+        DeleteObject(brush);
+        ReleaseDC(wnd, dc);
+      }
+      
+      GetWindowRect(tab_wnd, &loc_tabrect);
       if (width) {
         loc_tabrect.right = loc_tabrect.left + width;
         SetWindowPos(tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
