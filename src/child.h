@@ -15,7 +15,6 @@ struct child
   string dir;
 
   pid_t pid;
-  bool killed;
   int pty_fd;
   struct term* term;
 };
@@ -28,7 +27,7 @@ extern void toggle_logging(void);
 extern void child_free(struct child* child);
 extern void child_proc(void);
 extern void child_kill(void);
-extern void child_terminate(struct child* child);
+extern void child_terminate(struct child* child, bool point_blank);
 extern void child_write(struct child* child, const char *, uint len);
 extern void child_break(struct child* child);
 extern void child_printf(struct child* child, const char * fmt, ...) __attribute__((format(printf, 2, 3)));

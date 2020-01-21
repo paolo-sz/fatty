@@ -126,6 +126,7 @@ int win_active_tab();
 void win_tab_change(int change);
 void win_tab_move(int amount);
 void win_tab_create();
+void win_tab_delete(struct term* term, bool point_blank);
 void win_tab_clean();
 void win_tab_attention(struct term* term);
 void win_tab_set_title(struct term* term, wchar_t* title);
@@ -144,6 +145,7 @@ void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool para
 
 bool win_should_die();
 extern void win_close(void);
+extern void win_tab_close(struct term** term);
 
 extern char * geturl(int n);
 

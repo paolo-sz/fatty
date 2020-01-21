@@ -21,6 +21,7 @@ int child_log_fd = -1;
 
 extern "C" {
 #include "child.h"
+#include "winpriv.h"
 extern void exit_fatty(int exit_val);
 
 extern int cs_wcstombs(char *s, const wchar *ws, size_t len);
@@ -57,6 +58,10 @@ void child_init() {
 }
 
 void child_proc() {
+    win_tab_clean();
+    if (win_tabs().size() == 0)
+      return;
+
     // this code is ripped from child.c
     for (;;) {
         for (Tab& t : win_tabs()) {
@@ -114,6 +119,7 @@ void child_proc() {
                     }
                 }
                 if (FD_ISSET(child_win_fd, &fds)) {
+                    win_tab_clean();
                     return;
                 }
             }
@@ -121,16 +127,14 @@ void child_proc() {
     }
 }
 
-static void kill_all_tabs(bool point_blank=false) {
+static void kill_all_tabs(bool point_blank) {
     for (Tab& tab : win_tabs()) {
-        struct child* child = tab.chld.get();
-        kill(-child->pid, point_blank ? SIGKILL : SIGHUP);
-        child->killed = true;
+        child_terminate(tab.chld.get(), point_blank);
     }
 }
 
 void child_kill() { 
-    kill_all_tabs();
+    kill_all_tabs(false);
     win_callback(500, []() {
         // We are still here even after half a second?
         // Really, lets just die. It would be really annoying not to...
@@ -139,24 +143,9 @@ void child_kill() {
     });
 }
 
-void child_terminate(struct child* child) {
-    kill(-child->pid, SIGKILL);
-
-    // Seems that sometimes cygwin leaves process in non-waitable and
-    // non-alive state. The result for that is that there will be
-    // unkillable tabs.
-    //
-    // This stupid hack solves the problem.
-    //
-    // TODO: Find out better way to solve this. Now the child processes are
-    // not always cleaned up.
-    int cpid = child->pid;
-    win_callback(50, [cpid]() {
-        auto& tabs = win_tabs();
-        for (auto& t : tabs) {
-            if (t.chld->pid == cpid) t.chld->pid = 0;
-        }
-    });
+void child_terminate(struct child *child, bool point_blank) {
+    kill(-child->pid, point_blank ? SIGKILL : SIGHUP);
+    child->pid = 0;
 }
 
 bool child_is_any_parent() {
