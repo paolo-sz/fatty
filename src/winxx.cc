@@ -102,7 +102,7 @@ extern "C" {
       win_invalidate_all(false);
   }
   
-  term* win_active_terminal() {
+  struct term* win_active_terminal() {
       if (active_tab >= tabs.size()) {
         if (tabs.size() == 0) {
           return NULL;
@@ -182,10 +182,10 @@ extern "C" {
       set_active_tab(new_idx);
   }
   
-  static std::vector<Tab>::iterator tab_by_term(struct term* term) {
+  int tab_idx_by_term(struct term* term) {
       std::vector<Tab>::iterator match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
               return tab.terminal.get() == term; });
-      return match;
+      return (match == tabs.end()) ? -1 : (match - tabs.begin());
   }
   
   static char* g_home;
@@ -247,9 +247,9 @@ extern "C" {
   }
   
   void win_tab_delete(struct term* term) {
-      std::vector<Tab>::iterator tab_it = tab_by_term(term);
-      if (tab_it == tabs.end()) return;
-      Tab& tab = *tab_it;
+      int tab_idx = tab_idx_by_term(term);
+      if (tab_idx == -1) return;
+      Tab& tab = tabs[tab_idx];
       struct term *terminal = tab.terminal.get();
       if (!terminal) return;
       struct child *child = tab.chld.get();
@@ -276,7 +276,7 @@ extern "C" {
       for (unsigned int i = old_active_tab; i < tabs.size(); i++) {
         tabs.at(i).info.idx--;
       }
-      tabs.erase(tab_it);
+      tabs.erase(tabs.begin() + tab_idx);
       set_active_tab(active_tab > old_active_tab ? old_active_tab : active_tab);
       if (tabs.size() > 0) {
           set_tab_bar_visibility(tabs.size() > 1);
@@ -322,17 +322,17 @@ extern "C" {
   }
   
   void win_tab_attention(struct term* term) {
-      std::vector<Tab>::iterator tab_it = tab_by_term(term);
-      if (tab_it == tabs.end()) return;
-      Tab& tab = *tab_it;
+      int tab_idx = tab_idx_by_term(term);
+      if (tab_idx == -1) return;
+      Tab& tab = tabs[tab_idx];
       tab.info.attention = true;
       invalidate_tabs();
   }
   
   void win_tab_set_title(struct term* term, wchar_t* title) {
-      std::vector<Tab>::iterator tab_it = tab_by_term(term);
-      if (tab_it == tabs.end()) return;
-      Tab& tab = *tab_it;
+      int tab_idx = tab_idx_by_term(term);
+      if (tab_idx == -1) return;
+      Tab& tab = tabs[tab_idx];
       if (tab.info.titles[tab.info.titles_i] != title) {
           tab.info.titles[tab.info.titles_i] = title;
           invalidate_tabs();
@@ -351,9 +351,9 @@ extern "C" {
   }
   
   void win_tab_title_push(struct term* term) {
-    std::vector<Tab>::iterator tab_it = tab_by_term(term);
-    if (tab_it == tabs.end()) return;
-    Tab& tab = *tab_it;
+    int tab_idx = tab_idx_by_term(term);
+    if (tab_idx == -1) return;
+    Tab& tab = tabs[tab_idx];
     if (tab.info.titles_i == lengthof(tab.info.titles))
       tab.info.titles_i = 0;
     else
@@ -361,9 +361,9 @@ extern "C" {
   }
     
   wchar_t* win_tab_title_pop(struct term* term) {
-    std::vector<Tab>::iterator tab_it = tab_by_term(term);
-    if (tab_it == tabs.end()) return null_wstring;
-    Tab& tab = *tab_it;
+    int tab_idx = tab_idx_by_term(term);
+    if (tab_idx == -1) return null_wstring;
+    Tab& tab = tabs[tab_idx];
     if (!tab.info.titles_i)
       tab.info.titles_i = lengthof(tab.info.titles);
     else
