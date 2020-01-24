@@ -173,136 +173,136 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
   free(cmds);
 }
 
-struct data_add_switcher {
-  int tabi;
-  bool use_win_icons;
-  HMENU menu;
-};
-
-static BOOL CALLBACK
-wnd_enum_tabs(HWND curr_wnd, LPARAM lParam)
-{
-  WINDOWINFO curr_wnd_info;
-  curr_wnd_info.cbSize = sizeof(WINDOWINFO);
-  GetWindowInfo(curr_wnd, &curr_wnd_info);
-  if (class_atom == curr_wnd_info.atomWindowType) {
-    struct data_add_switcher * pdata = (struct data_add_switcher *)lParam;
-    HMENU menu = pdata->menu;
-    bool use_win_icons = pdata->use_win_icons;
-    int tabi = pdata->tabi;
-    pdata->tabi++;
-
-    int len = GetWindowTextLengthW(curr_wnd);
-    wchar title[len + 1];
-    len = GetWindowTextW(curr_wnd, title, len + 1);
-
-    AppendMenuW((HMENU)menu, MF_ENABLED, IDM_GOTAB + tabi, title);
-    MENUITEMINFOW mi;
-    mi.cbSize = sizeof(MENUITEMINFOW);
-    mi.fMask = MIIM_STATE;
-    mi.fState = // (IsIconic(curr_wnd) ? MFS_DISABLED : 0) |
-                (curr_wnd == wnd ? MFS_DEFAULT : 0);
-      /*
-         MFS_DEFAULT: "A menu can contain only one default menu item, 
-                      which is displayed in bold."
-                      but multiple bold entries seem to work
-         MFS_HILITE: highlight is volatile
-         MFS_CHECKED: conflict with other MIIM_BITMAP usage
-      */
-    //if (has_flashed(curr_wnd))
-    //  mi.fState |= MFS_HILITE;
-
-    mi.fMask |= MIIM_BITMAP;
-    //if (has_flashed(curr_wnd))
-    //  mi.hbmpItem = HBMMENU_POPUP_RESTORE;
-    //else
-    if (IsIconic(curr_wnd))
-      mi.hbmpItem = HBMMENU_POPUP_MINIMIZE;
-    else
-      mi.hbmpItem = HBMMENU_POPUP_MAXIMIZE;
-
-    if (use_win_icons && !IsIconic(curr_wnd)) {
-# ifdef show_icon_via_itemdata
-# warning does not work
-      mi.fMask |= MIIM_DATA;
-      mi.hbmpItem = HBMMENU_SYSTEM;
-      mi.dwItemData = (ULONG_PTR)curr_wnd;
-# endif
-      HICON icon = (HICON)GetClassLongPtr(curr_wnd, GCLP_HICONSM);
-      if (icon) {
-        // convert icon to bitmap
-        //https://stackoverflow.com/questions/7375003/how-to-convert-hicon-to-hbitmap-in-vc/16787105#16787105
-# ifdef it_could_be_simple_Microsoft
-        // simple solution, loses transparency (black border)
-        ICONINFO ii;
-        GetIconInfo(icon, &ii);
-        HBITMAP bitmap = ii.hbmColor;
-# else
-        HBITMAP bitmap = icon_bitmap(icon);
-# endif
-
-        mi.fMask |= MIIM_BITMAP;
-        mi.hbmpItem = bitmap;
-      }
-    }
-
-#ifdef show_icon_via_callback
-#warning does not work
-    mi.fMask |= MIIM_BITMAP;
-    mi.hbmpItem = HBMMENU_CALLBACK;
-#endif
-
-#ifdef show_checkmarks
-    // this works only if both hbmpChecked and hbmpUnchecked are populated,
-    // not using HBMMENU_ predefines
-    mi.fMask |= MIIM_CHECKMARKS;
-    mi.fMask &= ~MIIM_BITMAP;
-    mi.hbmpChecked = mi.hbmpItem;  // test value (from use_win_icons)
-    mi.hbmpUnchecked = NULL;
-    if (!IsIconic(curr_wnd))
-      mi.fState |= MFS_CHECKED;
-#endif
-
-    SetMenuItemInfoW((HMENU)menu, IDM_GOTAB + tabi, 0, &mi);
-    add_tab(tabi, curr_wnd);
-  }
-  return true;
-}
-
-static void
-add_switcher(HMENU menu, bool vsep, bool hsep, bool use_win_icons)
-{
-  uint bar = vsep ? MF_MENUBARBREAK : 0;
-  if (hsep)
-    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-  //__ Context menu, session switcher ("virtual tabs") menu label
-  AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session switcher"));
-  AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-  struct data_add_switcher data = {
-    .tabi = 0,
-    .use_win_icons = use_win_icons,
-    .menu = menu
-  };
-  clear_tabs();
-  EnumWindows(wnd_enum_tabs, (LPARAM)&data);
-}
-
-static bool
-add_launcher(HMENU menu, bool vsep, bool hsep)
-{
-  if (*cfg.session_commands) {
-    uint bar = vsep ? MF_MENUBARBREAK : 0;
-    if (hsep)
-      AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    //__ Context menu, session launcher ("virtual tabs") menu label
-    AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session launcher"));
-    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
-    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true, false);
-    return true;
-  }
-  else
-    return false;
-}
+//struct data_add_switcher {
+//  int tabi;
+//  bool use_win_icons;
+//  HMENU menu;
+//};
+//
+//static BOOL CALLBACK
+//wnd_enum_tabs(HWND curr_wnd, LPARAM lParam)
+//{
+//  WINDOWINFO curr_wnd_info;
+//  curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+//  GetWindowInfo(curr_wnd, &curr_wnd_info);
+//  if (class_atom == curr_wnd_info.atomWindowType) {
+//    struct data_add_switcher * pdata = (struct data_add_switcher *)lParam;
+//    HMENU menu = pdata->menu;
+//    bool use_win_icons = pdata->use_win_icons;
+//    int tabi = pdata->tabi;
+//    pdata->tabi++;
+//
+//    int len = GetWindowTextLengthW(curr_wnd);
+//    wchar title[len + 1];
+//    len = GetWindowTextW(curr_wnd, title, len + 1);
+//
+//    AppendMenuW((HMENU)menu, MF_ENABLED, IDM_GOTAB + tabi, title);
+//    MENUITEMINFOW mi;
+//    mi.cbSize = sizeof(MENUITEMINFOW);
+//    mi.fMask = MIIM_STATE;
+//    mi.fState = // (IsIconic(curr_wnd) ? MFS_DISABLED : 0) |
+//                (curr_wnd == wnd ? MFS_DEFAULT : 0);
+//      /*
+//         MFS_DEFAULT: "A menu can contain only one default menu item, 
+//                      which is displayed in bold."
+//                      but multiple bold entries seem to work
+//         MFS_HILITE: highlight is volatile
+//         MFS_CHECKED: conflict with other MIIM_BITMAP usage
+//      */
+//    //if (has_flashed(curr_wnd))
+//    //  mi.fState |= MFS_HILITE;
+//
+//    mi.fMask |= MIIM_BITMAP;
+//    //if (has_flashed(curr_wnd))
+//    //  mi.hbmpItem = HBMMENU_POPUP_RESTORE;
+//    //else
+//    if (IsIconic(curr_wnd))
+//      mi.hbmpItem = HBMMENU_POPUP_MINIMIZE;
+//    else
+//      mi.hbmpItem = HBMMENU_POPUP_MAXIMIZE;
+//
+//    if (use_win_icons && !IsIconic(curr_wnd)) {
+//# ifdef show_icon_via_itemdata
+//# warning does not work
+//      mi.fMask |= MIIM_DATA;
+//      mi.hbmpItem = HBMMENU_SYSTEM;
+//      mi.dwItemData = (ULONG_PTR)curr_wnd;
+//# endif
+//      HICON icon = (HICON)GetClassLongPtr(curr_wnd, GCLP_HICONSM);
+//      if (icon) {
+//        // convert icon to bitmap
+//        //https://stackoverflow.com/questions/7375003/how-to-convert-hicon-to-hbitmap-in-vc/16787105#16787105
+//# ifdef it_could_be_simple_Microsoft
+//        // simple solution, loses transparency (black border)
+//        ICONINFO ii;
+//        GetIconInfo(icon, &ii);
+//        HBITMAP bitmap = ii.hbmColor;
+//# else
+//        HBITMAP bitmap = icon_bitmap(icon);
+//# endif
+//
+//        mi.fMask |= MIIM_BITMAP;
+//        mi.hbmpItem = bitmap;
+//      }
+//    }
+//
+//#ifdef show_icon_via_callback
+//#warning does not work
+//    mi.fMask |= MIIM_BITMAP;
+//    mi.hbmpItem = HBMMENU_CALLBACK;
+//#endif
+//
+//#ifdef show_checkmarks
+//    // this works only if both hbmpChecked and hbmpUnchecked are populated,
+//    // not using HBMMENU_ predefines
+//    mi.fMask |= MIIM_CHECKMARKS;
+//    mi.fMask &= ~MIIM_BITMAP;
+//    mi.hbmpChecked = mi.hbmpItem;  // test value (from use_win_icons)
+//    mi.hbmpUnchecked = NULL;
+//    if (!IsIconic(curr_wnd))
+//      mi.fState |= MFS_CHECKED;
+//#endif
+//
+//    SetMenuItemInfoW((HMENU)menu, IDM_GOTAB + tabi, 0, &mi);
+//    add_tab(tabi, curr_wnd);
+//  }
+//  return true;
+//}
+//
+//static void
+//add_switcher(HMENU menu, bool vsep, bool hsep, bool use_win_icons)
+//{
+//  uint bar = vsep ? MF_MENUBARBREAK : 0;
+//  if (hsep)
+//    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+//  //__ Context menu, session switcher ("virtual tabs") menu label
+//  AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session switcher"));
+//  AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+//  struct data_add_switcher data = {
+//    .tabi = 0,
+//    .use_win_icons = use_win_icons,
+//    .menu = menu
+//  };
+//  clear_tabs();
+//  EnumWindows(wnd_enum_tabs, (LPARAM)&data);
+//}
+//
+//static bool
+//add_launcher(HMENU menu, bool vsep, bool hsep)
+//{
+//  if (*cfg.session_commands) {
+//    uint bar = vsep ? MF_MENUBARBREAK : 0;
+//    if (hsep)
+//      AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+//    //__ Context menu, session launcher ("virtual tabs") menu label
+//    AppendMenuW(menu, MF_DISABLED | bar, 0, _W("Session launcher"));
+//    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
+//    append_commands(menu, cfg.session_commands, IDM_SESSIONCOMMAND, true, false);
+//    return true;
+//  }
+//  else
+//    return false;
+//}
 
 #define dont_debug_modify_menu
 
@@ -608,13 +608,13 @@ win_update_menus(bool callback)
   if (*cfg.sys_user_commands)
     check_commands(sysmenu, cfg.sys_user_commands, IDM_SYSMENUFUNCTION);
 
-#ifdef vary_sysmenu
-  static bool switcher_in_sysmenu = false;
-  if (!switcher_in_sysmenu) {
-    add_switcher(sysmenu, true, false, true);
-    switcher_in_sysmenu = true;
-  }
-#endif
+//#ifdef vary_sysmenu
+//  static bool switcher_in_sysmenu = false;
+//  if (!switcher_in_sysmenu) {
+//    add_switcher(sysmenu, true, false, true);
+//    switcher_in_sysmenu = true;
+//  }
+//#endif
   (void)sysmenulen;
 }
 
@@ -760,7 +760,7 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
   bool vsep = false;
   bool hsep = false;
   bool init = false;
-  bool wicons = strchr(menucfg, 'W');
+//  bool wicons = strchr(menucfg, 'W');
   while (*menucfg) {
     if (*menucfg == '|')
       vsep = true;
@@ -790,9 +790,9 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
                                          _W("User commands"),
                                          cfg.user_commands, IDM_USERCOMMAND
                                          );
-        when 'W': wicons = true;
-        when 's': add_switcher(ctxmenu, vsep, hsep & !vsep, wicons);
-        when 'l': ok = add_launcher(ctxmenu, vsep, hsep & !vsep);
+//        when 'W': wicons = true;
+//        when 's': add_switcher(ctxmenu, vsep, hsep & !vsep, wicons);
+//        when 'l': ok = add_launcher(ctxmenu, vsep, hsep & !vsep);
         when 'T': use_text_cursor = true;
         when 'P': use_text_cursor = false;
       }
@@ -2298,7 +2298,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'A': term_select_all(term);
         when 'C': term_copy(term);
         when 'V': win_paste();
-        when 'I': open_popup_menu(true, "ls", mods);
+//        when 'I': open_popup_menu(true, "ls", mods);
 //        when 'N': send_syscommand(IDM_NEW);
         when 'R': send_syscommand(IDM_RESET);
         when 'D': send_syscommand(IDM_DEFSIZE);
