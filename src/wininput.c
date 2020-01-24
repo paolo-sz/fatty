@@ -458,7 +458,7 @@ win_update_menus(bool callback)
 //    alt_fn ? W("Alt+F2") : ct_sh ? W("Ctrl+Shift+N") : null
 //  );
 
-  uint switch_move_enabled = win_tab_count() == 1;
+  uint switch_move_enabled = (win_tab_count() > 1) ? MF_ENABLED : MF_GRAYED;
   EnableMenuItem(ctxmenu, IDM_PREVTAB, switch_move_enabled);
   EnableMenuItem(ctxmenu, IDM_NEXTTAB, switch_move_enabled);
   EnableMenuItem(ctxmenu, IDM_MOVELEFT, switch_move_enabled);
@@ -645,13 +645,6 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
 #endif
   //__ Context menu:
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_OPEN, _W("Ope&n"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEWTAB, _W("New tab\tCtrl+Shift+T"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab\tCtrl+Shift+W"));
-  AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tCtrl+PgUp"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tCtrl+PgDn"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move tab to left\tCtrl+Shift+PgUp"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Move tab to right\tCtrl+Shift+PgDn"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_COPY, 0);
   if (extended_menu) {
@@ -672,6 +665,14 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
   }
   //__ Context menu:
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_SELALL, _W("Select &All"));
+  AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEWTAB, _W("New tab\tCtrl+Shift+T"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab\tCtrl+Shift+W"));
+  AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tCtrl+PgUp"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tCtrl+PgDn"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move tab to left\tCtrl+Shift+PgUp"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Move tab to right\tCtrl+Shift+PgDn"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_SEARCH, 0);
   if (extended_menu) {
