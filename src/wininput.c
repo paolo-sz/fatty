@@ -650,8 +650,8 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_PREVTAB, _W("Previous tab\tCtrl+PgUp"));
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEXTTAB, _W("Next tab\tCtrl+PgDn"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move to left\tCtrl+Shift+PgUp"));
-  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Next to right\tCtrl+Shift+PgDn"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVELEFT, _W("Move tab to left\tCtrl+Shift+PgUp"));
+  AppendMenuW(ctxmenu, MF_ENABLED, IDM_MOVERIGHT, _W("Move tab to right\tCtrl+Shift+PgDn"));
   AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_COPY, 0);
   if (extended_menu) {
