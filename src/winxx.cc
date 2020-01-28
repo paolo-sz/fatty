@@ -1,4 +1,5 @@
 #include <windows.h>
+#include <windowsx.h>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -134,7 +135,7 @@ extern "C" {
         active_tab = index;
       }
 
-      SendMessage(tab_wnd, TCM_SETCURSEL, index, 0);
+      SendMessage(tab_wnd, TCM_SETCURSEL, active_tab, 0);
       Tab* active = &tabs.at(active_tab);
       for (Tab& tab : tabs) {
           term_set_focus(tab.terminal.get(), &tab == active, false);
@@ -161,31 +162,38 @@ extern "C" {
       term->results.update_type = NO_UPDATE;
   }
   
-  static unsigned int rel_index(int change) {
-      return (int(active_tab) + change + tabs.size()) % tabs.size();
-  }
-  
-  void win_tab_change(int change) {
-      set_active_tab(rel_index(change));
-  }
-  
-  void win_tab_move(int amount) {
-      unsigned int new_idx = rel_index(amount);
-      std::swap(tabs[active_tab], tabs[new_idx]);
-      TCITEMW tie; 
-      tie.mask = TCIF_TEXT; 
-      tie.pszText = win_tab_get_title(active_tab);
-      SendMessageW(tab_wnd, TCM_SETITEMW, active_tab, (LPARAM)&tie);
-      tie.mask = TCIF_TEXT; 
-      tie.pszText = win_tab_get_title(new_idx);
-      SendMessageW(tab_wnd, TCM_SETITEMW, new_idx, (LPARAM)&tie);
-      set_active_tab(new_idx);
-  }
-  
   int tab_idx_by_term(struct term* term) {
       std::vector<Tab>::iterator match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
               return tab.terminal.get() == term; });
       return (match == tabs.end()) ? -1 : (match - tabs.begin());
+  }
+  
+  void win_tab_change(struct term* term, int change) {
+      int tab_idx = tab_idx_by_term(term);
+      if (tab_idx == -1) return;
+      int dst_idx = tab_idx + change;
+      if ((dst_idx < 0) || (dst_idx >= (int)tabs.size())) return;
+      set_active_tab(dst_idx);
+  }
+
+  void win_tab_move(struct term* term, int amount) {
+      int tab_idx = tab_idx_by_term(term);
+      if (tab_idx == -1) return;
+      int dst_idx = tab_idx + amount;
+      if ((dst_idx < 0) || (dst_idx >= (int)tabs.size())) return;
+      std::swap(tabs[tab_idx], tabs[dst_idx]);
+      TCITEMW tie; 
+      tie.mask = TCIF_TEXT; 
+      tie.pszText = win_tab_get_title(tab_idx);
+      SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
+      tie.mask = TCIF_TEXT; 
+      tie.pszText = win_tab_get_title(dst_idx);
+      SendMessageW(tab_wnd, TCM_SETITEMW, dst_idx, (LPARAM)&tie);
+      if (tab_idx == (int)active_tab) {
+        set_active_tab(dst_idx);
+      } else if (dst_idx == (int)active_tab) {
+        set_active_tab(tab_idx);
+      }
   }
   
   static char* g_home;
@@ -235,12 +243,11 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
-  void win_tab_create() {
-      struct term t = *tabs[active_tab].terminal;
+  void win_tab_create(struct term* term) {
       std::stringstream cwd_path;
-      cwd_path << "/proc/" << t.child->pid << "/cwd";
+      cwd_path << "/proc/" << term->child->pid << "/cwd";
       char* cwd = realpath(cwd_path.str().c_str(), 0);
-      newtab(t.rows, t.cols, t.cols * cell_width, t.rows * cell_height, cwd, nullptr);
+      newtab(term->rows, term->cols, term->cols * cell_width, term->rows * cell_height, cwd, nullptr);
       free(cwd);
       set_active_tab(tabs.size() - 1);
       set_tab_bar_visibility(tabs.size() > 1);
@@ -256,28 +263,22 @@ extern "C" {
       if (!child) return;
       pid_t pid = child->pid;
       if (!(pid)) return;
-      auto cb = std::find_if(callbacks.begin(), callbacks.end(), [terminal](Callback x) {
-        return ((struct term *)(get<1>(x)) == terminal); });
-      if (cb != callbacks.end()) {
+      for (;;) {
+        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [terminal](Callback x) {
+          return ((struct term *)(get<1>(x)) == terminal); });
+        if (cb == callbacks.end()) break;
         KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
         callbacks.erase(cb);
       }
-      unsigned int old_active_tab = active_tab;
-      SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
-      if (old_active_tab + 1 >= tabs.size()) {
-        if (old_active_tab > 0) {
-          SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab - 1, 0);
-        }
-      } else {
-        SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab + 1, 0);
-      }
-      SendMessage(tab_wnd, TCM_DELETEITEM, tab.info.idx, 0);
+      unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
+      SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
       child_terminate(child);
-      for (unsigned int i = old_active_tab; i < tabs.size(); i++) {
+      for (unsigned int i = tab_idx; i < tabs.size(); i++) {
         tabs.at(i).info.idx--;
       }
       tabs.erase(tabs.begin() + tab_idx);
-      set_active_tab(active_tab > old_active_tab ? old_active_tab : active_tab);
+      SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+      set_active_tab(new_active_tab);
       if (tabs.size() > 0) {
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
@@ -286,6 +287,7 @@ extern "C" {
   
   void win_tab_clean() {
       bool invalidate = false;
+      unsigned int new_active_tab = 0;
       for (;;) {
           std::vector<Tab>::iterator it = std::find_if(tabs.begin(), tabs.end(), [](Tab& x) {
                   return x.chld->pid == 0; });
@@ -298,24 +300,14 @@ extern "C" {
             KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
             callbacks.erase(cb);
           }
-          unsigned int old_active_tab = active_tab;
-          SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
-          if (old_active_tab + 1 >= tabs.size()) {
-            if (old_active_tab > 0) {
-              SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab - 1, 0);
-            }
-          } else {
-            SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab + 1, 0);
-          }
-          SendMessage(tab_wnd, TCM_DELETEITEM, (*it).info.idx, 0);
-          for (unsigned int i = active_tab; i < tabs.size(); i++) {
-            tabs.at(i).info.idx--;
-          }
+          new_active_tab = (active_tab > (it - tabs.begin())) ? active_tab - 1 : active_tab;
+          SendMessage(tab_wnd, TCM_DELETEITEM, it - tabs.begin(), 0);
           tabs.erase(it);
-          active_tab = active_tab > old_active_tab ? old_active_tab : active_tab;
+          active_tab = new_active_tab;
       }
       if (invalidate && tabs.size() > 0) {
-          set_active_tab(active_tab);
+          SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+          set_active_tab(new_active_tab);
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
       }
@@ -456,6 +448,8 @@ extern "C" {
         width = loc_tabrect.right - loc_tabrect.left;
         ShowWindow(tab_wnd, tab_bar_visible ? SW_SHOW : SW_HIDE);
       }
+
+      win_show_mouse();
   
       if (!tab_bar_visible) return;
   
@@ -526,8 +520,8 @@ extern "C" {
           cb(tab.terminal.get(), param);
   }
   
-  void win_tab_mouse_click(int x) {
-      set_active_tab(x);
+  void win_tab_mouse_click() {
+      set_active_tab(TabCtrl_GetCurSel(tab_wnd));
   }
   
   void win_tab_close_all() {
@@ -541,7 +535,51 @@ extern "C" {
           // Really, lets just die. It would be really annoying not to...
           exit_fatty(1);
       });
-}
+  }
+
+  void win_tab_menu() {
+    DWORD pos = GetMessagePos();
+    TCHITTESTINFO info;
+    info.pt.x = GET_X_LPARAM(pos);
+    info.pt.y = GET_Y_LPARAM(pos);
+    info.flags = TCHT_ONITEM;
+    ScreenToClient(tab_wnd, &info.pt);
+    int tab_idx = TabCtrl_HitTest(tab_wnd, &info);
+    if (tab_idx == -1)
+      return;
+
+    HMENU ctxmenu = CreatePopupMenu();
+
+    uint switch_move_left_enabled = ((tabs.size() > 1) && (tab_idx > (int)0)) ? MF_ENABLED : MF_GRAYED;
+    uint switch_move_right_enabled = ((tabs.size() > 1) && (tab_idx < ((int)tabs.size() - 1))) ? MF_ENABLED : MF_GRAYED;
+    AppendMenuW(ctxmenu, MF_ENABLED, IDM_NEWTAB, _W("New tab\tCtrl+Shift+T"));
+    AppendMenuW(ctxmenu, MF_ENABLED, IDM_KILLTAB, _W("Kill tab\tCtrl+Shift+W"));
+    AppendMenuW(ctxmenu, MF_SEPARATOR, 0, 0);
+    AppendMenuW(ctxmenu, switch_move_left_enabled, IDM_MOVELEFT, _W("Move tab to left\tCtrl+Shift+PgUp"));
+    AppendMenuW(ctxmenu, switch_move_right_enabled, IDM_MOVERIGHT, _W("Move tab to right\tCtrl+Shift+PgDn"));
+
+    int result = TrackPopupMenu(ctxmenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RIGHTBUTTON | TPM_RETURNCMD | TPM_NONOTIFY,
+                                GET_X_LPARAM(pos), GET_Y_LPARAM(pos), 0, wnd, NULL);
+    DestroyMenu(ctxmenu);
+
+    switch (result) {
+      when IDM_NEWTAB: {
+        win_tab_create(tabs[tab_idx].terminal.get());
+      }
+
+      when IDM_KILLTAB: {
+        win_tab_delete(tabs[tab_idx].terminal.get());
+      }
+
+      when IDM_MOVELEFT: {
+        win_tab_move(tabs[tab_idx].terminal.get(), -1);
+      }
+
+      when IDM_MOVERIGHT: {
+         win_tab_move(tabs[tab_idx].terminal.get(), 1);
+      }
+    }
+  }
 
 } /* extern C */
 
