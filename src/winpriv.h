@@ -123,9 +123,9 @@ void win_tab_set_argv(char** argv);
 void win_tab_init(char* home, char* cmd, char** argv, int width, int height, char* title);
 int win_tab_count();
 int win_active_tab();
-void win_tab_change(int change);
-void win_tab_move(int amount);
-void win_tab_create();
+void win_tab_change(struct term* term, int change);
+void win_tab_move(struct term* term, int amount);
+void win_tab_create(struct term* term);
 void win_tab_delete(struct term* term);
 void win_tab_clean();
 void win_tab_attention(struct term* term);
@@ -137,7 +137,7 @@ wchar_t* win_tab_title_pop(struct term* term);
 void win_tab_save_title(struct term* term);
 void win_tab_restore_title(struct term* term);
 
-void win_tab_mouse_click(int x);
+void win_tab_mouse_click();
 int win_tab_height();
 void win_paint_tabs(LPARAM lp, int width);
 void win_for_each_term(void (*cb)(struct term* term));
@@ -147,6 +147,8 @@ bool win_should_die();
 extern void win_close(void);
 extern void win_tab_close(struct term** term);
 void win_tab_close_all();
+
+void win_tab_menu();
 
 extern char * geturl(int n);
 

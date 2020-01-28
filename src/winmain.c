@@ -2536,12 +2536,12 @@ static struct {
 //          child_fork(main_argc, main_argv, moni);
 //        }
         when IDM_COPYTITLE: win_copy_title();
-        when IDM_NEWTAB: win_tab_create();
+        when IDM_NEWTAB: win_tab_create(term);
         when IDM_KILLTAB: win_tab_close(&term);
-        when IDM_PREVTAB: win_tab_change(-1);
-        when IDM_NEXTTAB: win_tab_change(+1);
-        when IDM_MOVELEFT: win_tab_move(-1);
-        when IDM_MOVERIGHT: win_tab_move(+1);
+        when IDM_PREVTAB: win_tab_change(term, -1);
+        when IDM_NEXTTAB: win_tab_change(term, +1);
+        when IDM_MOVELEFT: win_tab_move(term, -1);
+        when IDM_MOVERIGHT: win_tab_move(term, +1);
         when IDM_KEY_DOWN_UP: {
           bool on = lp & 0x10000;
           int vk = lp & 0xFFFF;
@@ -2771,17 +2771,17 @@ static struct {
       return 0;
 
     when WM_MOUSEACTIVATE: {
-	  DWORD pos = GetMessagePos();
-	  int x_pos = GET_X_LPARAM(pos);
-	  int y_pos = GET_Y_LPARAM(pos);
-	  RECT tab_wnd_rect;
-	  
-	  if (GetWindowRect(tab_wnd, &tab_wnd_rect)) {
-	    if ((x_pos >= tab_wnd_rect.left) && (x_pos <= tab_wnd_rect.right) && (y_pos >= tab_wnd_rect.top) && (y_pos <= tab_wnd_rect.bottom)) {
-		  return MA_NOACTIVATE;
-		}
-	  }
-	  
+      DWORD pos = GetMessagePos();
+      int x_pos = GET_X_LPARAM(pos);
+      int y_pos = GET_Y_LPARAM(pos);
+      RECT tab_wnd_rect;
+
+      if (GetWindowRect(tab_wnd, &tab_wnd_rect)) {
+        if ((x_pos >= tab_wnd_rect.left) && (x_pos <= tab_wnd_rect.right) && (y_pos >= tab_wnd_rect.top) && (y_pos <= tab_wnd_rect.bottom)) {
+          return MA_NOACTIVATE;
+        }
+      }
+
       // prevent accidental selection on activation (#717)
       if (LOWORD(lp) == HTCLIENT && HIWORD(lp) == WM_LBUTTONDOWN)
         if (!getenv("ConEmuPID"))
@@ -2917,11 +2917,20 @@ static struct {
       return 0;
     }
 
-    when WM_NOTIFY:
+    when WM_NOTIFY: {
       switch (((LPNMHDR)lp)->code) {
-        when TCN_SELCHANGE:
-          win_tab_mouse_click(TabCtrl_GetCurSel(tab_wnd));
+        when TCN_SELCHANGE: {
+          win_tab_mouse_click();
+          break;
+        }
+        when NM_RCLICK: {
+          win_tab_menu();
+          break;
+        }
+        default:
+          SetFocus(wnd);
       }
+    }
 
     when WM_DRAWITEM:
       win_paint_tabs(lp, 0);

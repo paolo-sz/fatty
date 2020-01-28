@@ -458,11 +458,12 @@ win_update_menus(bool callback)
 //    alt_fn ? W("Alt+F2") : ct_sh ? W("Ctrl+Shift+N") : null
 //  );
 
-  uint switch_move_enabled = (win_tab_count() > 1) ? MF_ENABLED : MF_GRAYED;
-  EnableMenuItem(ctxmenu, IDM_PREVTAB, switch_move_enabled);
-  EnableMenuItem(ctxmenu, IDM_NEXTTAB, switch_move_enabled);
-  EnableMenuItem(ctxmenu, IDM_MOVELEFT, switch_move_enabled);
-  EnableMenuItem(ctxmenu, IDM_MOVERIGHT, switch_move_enabled);
+  uint switch_move_left_enabled = ((win_tab_count() > 1) && (win_active_tab() > 0)) ? MF_ENABLED : MF_GRAYED;
+  uint switch_move_right_enabled = ((win_tab_count() > 1) && (win_active_tab() < (win_tab_count() - 1))) ? MF_ENABLED : MF_GRAYED;
+  EnableMenuItem(ctxmenu, IDM_PREVTAB, switch_move_left_enabled);
+  EnableMenuItem(ctxmenu, IDM_NEXTTAB, switch_move_right_enabled);
+  EnableMenuItem(ctxmenu, IDM_MOVELEFT, switch_move_left_enabled);
+  EnableMenuItem(ctxmenu, IDM_MOVERIGHT, switch_move_right_enabled);
   
   uint sel_enabled = term->selected ? MF_ENABLED : MF_GRAYED;
   EnableMenuItem(ctxmenu, IDM_OPEN, sel_enabled);
@@ -880,13 +881,26 @@ set_app_cursor(bool use_app_mouse)
   }
 }
 
+static bool is_tab_bar_area(int y) {
+  if (y == -1) {
+    POINT p;
+    GetCursorPos(&p);
+    ScreenToClient(wnd, &p);
+    y = p.y;
+  }
+  if (y < PADDING + g_render_tab_height) {
+    return true;
+  }
+  return false;
+}
+
 static void
 update_mouse(mod_keys mods)
 {
   struct term* term = win_active_terminal();
   bool new_app_mouse =
-    term->mouse_mode && !term->show_other_screen &&
-    cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0);
+    (term->mouse_mode && !term->show_other_screen &&
+    cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)) || is_tab_bar_area(-1);
   set_app_cursor(new_app_mouse);
 }
 
@@ -903,6 +917,7 @@ static bool mouse_showing = true;
 void
 win_show_mouse(void)
 {
+  win_update_mouse();
   if (!mouse_showing) {
     ShowCursor(true);
     mouse_showing = true;
@@ -951,14 +966,6 @@ get_mouse_pos(LPARAM lp)
   return translate_pos(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
 }
 
-static bool tab_bar_click(LPARAM lp) {
-  int y = GET_Y_LPARAM(lp);
-  if (y >= PADDING && y < PADDING + g_render_tab_height) {
-    return true;
-  }
-  return false;
-}
-
 void
 win_mouse_click(mouse_button b, LPARAM lp)
 {
@@ -969,7 +976,7 @@ win_mouse_click(mouse_button b, LPARAM lp)
   static uint last_time, count;
 
   win_show_mouse();
-  if (tab_bar_click(lp)) return;
+  if (is_tab_bar_area(GET_Y_LPARAM(lp))) return;
 
   mod_keys mods = get_mods();
   pos p = get_mouse_pos(lp);
@@ -2305,7 +2312,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
-        when 'T': win_tab_create();
+        when 'T': win_tab_create(term);
         when 'W': win_tab_close(&term);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': if (!transparency_pending) {
@@ -2900,16 +2907,16 @@ win_key_down(WPARAM wp, LPARAM lp)
     when VK_DELETE: edit_key(3, '.');
     when VK_PRIOR:
       if (shift && ctrl)
-        win_tab_move(-1);
+        win_tab_move(term, -1);
       else if (ctrl)
-        win_tab_change(-1);
+        win_tab_change(term, -1);
       else
         edit_key(5, '9');
     when VK_NEXT:
       if (shift && ctrl)
-        win_tab_move(1);
+        win_tab_move(term, +1);
       else if (ctrl)
-        win_tab_change(1);
+        win_tab_change(term, +1);
       else
         edit_key(6, '3');
     when VK_HOME:   term->vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
@@ -2950,7 +2957,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
       else if (shift && ctrl && key == 'T')
-        win_tab_create();
+        win_tab_create(term);
       else if (shift && ctrl && key == 'W')
         win_tab_close(&term);
       else if (term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
