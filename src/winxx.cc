@@ -251,6 +251,16 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
+  void remove_callbacks(struct term *term) {
+      for (;;) {
+        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [term](Callback x) {
+          return ((struct term *)(get<1>(x)) == term); });
+        if (cb == callbacks.end()) break;
+        KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
+        callbacks.erase(cb);
+      }
+  }
+
   void win_tab_delete(struct term* term) {
       int tab_idx = tab_idx_by_term(term);
       if (tab_idx == -1) return;
@@ -261,13 +271,7 @@ extern "C" {
       if (!child) return;
       pid_t pid = child->pid;
       if (!(pid)) return;
-      for (;;) {
-        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [terminal](Callback x) {
-          return ((struct term *)(get<1>(x)) == terminal); });
-        if (cb == callbacks.end()) break;
-        KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
-        callbacks.erase(cb);
-      }
+      remove_callbacks(terminal);
       unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
       SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
       child_terminate(child);
@@ -288,13 +292,7 @@ extern "C" {
                   return x.chld->pid == 0; });
           if (it == tabs.end()) break;
           invalidate = true;
-          for (;;) {
-            auto cb = std::find_if(callbacks.begin(), callbacks.end(), [&it](Callback x) {
-              return ((struct term *)(get<1>(x)) == (*it).terminal.get()); });
-            if (cb == callbacks.end()) break;
-            KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
-            callbacks.erase(cb);
-          }
+          remove_callbacks((*it).terminal.get());
           new_active_tab = (active_tab > (it - tabs.begin())) ? active_tab - 1 : active_tab;
           SendMessage(tab_wnd, TCM_DELETEITEM, it - tabs.begin(), 0);
           tabs.erase(it);
