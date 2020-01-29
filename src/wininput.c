@@ -976,6 +976,9 @@ win_mouse_click(mouse_button b, LPARAM lp)
   static uint last_time, count;
 
   win_show_mouse();
+
+  SetFocus(wnd);  // in case focus was in search bar
+
   if (is_tab_bar_area(GET_Y_LPARAM(lp))) return;
 
   mod_keys mods = get_mods();
@@ -988,8 +991,6 @@ win_mouse_click(mouse_button b, LPARAM lp)
   if (!dblclick || ++count > 3)
     count = 1;
   //printf("mouse %d (focus %d skipped %d) ×%d\n", b, click_focus, last_skipped, count);
-
-  SetFocus(wnd);  // in case focus was in search bar
 
   if (click_focus && b == MBT_LEFT && count == 1
       && // not in application mouse mode

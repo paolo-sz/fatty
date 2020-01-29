@@ -56,7 +56,6 @@ Tab::Tab() : terminal(new term), chld(new child) {
     memset(chld.get(), 0, sizeof(struct child));
     info.attention = false;
     info.titles_i = 0;
-    info.idx = 0;
 }
 
 Tab::~Tab() {
@@ -223,7 +222,6 @@ extern "C" {
       tab.chld->home = g_home;
       struct winsize wsz{rows, cols, width, height};
       child_create(tab.chld.get(), tab.terminal.get(), g_argv, &wsz, cwd);
-      tab.info.idx = tabs.size()-1;
       wchar *ws = cs__mbstowcs(tie.pszText);
       win_tab_set_title(tab.terminal.get(), ws);
       free(ws);
@@ -253,6 +251,16 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
+  void remove_callbacks(struct term *term) {
+      for (;;) {
+        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [term](Callback x) {
+          return ((struct term *)(get<1>(x)) == term); });
+        if (cb == callbacks.end()) break;
+        KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
+        callbacks.erase(cb);
+      }
+  }
+
   void win_tab_delete(struct term* term) {
       int tab_idx = tab_idx_by_term(term);
       if (tab_idx == -1) return;
@@ -263,20 +271,13 @@ extern "C" {
       if (!child) return;
       pid_t pid = child->pid;
       if (!(pid)) return;
-      auto cb = std::find_if(callbacks.begin(), callbacks.end(), [terminal](Callback x) {
-        return ((struct term *)(get<1>(x)) == terminal); });
-      if (cb != callbacks.end()) {
-        KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
-        callbacks.erase(cb);
-      }
-      SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+      remove_callbacks(terminal);
+      unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
       SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
       child_terminate(child);
-      for (unsigned int i = tab_idx; i < tabs.size(); i++) {
-        tabs.at(i).info.idx--;
-      }
       tabs.erase(tabs.begin() + tab_idx);
-      set_active_tab(active_tab);
+      SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+      set_active_tab(new_active_tab);
       if (tabs.size() > 0) {
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
@@ -285,36 +286,21 @@ extern "C" {
   
   void win_tab_clean() {
       bool invalidate = false;
+      unsigned int new_active_tab = 0;
       for (;;) {
           std::vector<Tab>::iterator it = std::find_if(tabs.begin(), tabs.end(), [](Tab& x) {
                   return x.chld->pid == 0; });
           if (it == tabs.end()) break;
           invalidate = true;
-          for (;;) {
-            auto cb = std::find_if(callbacks.begin(), callbacks.end(), [&it](Callback x) {
-              return ((struct term *)(get<1>(x)) == (*it).terminal.get()); });
-            if (cb == callbacks.end()) break;
-            KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
-            callbacks.erase(cb);
-          }
-          unsigned int old_active_tab = active_tab;
-          SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
-          if (old_active_tab + 1 >= tabs.size()) {
-            if (old_active_tab > 0) {
-              SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab - 1, 0);
-            }
-          } else {
-            SendMessage(tab_wnd, TCM_SETCURSEL, old_active_tab + 1, 0);
-          }
-          SendMessage(tab_wnd, TCM_DELETEITEM, (*it).info.idx, 0);
-          for (unsigned int i = active_tab; i < tabs.size(); i++) {
-            tabs.at(i).info.idx--;
-          }
+          remove_callbacks((*it).terminal.get());
+          new_active_tab = (active_tab > (it - tabs.begin())) ? active_tab - 1 : active_tab;
+          SendMessage(tab_wnd, TCM_DELETEITEM, it - tabs.begin(), 0);
           tabs.erase(it);
-          active_tab = active_tab > old_active_tab ? old_active_tab : active_tab;
+          active_tab = new_active_tab;
       }
       if (invalidate && tabs.size() > 0) {
-          set_active_tab(active_tab);
+          SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+          set_active_tab(new_active_tab);
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
       }
@@ -339,7 +325,7 @@ extern "C" {
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
       tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
-      SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
+      SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
       if (term == win_active_terminal()) {
         win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
       }
