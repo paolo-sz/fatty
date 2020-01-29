@@ -56,7 +56,6 @@ Tab::Tab() : terminal(new term), chld(new child) {
     memset(chld.get(), 0, sizeof(struct child));
     info.attention = false;
     info.titles_i = 0;
-    info.idx = 0;
 }
 
 Tab::~Tab() {
@@ -223,7 +222,6 @@ extern "C" {
       tab.chld->home = g_home;
       struct winsize wsz{rows, cols, width, height};
       child_create(tab.chld.get(), tab.terminal.get(), g_argv, &wsz, cwd);
-      tab.info.idx = tabs.size()-1;
       wchar *ws = cs__mbstowcs(tie.pszText);
       win_tab_set_title(tab.terminal.get(), ws);
       free(ws);
@@ -273,9 +271,6 @@ extern "C" {
       unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
       SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
       child_terminate(child);
-      for (unsigned int i = tab_idx; i < tabs.size(); i++) {
-        tabs.at(i).info.idx--;
-      }
       tabs.erase(tabs.begin() + tab_idx);
       SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
       set_active_tab(new_active_tab);
@@ -332,7 +327,7 @@ extern "C" {
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
       tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
-      SendMessageW(tab_wnd, TCM_SETITEMW, tab.info.idx, (LPARAM)&tie);
+      SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
       if (term == win_active_terminal()) {
         win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
       }
