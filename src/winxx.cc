@@ -339,10 +339,12 @@ extern "C" {
     int tab_idx = tab_idx_by_term(term);
     if (tab_idx == -1) return;
     Tab& tab = tabs[tab_idx];
+    std::wstring from_title = tab.info.titles[tab.info.titles_i];
     if (tab.info.titles_i == lengthof(tab.info.titles))
       tab.info.titles_i = 0;
     else
       tab.info.titles_i++;
+    tab.info.titles[tab.info.titles_i] = from_title;
   }
     
   wchar_t* win_tab_title_pop(struct term* term) {
