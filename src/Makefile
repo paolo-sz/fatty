@@ -147,8 +147,8 @@ COMMONFLAGS:=$(COMMONFLAGS) $(CCOPT)
 CFLAGS += $(COMMONFLAGS)
 CXXFLAGS += $(COMMONFLAGS)
 
-$(BINDIR)/term%.o: term%.c
-	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) $< -o $(BINDIR)/term$*.o
+#$(BINDIR)/term%.o: term%.c
+#	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) $< -o $(BINDIR)/term$*.o
 
 $(BINDIR)/%.o: %.c
 	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
