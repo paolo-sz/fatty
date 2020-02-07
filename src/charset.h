@@ -1,6 +1,8 @@
 #ifndef CHARSET_H
 #define CHARSET_H
 
+#include "std.h"
+
 #if CYGWIN_VERSION_DLL_MAJOR >= 1007
   #define HAS_LOCALES 1
 #else

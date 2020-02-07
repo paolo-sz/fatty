@@ -30,7 +30,7 @@ ctrl_path_compare(char *p1, char *p2)
 controlbox *
 ctrl_new_box(void)
 {
-  controlbox *ret = new(controlbox);
+  controlbox *ret = std_new(controlbox);
 
   ret->nctrlsets = ret->ctrlsetsize = 0;
   ret->ctrlsets = null;
@@ -141,7 +141,7 @@ ctrl_new_set(controlbox *b, char *path, char *panel, char *title)
       title = strrchr(path, '/');
       title = title ? title + 1 : path;
     }
-    controlset *s = new(controlset);
+    controlset *s = std_new(controlset);
     s->pathname = strdup(path);
     s->boxtitle = strdup(title);
     s->ncontrols = s->ctrlsize = 0;
@@ -155,7 +155,7 @@ ctrl_new_set(controlbox *b, char *path, char *panel, char *title)
   while (index < b->nctrlsets && !strcmp(b->ctrlsets[index]->pathname, path))
     index++;
 
-  controlset *s = new(controlset);
+  controlset *s = std_new(controlset);
   s->pathname = strdup(path);
   s->boxtitle = title ? strdup(title) : null;
   s->ncolumns = 1;
@@ -187,7 +187,7 @@ ctrl_alloc(controlbox * b, size_t size)
 static control *
 ctrl_new(controlset *s, int type, handler_fn handler, void *context)
 {
-  control *c = new(control);
+  control *c = std_new(control);
   if (s->ncontrols >= s->ctrlsize) {
     s->ctrlsize = s->ncontrols + 32;
     s->ctrls = renewn(s->ctrls, s->ctrlsize);

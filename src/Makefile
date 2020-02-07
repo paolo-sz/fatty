@@ -100,7 +100,7 @@ ifneq ($(platform), msys)
   SECUR=-Wtrampolines
 endif
 COMMONFLAGS := -Wall -Wextra -Wundef $(SECUR) -D_WIN32_WINNT=0x0601 -DWINVER=0x0601
-CFLAGS := -std=gnu99 -include std.h
+CFLAGS := -std=gnu99
 CXXFLAGS := -std=gnu++11
 
 ifeq ($(shell VER=`$(CC) -dumpversion`; expr $${VER%.*} '>=' 4.5), 1)

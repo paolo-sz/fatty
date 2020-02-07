@@ -33,7 +33,7 @@ _realloc(void *aptr, size_t nbytes)
     return malloc(nbytes);
 }
 
-#define new(type) ((type *) malloc(sizeof(type)))
+#define std_new(type) ((type *) malloc(sizeof(type)))
 #define newn(type, n) ((type *) calloc((n), sizeof(type)))
 #define renewn(p, n) ((typeof(p)) _realloc((p), sizeof(*p) * (n)))
 static inline void std_delete(const void *p) { free((void *)p); }

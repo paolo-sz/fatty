@@ -2,6 +2,8 @@
 // Copyright 2016 Jianbin Kang
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#include "std.h"
+
 #include <errno.h>
 #include "base64.h"
 #if CYGWIN_VERSION_API_MINOR >= 74

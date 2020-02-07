@@ -1,6 +1,8 @@
 #ifndef PRINT_H
 #define PRINT_H
 
+#include "std.h"
+
 // printers information
 extern uint printer_start_enum(void);
 extern wstring printer_get_name(uint);

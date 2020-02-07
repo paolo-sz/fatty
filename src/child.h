@@ -1,6 +1,8 @@
 #ifndef CHILD_H
 #define CHILD_H
 
+#include "std.h"
+
 #include <termios.h>
 
 extern bool icon_is_from_shortcut;

@@ -1,6 +1,8 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
+#include "std.h"
+
 #include <Windows.h>
 
 // Enums for various options.

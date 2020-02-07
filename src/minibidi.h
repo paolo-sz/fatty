@@ -1,6 +1,8 @@
 #ifndef MINIBIDI_H
 #define MINIBIDI_H
 
+#include "std.h"
+
 typedef unsigned int ucschar;
 
 typedef struct {

@@ -615,7 +615,7 @@ winctrl_findbyid(winctrls *wc, int id)
 static winctrl *
 new_winctrl(int base_id, void *data)
 {
-  winctrl *c = new(winctrl);
+  winctrl *c = std_new(winctrl);
   c->next = null;
   c->ctrl = null;
   c->base_id = base_id;
@@ -831,7 +831,7 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
         num_ids = 3;
         //__ Options - Text: font chooser activation button
         staticbtn(&pos, "", base_id + 1, _("&Select..."), base_id + 2);
-        data = new(font_spec);
+        data = std_new(font_spec);
 
         char * fontinfo = fontpropinfo();
         if (fontinfo) {
@@ -850,7 +850,7 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
     * the dialog ID counter, if it's actually been created
     */
     if (pos.wnd) {
-      winctrl *c = new(winctrl);
+      winctrl *c = std_new(winctrl);
       c->next = null;
       c->ctrl = ctrl;
       c->base_id = actual_base_id;

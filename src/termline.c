@@ -15,7 +15,7 @@
 termline *
 newline(int cols, termchar erase_char)
 {
-  termline *line = new(termline);
+  termline *line = std_new(termline);
   newn_1(line->chars, termchar, cols);
   //! Note: line->chars is based @ index -1
   for (int j = -1; j < cols; j++)
@@ -665,7 +665,7 @@ decompressline(uchar *data, int *bytes_used)
  /*
   * Now create the output termline.
   */
-  line = new(termline);
+  line = std_new(termline);
   newn_1(line->chars, termchar, ncols);
   line->cols = line->size = ncols;
   line->temporary = true;
