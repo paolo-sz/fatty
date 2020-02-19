@@ -1,3 +1,7 @@
+extern "C" {
+  
+#define CINTERFACE
+
 #include "std.h"
 
 #if CYGWIN_VERSION_API_MINOR >= 74
@@ -36,7 +40,7 @@ last_error()
     return winmsg;
   }
   else
-    return W("");
+    return (wchar *)W("");
 }
 
 
@@ -46,14 +50,14 @@ clear_jumplist(void)
   HRESULT hr = S_OK;
   ICustomDestinationList *pCustomDestinationList;
 
-  hr = CoCreateInstance(&CLSID_DestinationList, NULL, CLSCTX_INPROC_SERVER, &IID_ICustomDestinationList, (void **)&pCustomDestinationList);
+  hr = CoCreateInstance(CLSID_DestinationList, NULL, CLSCTX_INPROC_SERVER, IID_ICustomDestinationList, (void **)&pCustomDestinationList);
   if (FAILED(hr)) {
     return hr;
   }
 
-  hr = pCustomDestinationList->lpVtbl->DeleteList((void *)pCustomDestinationList, NULL);
+  hr = pCustomDestinationList->lpVtbl->DeleteList((ICustomDestinationList *)pCustomDestinationList, NULL);
 
-  pCustomDestinationList->lpVtbl->Release((void *)pCustomDestinationList);
+  pCustomDestinationList->lpVtbl->Release((ICustomDestinationList *)pCustomDestinationList);
   return hr;
 }
 
@@ -88,20 +92,20 @@ register_task(IObjectCollection *pobjs, wstring title, wstring cmd, wstring icon
     return S_FALSE;
 
   //printf("register_task <%ls>: <%ls> <%ls>\n", title, exe_path, cmd);
-  hr = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, &IID_IShellLinkW, (void **)&pShellLink);
+  hr = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, IID_IShellLinkW, (void **)&pShellLink);
   if (SUCCEEDED(hr)) {
     do {
       // set title
       IPropertyStore *pPropertyStore;
-      hr = pShellLink->lpVtbl->QueryInterface((void *)pShellLink, &IID_IPropertyStore, (void **)&pPropertyStore);
+      hr = pShellLink->lpVtbl->QueryInterface((IShellLinkW *)pShellLink, IID_IPropertyStore, (void **)&pPropertyStore);
       if (SUCCEEDED(hr)) {
         PROPVARIANT propVariant;
 
         hr = InitPropVariantFromString(show_title, &propVariant);
         if (SUCCEEDED(hr)) {
-          hr = pPropertyStore->lpVtbl->SetValue((void *)pPropertyStore, &PKEY_Title, &propVariant);
+          hr = pPropertyStore->lpVtbl->SetValue((IPropertyStore *)pPropertyStore, PKEY_Title, propVariant);
           if (SUCCEEDED(hr)) {
-            pPropertyStore->lpVtbl->Commit((void *)pPropertyStore);
+            pPropertyStore->lpVtbl->Commit((IPropertyStore *)pPropertyStore);
           }
         }
       }
@@ -110,27 +114,27 @@ register_task(IObjectCollection *pobjs, wstring title, wstring cmd, wstring icon
 
       // set icon path and index
       if (icon)
-        hr = pShellLink->lpVtbl->SetIconLocation((void *)pShellLink, icon, ii);
+        hr = pShellLink->lpVtbl->SetIconLocation((IShellLinkW *)pShellLink, icon, ii);
       else
-        hr = pShellLink->lpVtbl->SetIconLocation((void *)pShellLink, exe_path, 0);
+        hr = pShellLink->lpVtbl->SetIconLocation((IShellLinkW *)pShellLink, exe_path, 0);
       if (FAILED(hr))
         break;
 
       // set full path of mintty.exe
-      hr = pShellLink->lpVtbl->SetPath((void *)pShellLink, exe_path);
+      hr = pShellLink->lpVtbl->SetPath((IShellLinkW *)pShellLink, exe_path);
       if (FAILED(hr))
         break;
 
       // set arguments
-      hr = pShellLink->lpVtbl->SetArguments((void *)pShellLink, cmd);
+      hr = pShellLink->lpVtbl->SetArguments((IShellLinkW *)pShellLink, cmd);
       if (FAILED(hr))
         break;
 
       // finally, register this column into the jump list
-      hr = pobjs->lpVtbl->AddObject((void *)pobjs, (IUnknown *)pShellLink);
+      hr = pobjs->lpVtbl->AddObject((IObjectCollection *)pobjs, (IUnknown *)pShellLink);
     } while (0);
 
-    pShellLink->lpVtbl->Release((void *)pShellLink);
+    pShellLink->lpVtbl->Release((IShellLinkW *)pShellLink);
   }
 
   return hr;
@@ -140,9 +144,9 @@ void *
 init_jumplist()
 {
   IObjectCollection * pobjs;
-  HRESULT hr = CoCreateInstance(&CLSID_EnumerableObjectCollection, 
+  HRESULT hr = CoCreateInstance(CLSID_EnumerableObjectCollection, 
                                 NULL, CLSCTX_INPROC_SERVER, 
-                                &IID_IObjectCollection, (void **)&pobjs);
+                                IID_IObjectCollection, (void **)&pobjs);
   //printf("create_jumplist CoCreateInstance %ld\n", (long)hr);
   if (SUCCEEDED(hr))
     return pobjs;
@@ -156,38 +160,38 @@ create_jumplist(wstring appid, IObjectCollection *pobjs)
   HRESULT hr = S_OK;
   ICustomDestinationList *pCustomDestinationList;
 
-  hr = CoCreateInstance(&CLSID_DestinationList, NULL, CLSCTX_INPROC_SERVER, &IID_ICustomDestinationList, (void **)&pCustomDestinationList);
+  hr = CoCreateInstance(CLSID_DestinationList, NULL, CLSCTX_INPROC_SERVER, IID_ICustomDestinationList, (void **)&pCustomDestinationList);
   //printf("create_jumplist CoCreateInstance %ld\n", (long)hr);
   if (SUCCEEDED(hr)) {
     // register all custom tasks
-    hr = pCustomDestinationList->lpVtbl->SetAppID((void *)pCustomDestinationList, appid);
+    hr = pCustomDestinationList->lpVtbl->SetAppID((ICustomDestinationList *)pCustomDestinationList, appid);
     //printf("create_jumplist SetAppID(%ls) %ld (%ld %ls)\n", appid, (long)hr, (long)GetLastError(), last_error());
     hr = S_OK;  // ignore failure of SetAppID
     if (SUCCEEDED(hr)) {
       UINT nSlots;
       IObjectArray *pRemovedList;
 
-      hr = pCustomDestinationList->lpVtbl->BeginList((void *)pCustomDestinationList, &nSlots, &IID_IObjectArray, (void **)&pRemovedList);
+      hr = pCustomDestinationList->lpVtbl->BeginList((ICustomDestinationList *)pCustomDestinationList, &nSlots, IID_IObjectArray, (void **)&pRemovedList);
       //printf("create_jumplist BeginList %ld\n", (long)hr);
       if (SUCCEEDED(hr)) {
         IObjectArray *pObjectArray;
 
-        hr = pobjs->lpVtbl->QueryInterface((void *)pobjs, &IID_IObjectArray, (void **)&pObjectArray);
+        hr = pobjs->lpVtbl->QueryInterface((IObjectCollection *)pobjs, IID_IObjectArray, (void **)&pObjectArray);
         if (SUCCEEDED(hr)) {
-          hr = pCustomDestinationList->lpVtbl->AddUserTasks((void *)pCustomDestinationList, pObjectArray);
+          hr = pCustomDestinationList->lpVtbl->AddUserTasks((ICustomDestinationList *)pCustomDestinationList, pObjectArray);
         //printf("create_jumplist AddUserTasks %ld\n", (long)hr);
 
-          pObjectArray->lpVtbl->Release((void *)pObjectArray);
+          pObjectArray->lpVtbl->Release((IObjectArray *)pObjectArray);
         }
         // should we commit only within previous SUCCEEDED?
-        pCustomDestinationList->lpVtbl->CommitList((void *)pCustomDestinationList);
+        pCustomDestinationList->lpVtbl->CommitList((ICustomDestinationList *)pCustomDestinationList);
         //printf("create_jumplist CommitList %ld\n", (long)hr);
 
-        pRemovedList->lpVtbl->Release((void *)pRemovedList);
+        pRemovedList->lpVtbl->Release((IObjectArray *)pRemovedList);
       }
     }
 
-    pCustomDestinationList->lpVtbl->Release((void *)pCustomDestinationList);
+    pCustomDestinationList->lpVtbl->Release((ICustomDestinationList *)pCustomDestinationList);
   }
 
   return hr;
@@ -215,7 +219,7 @@ setup_jumplist(wstring appid, int n, wstring titles[], wstring cmds[], wstring i
   hr = clear_jumplist();
   hr = S_OK;
   if (SUCCEEDED(hr)) {
-    IObjectCollection * pobjs = init_jumplist();
+    IObjectCollection * pobjs = (IObjectCollection *)init_jumplist();
     //printf("setup_jumplist items %p\n", pobjs);
     if (pobjs) {
       for (int i = 0; i < n; ++i) {
@@ -227,7 +231,7 @@ setup_jumplist(wstring appid, int n, wstring titles[], wstring cmds[], wstring i
       if (SUCCEEDED(hr))
         hr = create_jumplist(appid, pobjs);
 
-      pobjs->lpVtbl->Release((void *)pobjs);
+      pobjs->lpVtbl->Release((IObjectCollection *)pobjs);
     }
   }
 
@@ -246,3 +250,4 @@ setup_jumplist(wstring appid, int n, wstring titles[], wstring cmds[], wstring i
 
 #endif
 
+}

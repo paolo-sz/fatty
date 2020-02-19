@@ -4,6 +4,8 @@
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "winpriv.h"
 
 #include "ctrls.h"
@@ -180,8 +182,8 @@ determine_geometry(HWND wnd)
 
 #ifdef debug_dialog_crash
 
-static char * debugopt = 0;
-static char * debugtag = "none";
+static char * debugopt = null;
+static char * debugtag = (char *)"none";
 
 static void
 sigsegv(int sig)
@@ -205,7 +207,7 @@ debug(char *tag)
   if (!debugopt) {
     debugopt = getenv("FATTY_DEBUG");
     if (!debugopt)
-      debugopt = "";
+      debugopt = (char *)"";
   }
 
   debugtag = tag;
@@ -235,7 +237,7 @@ static char * version_available = 0;
 static bool version_retrieving = false;
 
 static void
-display_update(char * new)
+display_update(char * new_char)
 {
   if (!config_wnd)
     return;
@@ -244,12 +246,12 @@ display_update(char * new)
   char * opt = _("Options");
   //__ Options: dialog title: "fatty <release> available (for download)"
   char * avl = _("available");
-  char * pat = "%s            ▶ %s %s %s ◀";
-  int len = strlen(opt) + strlen(CHECK_APP) + strlen(new) + strlen(avl) + strlen(pat) - 7;
+  char * pat = (char *)"%s            ▶ %s %s %s ◀";
+  int len = strlen(opt) + strlen(CHECK_APP) + strlen(new_char) + strlen(avl) + strlen(pat) - 7;
   char * msg = newn(char, len);
-  sprintf(msg, pat, opt, CHECK_APP, new, avl);
+  sprintf(msg, pat, opt, CHECK_APP, new_char, avl);
 #ifdef debug_version_check
-  printf("new version <%s> -> '%s'\n", new, msg);
+  printf("new version <%s> -> '%s'\n", new_char, msg);
 #endif
   wchar * wmsg = cs__utftowcs(msg);
   free(msg);
@@ -274,12 +276,12 @@ update_available_version(bool ok)
   getvfn();
 
   char vers[99];
-  char * new = 0;
+  char * new_char = 0;
   FILE * vfd = fopen(vfn, "r");
   if (vfd) {
     if (fgets(vers, sizeof vers, vfd)) {
       vers[strcspn(vers, "\n")] = 0;
-      new = vers;
+      new_char = vers;
 #ifdef debug_version_check
       printf("update_available_version read <%s>\n", vers);
 #endif
@@ -287,7 +289,7 @@ update_available_version(bool ok)
     fclose(vfd);
   }
 #if defined(debug_version_check) && debug_version_check > 1
-  new = "9.9.9";  // test value
+  new_char = "9.9.9";  // test value
 #endif
 #ifdef debug_version_check
   printf("update_available_version: <%s>\n", new);
@@ -301,12 +303,12 @@ update_available_version(bool ok)
      x  y  y  %
      x  y  z  ! =
   */
-  if (new && strcmp(new, CHECK_VERSION))
-    display_update(new);
-  if (new && (!version_available || strcmp(new, version_available))) {
+  if (new_char && strcmp(new_char, CHECK_VERSION))
+    display_update(new_char);
+  if (new_char && (!version_available || strcmp(new_char, version_available))) {
     if (version_available)
       free(version_available);
-    version_available = strdup(new);
+    version_available = strdup(new_char);
   }
 #ifdef debug_version_check
   printf("update_available_version -> available <%s>\n", version_available);
@@ -440,7 +442,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       winctrl_init(&ctrls_panel);
       windlg_add_tree(&ctrls_base);
       windlg_add_tree(&ctrls_panel);
-      copy_config("dialog", &new_cfg, &file_cfg);
+      copy_config((char *)"dialog", &new_cfg, &file_cfg);
 
       RECT r;
       GetWindowRect(GetParent(wnd), &r);
@@ -450,7 +452,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       * Create the actual GUI widgets.
       */
       // here we need the correct DIALOG_HEIGHT already
-      create_controls(wnd, "");        /* Open and Cancel buttons etc */
+      create_controls(wnd, (char *)"");        /* Open and Cancel buttons etc */
 
       SendMessage(wnd, WM_SETICON, (WPARAM) ICON_BIG,
                   (LPARAM) LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)));
@@ -547,7 +549,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 #endif
 
     when WM_USER: {
-      debug("WM_USER");
+      debug((char *)"WM_USER");
       HWND target = (HWND)wParam;
       // could delegate this to winctrls.c, like winctrl_handle_command;
       // but then we'd have to fiddle with the location of dragndrop
@@ -569,23 +571,23 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
         }
       }
-      debug("WM_USER: lookup");
+      debug((char *)"WM_USER: lookup");
       if (ctrl) {
         //dlg_editbox_set_w(ctrl, L"Test");  // may hit unrelated items...
         // drop the drag-and-drop contents here
         dragndrop = (wstring)lParam;
         ctrl->handler(ctrl, EVENT_DROP);
-        debug("WM_USER: handler");
+        debug((char *)"WM_USER: handler");
       }
-      debug("WM_USER: end");
+      debug((char *)"WM_USER: end");
     }
 
     when WM_NOTIFY: {
       if (LOWORD(wParam) == IDCX_TREEVIEW &&
           ((LPNMHDR) lParam)->code == TVN_SELCHANGED) {
-        debug("WM_NOTIFY");
+        debug((char *)"WM_NOTIFY");
         HTREEITEM i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
-        debug("WM_NOTIFY: GetSelection");
+        debug((char *)"WM_NOTIFY: GetSelection");
 
         TVITEM item;
         item.hItem = i;
@@ -600,27 +602,27 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
               DestroyWindow(item);
           }
         }
-        debug("WM_NOTIFY: Destroy");
+        debug((char *)"WM_NOTIFY: Destroy");
         winctrl_cleanup(&ctrls_panel);
-        debug("WM_NOTIFY: cleanup");
+        debug((char *)"WM_NOTIFY: cleanup");
 
         // here we need the correct DIALOG_HEIGHT already
         create_controls(wnd, (char *) item.lParam);
-        debug("WM_NOTIFY: create");
+        debug((char *)"WM_NOTIFY: create");
         dlg_refresh(null); /* set up control values */
-        debug("WM_NOTIFY: refresh");
+        debug((char *)"WM_NOTIFY: refresh");
       }
     }
 
     when WM_COMMAND case_or WM_DRAWITEM: {
-      debug("WM_COMMAND");
+      debug((char *)"WM_COMMAND");
       int ret = winctrl_handle_command(msg, wParam, lParam);
-      debug("WM_COMMAND: handle");
+      debug((char *)"WM_COMMAND: handle");
       if (dlg.ended) {
         DestroyWindow(wnd);
-        debug("WM_COMMAND: Destroy");
+        debug((char *)"WM_COMMAND: Destroy");
       }
-      debug("WM_COMMAND: end");
+      debug((char *)"WM_COMMAND: end");
       return ret;
     }
   }
@@ -699,18 +701,19 @@ win_open_config(void)
   static bool initialised = false;
   if (!initialised) {
     InitCommonControls();
-    RegisterClassW(&(WNDCLASSW){
-      .lpszClassName = W(DIALOG_CLASS),
-      .lpfnWndProc = DefDlgProcW,
-      .style = CS_DBLCLKS,
-      .cbClsExtra = 0,
-      .cbWndExtra = DLGWINDOWEXTRA + 2 * sizeof(LONG_PTR),
-      .hInstance = inst,
-      .hIcon = null,
-      .hCursor = LoadCursor(null, IDC_ARROW),
-      .hbrBackground = (HBRUSH)(COLOR_BACKGROUND + 1),
-      .lpszMenuName = null
-    });
+    WNDCLASSW pippo = {
+      style : CS_DBLCLKS,
+      lpfnWndProc : DefDlgProcW,
+      cbClsExtra : 0,
+      cbWndExtra : DLGWINDOWEXTRA + 2 * sizeof(LONG_PTR),
+      hInstance : inst,
+      hIcon : null,
+      hCursor : LoadCursor(null, IDC_ARROW),
+      hbrBackground : (HBRUSH)(COLOR_BACKGROUND + 1),
+      lpszMenuName : null,
+      lpszClassName : (wchar *)DIALOG_CLASS
+    };
+    RegisterClassW(&pippo);
     initialised = true;
   }
 
@@ -750,7 +753,7 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam)
 
 #define dont_debug_message_box
 
-  void setlabel(int id, wstring label) {
+  auto setlabel = [&](int id, wstring label) {
     HWND button = GetDlgItem((HWND)wParam, id);
 #ifdef debug_message_box
     if (button) {
@@ -763,7 +766,7 @@ set_labels(int nCode, WPARAM wParam, LPARAM lParam)
 #endif
     if (button)
       SetWindowTextW(button, label);
-  }
+  };
 
   if (nCode == HCBT_ACTIVATE) {
 #ifdef debug_message_box
@@ -878,20 +881,27 @@ win_show_about(void)
   oklabel = null;
   oktype = MB_OK;
   hook_windows(set_labels);
-  MessageBoxIndirectW(&(MSGBOXPARAMSW){
-    .cbSize = sizeof(MSGBOXPARAMSW),
-    .hwndOwner = config_wnd,
-    .hInstance = inst,
-    .lpszCaption = W(APPNAME),
+  MSGBOXPARAMSW pippo = {
+    cbSize : sizeof(MSGBOXPARAMSW),
+    hwndOwner : config_wnd,
+    hInstance : inst,
+    lpszText : wmsg,
+    lpszCaption : (wchar *)APPNAME,
 #ifdef about_version_check
-    .dwStyle = MB_USERICON | MB_OK | MB_HELP,
-    .lpfnMsgBoxCallback = hhook,
+    dwStyle : MB_USERICON | MB_OK | MB_HELP,
 #else
-    .dwStyle = MB_USERICON | MB_OK,
+    dwStyle : MB_USERICON | MB_OK,
 #endif
-    .lpszIcon = MAKEINTRESOURCEW(IDI_MAINICON),
-    .lpszText = wmsg
-  });
+    lpszIcon : MAKEINTRESOURCEW(IDI_MAINICON),
+    dwContextHelpId : 0,
+#ifdef about_version_check
+    lpfnMsgBoxCallback : hhook,
+#else
+    lpfnMsgBoxCallback : null,
+#endif
+    dwLanguageId : 0
+  };
+  MessageBoxIndirectW(&pippo);
   unhook_windows();
   free(wmsg);
 }
@@ -908,3 +918,4 @@ win_show_warning(char * msg)
   message_box(0, msg, null, MB_ICONWARNING, 0);
 }
 
+}

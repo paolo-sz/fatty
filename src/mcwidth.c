@@ -3,6 +3,8 @@
 // Adapted from code by Markus Kuhn.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "charset.h"
 
 typedef struct {
@@ -209,3 +211,4 @@ combiningdouble(xchar c)
   return bisearch(c, combdouble, lengthof(combdouble));
 }
 
+}

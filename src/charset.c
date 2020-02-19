@@ -3,6 +3,8 @@
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "charset.h"
 
 #include "config.h"
@@ -206,14 +208,14 @@ init_locale_menu(void)
 {
   uint count = 0;
 
-  void add_lc(char * locale) {
+  auto add_lc = [&](char * locale) {
     for (uint i = 1; i < count; i++)
       if (!strcmp(locale, locale_menu[i]))
         return;
     locale_menu[count++] = strdup(locale);
-  }
+  };
 
-  void add_lcid(LCID lcid) {
+  auto add_lcid = [&](LCID lcid) {
     char locale[18];  // max 9 (incl NUL) per GetLocaleInfo + '_'
       // https://msdn.microsoft.com/en-us/library/windows/desktop/dd373848%28v=vs.85%29.aspx
 
@@ -226,7 +228,7 @@ init_locale_menu(void)
       locale[lang_len - 1] = '_';
 
     add_lc(locale);
-  }
+  };
 
   locale_menu[count++] = _("(Default)");
   add_lcid(GetUserDefaultUILanguage());
@@ -496,7 +498,7 @@ char *
 cs__wcstoutf(const wchar * ws)
 {
   int size1 = WideCharToMultiByte(CP_UTF8, 0, ws, -1, 0, 0, 0, 0);
-  char * s = malloc(size1);  // includes terminating NUL
+  char * s = (char *)malloc(size1);  // includes terminating NUL
   WideCharToMultiByte(CP_UTF8, 0, ws, -1, s, size1, 0, 0);
   return s;
 }
@@ -510,7 +512,7 @@ cs__wcstombs(const wchar * ws)
   char defchar = '?';
   char * defcharpoi = (codepage == CP_UTF8 ? 0 : &defchar);
   int size1 = WideCharToMultiByte(codepage, WC_OPT, ws, -1, 0, 0, 0, 0);
-  char * s = malloc(size1);  // includes terminating NUL
+  char * s = (char *)malloc(size1);  // includes terminating NUL
   WideCharToMultiByte(codepage, WC_OPT, ws, -1, s, size1, defcharpoi, 0);
   return s;
 }
@@ -522,7 +524,7 @@ cs__wcstombs_dropill(const wchar * ws)
   char * defcharpoi = (codepage == CP_UTF8 ? 0 : &defchar);
   int illegal = 0;
   int size1 = WideCharToMultiByte(codepage, WC_OPT, ws, -1, 0, 0, 0, 0);
-  char * s = malloc(size1);  // includes terminating NUL
+  char * s = (char *)malloc(size1);  // includes terminating NUL
   WideCharToMultiByte(codepage, WC_OPT, ws, -1, s, size1, defcharpoi, &illegal);
   if (illegal) {
     int i = 0;
@@ -538,7 +540,7 @@ wchar *
 cs__utftowcs(const char * s)
 {
   int size1 = MultiByteToWideChar(CP_UTF8, 0, s, -1, 0, 0);
-  wchar * ws = malloc(size1 * sizeof(wchar));  // includes terminating NUL
+  wchar * ws = (wchar *)malloc(size1 * sizeof(wchar));  // includes terminating NUL
   MultiByteToWideChar(CP_UTF8, 0, s, -1, ws, size1);
   return ws;
 }
@@ -547,7 +549,7 @@ wchar *
 cs__mbstowcs(const char * s)
 {
   int size1 = MultiByteToWideChar(codepage, 0, s, -1, 0, 0);
-  wchar * ws = malloc(size1 * sizeof(wchar));  // includes terminating NUL
+  wchar * ws = (wchar *)malloc(size1 * sizeof(wchar));  // includes terminating NUL
   MultiByteToWideChar(codepage, 0, s, -1, ws, size1);
   return ws;
 }
@@ -557,13 +559,13 @@ cs__utforansitowcs(const char * s)
 {
   int size1 = MultiByteToWideChar(CP_UTF8, MB_ERR_INVALID_CHARS, s, -1, 0, 0);
   if (size1 > 0) {
-    wchar * ws = malloc(size1 * sizeof(wchar));  // includes terminating NUL
+    wchar * ws = (wchar *)malloc(size1 * sizeof(wchar));  // includes terminating NUL
     MultiByteToWideChar(CP_UTF8, 0, s, -1, ws, size1);
     return ws;
   }
   else {
     size1 = MultiByteToWideChar(CP_ACP, 0, s, -1, 0, 0);
-    wchar * ws = malloc(size1 * sizeof(wchar));  // includes terminating NUL
+    wchar * ws = (wchar *)malloc(size1 * sizeof(wchar));  // includes terminating NUL
     MultiByteToWideChar(CP_ACP, 0, s, -1, ws, size1);
     return ws;
   }
@@ -782,7 +784,7 @@ path_win_w_to_posix(const wchar * wp)
   int size = cygwin_conv_path(CCP_WIN_W_TO_POSIX, wp, 0, 0);
   char * res;
   if (size >= 0) {
-    res = malloc(size);
+    res = (char *)malloc(size);
     size = cygwin_conv_path(CCP_WIN_W_TO_POSIX, wp, res, size);
     if (size >= 0)
       return res;
@@ -804,7 +806,7 @@ path_posix_to_win_w(const char * p)
   int size = cygwin_conv_path(CCP_POSIX_TO_WIN_W, p, 0, 0);
   wchar * res;
   if (size >= 0) {
-    res = malloc(size);
+    res = (wchar *)malloc(size);
     size = cygwin_conv_path(CCP_POSIX_TO_WIN_W, p, res, size);
     if (size >= 0)
       return res;
@@ -826,7 +828,7 @@ path_posix_to_win_a(const char * p)
   int size = cygwin_conv_path(CCP_POSIX_TO_WIN_A, p, 0, 0);
   char * res;
   if (size >= 0) {
-    res = malloc(size);
+    res = (char *)malloc(size);
     size = cygwin_conv_path(CCP_POSIX_TO_WIN_A, p, res, size);
     if (size >= 0)
       return res;
@@ -880,3 +882,4 @@ path_posix_to_win_a(const char * p)
 
 #endif
 
+}

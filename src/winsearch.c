@@ -2,6 +2,8 @@
 // Copyright 2015 Kai (kiwiz)
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include <windows.h>
 #include <CommCtrl.h>
 
@@ -41,36 +43,38 @@ win_get_search_edit_wnd(void)
 }
 
 static int
-current_delta(struct term* term, bool adjust)
+current_delta(struct term* term_p, bool adjust)
 {
-  if (term->results.length == 0) {
+  struct term& term = *term_p;
+  
+  if (term.results.length == 0) {
     return 0;
   }
 
-  result * res = term->results.results + term->results.current;
-  int y = res->y - term->sblines;
+  result * res = term.results.results + term.results.current;
+  int y = res->y - term.sblines;
   int delta = 0;
-  if (y < term->disptop) {
-    delta = y - term->disptop;
+  if (y < term.disptop) {
+    delta = y - term.disptop;
   }
-  else if (y >= term->disptop + term->rows) {
-    delta = y - (term->disptop + term->rows - 1);
+  else if (y >= term.disptop + term.rows) {
+    delta = y - (term.disptop + term.rows - 1);
   }
 
   if (adjust) {
     //printf("search scroll to %d (top %d) by %d\n", y, term.disptop, delta);
     int dist = abs(cfg.search_context);
-    if (dist > term->rows / 2)
-      dist = term->rows / 2;
+    if (dist > term.rows / 2)
+      dist = term.rows / 2;
     if (delta > 0)
       delta += dist;
     else if (delta < 0)
       delta -= dist;
     else if (cfg.search_context < 0) {
-      if (y - term->disptop < dist)
-        delta = y - term->disptop - dist;
-      else if (term->disptop + term->rows - 1 - y < dist)
-        delta = dist - (term->disptop + term->rows - 1 - y);
+      if (y - term.disptop < dist)
+        delta = y - term.disptop - dist;
+      else if (term.disptop + term.rows - 1 - y < dist)
+        delta = dist - (term.disptop + term.rows - 1 - y);
       //printf("                 -> %d\n", delta);
     }
   }
@@ -79,55 +83,61 @@ current_delta(struct term* term, bool adjust)
 }
 
 static void
-scroll_to_result(struct term* term)
+scroll_to_result(struct term* term_p)
 {
-  if (term->results.length == 0) {
+  struct term& term = *term_p;
+  
+  if (term.results.length == 0) {
     return;
   }
 
-  int delta = current_delta(term, true);
+  int delta = current_delta(term_p, true);
 
   // Scroll if we must!
   if (delta != 0) {
-    term_scroll(term, 0, delta);
+    term_scroll(term_p, 0, delta);
   }
 }
 
 void
-next_result(struct term* term)
+next_result(struct term* term_p)
 {
-  if (term->results.length == 0) {
+  struct term& term = *term_p;
+  
+  if (term.results.length == 0) {
     return;
   }
-  if (current_delta(term, false) == 0)
-    term->results.current = (term->results.current + 1) % term->results.length;
-  scroll_to_result(term);
+  if (current_delta(term_p, false) == 0)
+    term.results.current = (term.results.current + 1) % term.results.length;
+  scroll_to_result(term_p);
 }
 
 void
-prev_result(struct term* term)
+prev_result(struct term* term_p)
 {
-  if (term->results.length == 0) {
+  struct term& term = *term_p;
+  
+  if (term.results.length == 0) {
     return;
   }
-  if (current_delta(term, false) == 0)
-    term->results.current = (term->results.current + term->results.length - 1) % term->results.length;
-  scroll_to_result(term);
+  if (current_delta(term_p, false) == 0)
+    term.results.current = (term.results.current + term.results.length - 1) % term.results.length;
+  scroll_to_result(term_p);
 }
 
 static LRESULT CALLBACK
 edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
   
-  MSG mesg = {.hwnd = hwnd, .message = msg, .wParam = wp, .lParam = lp};
+  MSG mesg = {hwnd : hwnd, message : msg, wParam : wp, lParam : lp, time : 0, pt : {0, 0}};
   TranslateMessage(&mesg);
 
   switch (mesg.message) {
     when WM_KEYDOWN case_or WM_SYSKEYDOWN:
       switch (mesg.wParam) {
         when VK_ESCAPE:
-          term_clear_search(term);
+          term_clear_search(term_p);
           win_hide_search();
           win_schedule_update();
           return 0;
@@ -137,10 +147,10 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
           return 0;
         when VK_RETURN:
           if (GetKeyState(VK_SHIFT) < 0) {
-            prev_result(term);
+            prev_result(term_p);
           }
           else {
-            next_result(term);
+            next_result(term_p);
           }
           win_schedule_update();
           return 0;
@@ -164,7 +174,8 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 static LRESULT CALLBACK
 search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
   
   bool update = false;
   switch (msg) {
@@ -172,13 +183,13 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
       switch (HIWORD(wp)) {
         when BN_CLICKED: // Equivalent to STN_CLICKED
           if (lp == (long)search_prev_wnd) {
-            prev_result(term);
+            prev_result(term_p);
           }
           if (lp == (long)search_next_wnd) {
-            next_result(term);
+            next_result(term_p);
           }
           if (lp == (long)search_close_wnd) {
-            term_clear_search(term);
+            term_clear_search(term_p);
             win_hide_search();
             win_schedule_update();
           }
@@ -193,13 +204,13 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
       }
   }
 
-  if (update && (term->results.update_type != DISABLE_UPDATE))
+  if (update && (term.results.update_type != DISABLE_UPDATE))
   {
     int len = GetWindowTextLengthW(search_edit_wnd) + 1;
-    wchar * buf = malloc(sizeof(wchar) * len);
+    wchar * buf = (wchar *)malloc(sizeof(wchar) * len);
     GetWindowTextW(search_edit_wnd, buf, len);
-    term_set_search(term, buf);
-    term_update_search(term);
+    term_set_search(term_p, buf);
+    term_update_search(term_p);
     win_schedule_update();
 	return 0;
   }
@@ -301,20 +312,21 @@ win_toggle_search(bool show, bool focus)
 
   // Set up our global variables.
   if (!search_initialised || height != prev_height) {
-    if (!search_initialised)
-      RegisterClassA(&(WNDCLASSA){
-        .style = 0,
-        .lpfnWndProc = search_proc,
-        .cbClsExtra = 0,
-        .cbWndExtra = 0,
-        .hInstance = inst,
-        .hIcon = NULL,
-        .hCursor = NULL,
-        .hbrBackground = (HBRUSH)(COLOR_3DFACE + 1),
-        .lpszMenuName = NULL,
-        .lpszClassName = SEARCHBARCLASS
-      });
-    else {
+    if (!search_initialised) {
+      WNDCLASSA tmp_wndc = {
+        style : 0,
+        lpfnWndProc : search_proc,
+        cbClsExtra : 0,
+        cbWndExtra : 0,
+        hInstance : inst,
+        hIcon : NULL,
+        hCursor : NULL,
+        hbrBackground : (HBRUSH)(COLOR_3DFACE + 1),
+        lpszMenuName : NULL,
+        lpszClassName : SEARCHBARCLASS
+      };
+      RegisterClassA(&tmp_wndc);
+    } else {
       DestroyWindow(search_wnd);
     }
 
@@ -375,23 +387,25 @@ win_toggle_search(bool show, bool focus)
 void
 win_open_search(void)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
   
-  if (!(term->results.query) && search_initialised) {
+  if (!(term.results.query) && search_initialised) {
     SetWindowTextW(search_edit_wnd, W(""));
   }
   win_toggle_search(true, true);
-  term->search_window_visible = true;
+  term.search_window_visible = true;
   win_adapt_term_size(false, false);
 }
 
 static void
 win_hide_search(void)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
   
   win_toggle_search(false, false);
-  term->search_window_visible = false;
+  term.search_window_visible = false;
   win_adapt_term_size(false, false);
 }
 
@@ -424,7 +438,10 @@ win_paint_exclude_search(HDC dc)
 bool
 win_search_visible(void)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
   
-  return term->search_window_visible;
+  return term.search_window_visible;
+}
+
 }

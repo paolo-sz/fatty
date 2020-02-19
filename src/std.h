@@ -64,10 +64,10 @@ extern int iswspace(wint_t);
 #endif
 
 
-#if CYGWIN_VERSION_API_MINOR < 70
+//#if CYGWIN_VERSION_API_MINOR < 70
 extern int asprintf(char **, const char *, ...);
 extern int vasprintf(char **, const char *, va_list);
-#endif
+//#endif
 
 extern char *asform(const char *fmt, ...);
 
@@ -103,7 +103,7 @@ typedef WCHAR wchar;    // UTF-16
 typedef const char *string;
 typedef const wchar *wstring;
 
-#define null ((void *) 0)
+#define null NULL
 
 
 #define strappend(s0, s1) s0 = _strappend(s0, s1)
@@ -119,7 +119,7 @@ _strappend(char * s0, char * s1)
 
 // UTF-16 literals:
 #if __GNUC__ >= 5
-#define __W(s) u##s
+#define __W(s) L##s
 #else
 #define __W(s) L##s
 #endif
@@ -144,7 +144,7 @@ extern void wstrset(wstring *sp, wstring s);
 
 #define when break; case
 #define case_or : case
-#define otherwise break; default
+//#define otherwise break; default
 
 #ifdef TRACE
 #define trace(xs...) \

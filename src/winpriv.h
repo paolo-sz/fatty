@@ -33,7 +33,7 @@ extern int PADDING;
 extern bool show_charinfo;
 extern void toggle_charinfo(void);
 extern void toggle_vt220();
-extern void toggle_vt220_term(struct term* term);
+extern void toggle_vt220_term(struct term* term_p);
 extern char * fontpropinfo(void);
 
 extern int g_render_tab_height; // current tab height in pixels
@@ -63,7 +63,7 @@ extern void win_paint(void);
 extern void win_init_fonts(int size);
 extern wstring win_get_font(uint findex);
 extern void win_change_font(uint findex, wstring fn);
-extern void win_font_cs_reconfig(struct term* term, bool font_changed);
+extern void win_font_cs_reconfig(struct term* term_p, bool font_changed);
 
 extern void win_update_scrollbar(bool inner);
 extern void win_set_scrollview(int pos, int len, int height);
@@ -123,29 +123,29 @@ void win_tab_set_argv(char** argv);
 void win_tab_init(char* home, char* cmd, char** argv, int width, int height, char* title);
 int win_tab_count();
 int win_active_tab();
-void win_tab_change(struct term* term, int change);
-void win_tab_move(struct term* term, int amount);
-void win_tab_create(struct term* term);
-void win_tab_delete(struct term* term);
+void win_tab_change(struct term* term_p, int change);
+void win_tab_move(struct term* term_p, int amount);
+void win_tab_create(struct term* term_p);
+void win_tab_delete(struct term* term_p);
 void win_tab_clean();
-void win_tab_attention(struct term* term);
-void win_tab_set_title(struct term* term, wchar_t* title);
+void win_tab_attention(struct term* term_p);
+void win_tab_set_title(struct term* term_p, wchar_t* title);
 wchar_t* win_tab_get_title(unsigned int idx);
 
-void win_tab_title_push(struct term* term);
-wchar_t* win_tab_title_pop(struct term* term);
-void win_tab_save_title(struct term* term);
-void win_tab_restore_title(struct term* term);
+void win_tab_title_push(struct term* term_p);
+wchar_t* win_tab_title_pop(struct term* term_p);
+void win_tab_save_title(struct term* term_p);
+void win_tab_restore_title(struct term* term_p);
 
 void win_tab_mouse_click();
 int win_tab_height();
 void win_paint_tabs(LPARAM lp, int width);
-void win_for_each_term(void (*cb)(struct term* term));
-void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool param);
+void win_for_each_term(void (*cb)(struct term* term_p));
+void win_for_each_term_bool(void (*cb)(struct term* term_p, bool param), bool param);
 
 bool win_should_die();
 extern void win_close(void);
-extern void win_tab_close(struct term** term);
+extern void win_tab_close(struct term** term_pp);
 void win_tab_close_all();
 
 void win_tab_menu();

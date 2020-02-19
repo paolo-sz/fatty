@@ -4,6 +4,17 @@
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define CINTERFACE
+
+#include <algorithm>
+
+using std::min;
+using std::max;
+  
+extern "C" {
+  
+#include "std.h"
+  
 #define dont_debuglog
 #ifdef debuglog
 FILE * mtlog = 0;
@@ -232,32 +243,32 @@ load_dwm_funcs(void)
 
   if (dwm) {
     pDwmIsCompositionEnabled =
-      (void *)GetProcAddress(dwm, "DwmIsCompositionEnabled");
+      (HRESULT (*)(BOOL*))GetProcAddress(dwm, "DwmIsCompositionEnabled");
     pDwmExtendFrameIntoClientArea =
-      (void *)GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
+      (HRESULT (*)(HWND, const MARGINS*))GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
     pDwmEnableBlurBehindWindow =
-      (void *)GetProcAddress(dwm, "DwmEnableBlurBehindWindow");
+      (HRESULT (*)(HWND, void*))GetProcAddress(dwm, "DwmEnableBlurBehindWindow");
     pDwmSetWindowAttribute = 
-      (void *)GetProcAddress(dwm, "DwmSetWindowAttribute");
+      (HRESULT (*)(HWND, DWORD, LPCVOID, DWORD))GetProcAddress(dwm, "DwmSetWindowAttribute");
   }
   if (user32) {
     pSetWindowCompositionAttribute =
-      (void *)GetProcAddress(user32, "SetWindowCompositionAttribute");
+      (HRESULT (*)(HWND, void*))GetProcAddress(user32, "SetWindowCompositionAttribute");
     pSystemParametersInfo =
-      (void *)GetProcAddress(user32, "SystemParametersInfoW");
+      (BOOL (*)(UINT, UINT, PVOID, UINT))GetProcAddress(user32, "SystemParametersInfoW");
   }
   if (uxtheme) {
     pShouldAppsUseDarkMode = 
-      (void *)GetProcAddress(uxtheme, MAKEINTRESOURCEA(132)); /* ordinal */
+      (BOOLEAN (*)())GetProcAddress(uxtheme, MAKEINTRESOURCEA(132)); /* ordinal */
     pSetWindowTheme = 
-      (void *)GetProcAddress(uxtheme, "SetWindowTheme");
+      (HRESULT (*)(HWND, const wchar_t*, const wchar_t*))GetProcAddress(uxtheme, "SetWindowTheme");
     pOpenThemeData =
-      (void *)GetProcAddress(uxtheme, "OpenThemeData");
+      (void* (*)(HWND, LPCWSTR))GetProcAddress(uxtheme, "OpenThemeData");
     pCloseThemeData =
-      (void *)GetProcAddress(uxtheme, "CloseThemeData");
+      (HRESULT (*)(HANDLE))GetProcAddress(uxtheme, "CloseThemeData");
     if (pOpenThemeData && pCloseThemeData)
       pGetThemeSysColor =
-        (void *)GetProcAddress(uxtheme, "GetThemeSysColor");
+        (COLORREF (*)(HANDLE, int))GetProcAddress(uxtheme, "GetThemeSysColor");
   }
 }
 
@@ -266,7 +277,7 @@ load_library_func(string lib, string func)
 {
   HMODULE hm = load_sys_library(lib);
   if (hm)
-    return GetProcAddress(hm, func);
+    return (void *)GetProcAddress(hm, func);
   return 0;
 }
 
@@ -313,21 +324,21 @@ load_dpi_funcs(void)
 #endif
   if (shc) {
     pGetProcessDpiAwareness =
-      (void *)GetProcAddress(shc, "GetProcessDpiAwareness");
+      (HRESULT (*)(HANDLE, int*))GetProcAddress(shc, "GetProcessDpiAwareness");
     pSetProcessDpiAwareness =
-      (void *)GetProcAddress(shc, "SetProcessDpiAwareness");
+      (HRESULT (*)(int))GetProcAddress(shc, "SetProcessDpiAwareness");
     pGetDpiForMonitor =
-      (void *)GetProcAddress(shc, "GetDpiForMonitor");
+      (HRESULT (*)(HMONITOR, int, uint*, uint*))GetProcAddress(shc, "GetDpiForMonitor");
   }
   if (user) {
     pSetThreadDpiAwarenessContext =
-      (void *)GetProcAddress(user, "SetThreadDpiAwarenessContext");
+      (DPI_AWARENESS_CONTEXT__* (*)(DPI_AWARENESS_CONTEXT))GetProcAddress(user, "SetThreadDpiAwarenessContext");
     pEnableNonClientDpiScaling =
-      (void *)GetProcAddress(user, "EnableNonClientDpiScaling");
+      (HRESULT (*)(HWND))GetProcAddress(user, "EnableNonClientDpiScaling");
     pAdjustWindowRectExForDpi =
-      (void *)GetProcAddress(user, "AdjustWindowRectExForDpi");
+      (BOOL (*)(LPRECT, DWORD, BOOL, DWORD, UINT))GetProcAddress(user, "AdjustWindowRectExForDpi");
     pGetSystemMetricsForDpi =
-      (void *)GetProcAddress(user, "GetSystemMetricsForDpi");
+      (INT (*)(INT, UINT))GetProcAddress(user, "GetSystemMetricsForDpi");
   }
 #ifdef debug_dpi
   printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d SetThreadDpiAwarenessContext %d EnableNonClientDpiScaling %d AdjustWindowRectExForDpi %d GetSystemMetricsForDpi %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor, !!pSetThreadDpiAwarenessContext, !!pEnableNonClientDpiScaling, !!pAdjustWindowRectExForDpi, !!pGetSystemMetricsForDpi);
@@ -454,7 +465,7 @@ add_tabinfo(unsigned long tag, HWND wnd, wchar * title)
 static void
 sort_tabinfo()
 {
-  int comp_tabinfo(const void * t1, const void * t2)
+  auto comp_tabinfo = [](const void * t1, const void * t2) -> int
   {
     if (((struct tabinfo *)t1)->tag < ((struct tabinfo *)t2)->tag)
       return -1;
@@ -462,7 +473,7 @@ sort_tabinfo()
       return 1;
     else
       return 0;
-  }
+  };
   qsort(tabinfo, ntabinfo, sizeof(struct tabinfo), comp_tabinfo);
 }
 
@@ -474,7 +485,7 @@ sort_tabinfo()
 static void
 refresh_tab_titles(bool trace)
 {
-  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  auto wnd_enum_tabs = [](HWND curr_wnd, LPARAM lp) -> BOOL CALLBACK
   {
     bool trace = (bool)lp;
 
@@ -528,7 +539,7 @@ refresh_tab_titles(bool trace)
 
     }
     return true;
-  }
+  };
 
   clear_tabinfo();
   EnumWindows(wnd_enum_tabs, (LPARAM)trace);
@@ -545,7 +556,7 @@ refresh_tab_titles(bool trace)
 static void
 update_tab_titles()
 {
-  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  auto wnd_enum_tabs = [](HWND curr_wnd, LPARAM lp) -> BOOL CALLBACK
   {
     (void)lp;
     WINDOWINFO curr_wnd_info;
@@ -560,7 +571,7 @@ update_tab_titles()
       }
     }
     return true;
-  }
+  };
   if (cfg.geom_sync) {
     // update my own list
     refresh_tab_titles(true);
@@ -634,11 +645,13 @@ static int scroll_dif = 0;
 void
 win_set_scrollview(int pos, int len, int height)
 {
-  struct term* term = win_active_terminal();
-  bool prev = term->app_scrollbar;
-  term->app_scrollbar = pos;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
+  bool prev = term.app_scrollbar;
+  term.app_scrollbar = pos;
 
-  if (term->app_scrollbar != prev)
+  if (term.app_scrollbar != prev)
     win_update_scrollbar(false);
 
   if (pos) {
@@ -647,19 +660,21 @@ win_set_scrollview(int pos, int len, int height)
     else
       len = scroll_len;
     if (height >= 0)
-      scroll_dif = term->rows - height;
+      scroll_dif = term.rows - height;
     else if (!prev)
       scroll_dif = 0;
+    SCROLLINFO tmp_si = {
+        cbSize : sizeof(SCROLLINFO),
+        fMask : SIF_ALL | SIF_DISABLENOSCROLL,
+        nMin : 1,
+        nMax : len,
+        nPage : (uint)(term.rows - scroll_dif),
+        nPos : pos,
+        nTrackPos : 0
+      };
     SetScrollInfo(
       wnd, SB_VERT,
-      &(SCROLLINFO){
-        .cbSize = sizeof(SCROLLINFO),
-        .fMask = SIF_ALL | SIF_DISABLENOSCROLL,
-        .nMin = 1,
-        .nMax = len,
-        .nPage = term->rows - scroll_dif,
-        .nPos = pos,
-      },
+      &tmp_si,
       true  // redraw
     );
   }
@@ -930,7 +945,7 @@ win_gotab(uint n)
 static void
 win_synctabs(int level)
 {
-  BOOL CALLBACK wnd_enum_tabs(HWND curr_wnd, LPARAM lp)
+  auto wnd_enum_tabs = [](HWND curr_wnd, LPARAM lp) -> BOOL CALLBACK
   {
     int level = (int)lp;
 
@@ -956,7 +971,7 @@ win_synctabs(int level)
       }
     }
     return true;
-  }
+  };
 
 #ifdef debug_tabs
   printf("[%8p] win_synctabs\n", wnd);
@@ -1004,8 +1019,8 @@ get_monitor_info(int moni, MONITORINFO *mip)
     MONITORINFO *mip;
   };
 
-  BOOL CALLBACK
-  monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
+  auto
+  monitor_enum = [](HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData) -> BOOL CALLBACK
   {
     (void)hdcMonitor, (void)monp;
     struct data_get_monitor_info * pdata = (struct data_get_monitor_info *)dwData;
@@ -1013,11 +1028,11 @@ get_monitor_info(int moni, MONITORINFO *mip)
     GetMonitorInfo(hMonitor, pdata->mip);
 
     return --(pdata->moni) > 0;
-  }
+  };
 
   struct data_get_monitor_info data = {
-    .moni = moni,
-    .mip = mip
+    moni : moni,
+    mip : mip
   };
   EnumDisplayMonitors(0, 0, monitor_enum, (LPARAM)&data);
 }
@@ -1115,15 +1130,16 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
   };
 
   struct data_search_monitors data = {
-    .moni = 0,
-    .moni_found = 0,
-    .minx = minx,
-    .miny = miny,
-    .vscr = (RECT){0, 0, 0, 0},
-    .refmon = 0,
-    .curmon = lookup_mon ? 0 : MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST),
-    .get_primary = get_primary,
-    .print_monitors = !lookup_mon && !mip && get_primary
+    lookup_mon : 0,
+    moni : 0,
+    moni_found : 0,
+    minx : minx,
+    miny : miny,
+    vscr : (RECT){0, 0, 0, 0},
+    refmon : 0,
+    curmon : lookup_mon ? 0 : MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST),
+    get_primary : get_primary,
+    print_monitors : !lookup_mon && !mip && get_primary
   };
 
   * minx = 0;
@@ -1132,8 +1148,8 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
   data.print_monitors = !lookup_mon;
 #endif
 
-  BOOL CALLBACK
-  monitor_enum(HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData)
+  auto
+  monitor_enum = [](HMONITOR hMonitor, HDC hdcMonitor, LPRECT monp, LPARAM dwData) -> BOOL CALLBACK
   {
     struct data_search_monitors *data = (struct data_search_monitors *)dwData;
     (void)hdcMonitor, (void)monp;
@@ -1179,7 +1195,7 @@ search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MO
     }
 
     return TRUE;
-  }
+  };
 
   EnumDisplayMonitors(0, 0, monitor_enum, (LPARAM)&data);
 
@@ -1396,7 +1412,8 @@ win_update_glass(bool opaque)
     !(opaque && win_active_terminal()->has_focus);
 
   if (pDwmExtendFrameIntoClientArea) {
-    pDwmExtendFrameIntoClientArea(wnd, &(MARGINS){enabled ? -1 : 0, 0, 0, 0});
+    MARGINS tmp_m = {enabled ? -1 : 0, 0, 0, 0};
+    pDwmExtendFrameIntoClientArea(wnd, &tmp_m);
   }
 
   if (pSetWindowCompositionAttribute) {
@@ -1567,8 +1584,9 @@ win_fix_position(void)
 void
 win_set_chars(int rows, int cols)
 {
-  struct term* term = win_active_terminal();
-
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   trace_resize(("--- win_set_chars %d×%d\n", rows, cols));
 
   if (win_is_fullscreen)
@@ -1576,7 +1594,7 @@ win_set_chars(int rows, int cols)
 
   // prevent resizing to same logical size
   // which would remove bottom padding and spoil some Windows magic (#629)
-  if (rows != term->rows || cols != term->cols) {
+  if (rows != term.rows || cols != term.cols) {
     win_set_pixels(rows * cell_height + win_tab_height(), cols * cell_width);
     win_fix_position();
   }
@@ -1593,13 +1611,14 @@ flash_taskbar(bool enable)
 {
   static bool enabled;
   if (enable != enabled) {
-    FlashWindowEx(&(FLASHWINFO){
-      .cbSize = sizeof(FLASHWINFO),
-      .hwnd = wnd,
-      .dwFlags = enable ? FLASHW_TRAY | FLASHW_TIMER : FLASHW_STOP,
-      .uCount = 1,
-      .dwTimeout = 0
-    });
+    FLASHWINFO tmp_fi = {
+      cbSize : sizeof(FLASHWINFO),
+      hwnd : wnd,
+      dwFlags : (uint)(enable ? FLASHW_TRAY | FLASHW_TIMER : FLASHW_STOP),
+      uCount : 1,
+      dwTimeout : 0
+    };
+    FlashWindowEx(&tmp_fi);
     enabled = enable;
   }
 }
@@ -1608,21 +1627,24 @@ static void
 flash_border()
 {
   //FlashWindow(wnd, 1);
-  FlashWindowEx(&(FLASHWINFO){
-    .cbSize = sizeof(FLASHWINFO),
-    .hwnd = wnd,
-    .dwFlags = FLASHW_CAPTION,
-    .uCount = 1,
-    .dwTimeout = 0
-  });
+  FLASHWINFO tmp_fi = {
+    cbSize : sizeof(FLASHWINFO),
+    hwnd : wnd,
+    dwFlags : FLASHW_CAPTION,
+    uCount : 1,
+    dwTimeout : 0
+  };
+  FlashWindowEx(&tmp_fi);
 }
 
 /*
  * Bell.
  */
 void
-win_bell(struct term* term, config * conf)
+win_bell(struct term* term_p, config * conf)
 {
+  struct term& term = *term_p;
+  
   do_update();
 
   static unsigned long last_bell = 0;
@@ -1687,12 +1709,12 @@ win_bell(struct term* term, config * conf)
 
   if (cfg.bell_flash_style & FLASH_FRAME)
     flash_border();
-  if (term->bell_taskbar && (!term->has_focus || win_is_iconic()))
+  if (term.bell_taskbar && (!term.has_focus || win_is_iconic()))
     flash_taskbar(true);
-  if (term->bell_popup)
+  if (term.bell_popup)
     win_set_zorder(true);
-  if (!term->has_focus)
-    win_tab_attention(term);
+  if (!term.has_focus)
+    win_tab_attention(term_p);
 }
 
 void
@@ -1811,10 +1833,12 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
   printf("\n");
 #endif
 
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   if (sync_size_with_font && !win_is_fullscreen) {
-    // enforced win_set_chars(term->rows, term->cols):
-    win_set_pixels(term->rows * cell_height + win_tab_height(), term->cols * cell_width);
+    // enforced win_set_chars(term.rows, term.cols):
+    win_set_pixels(term.rows * cell_height + win_tab_height(), term.cols * cell_width);
     win_fix_position();
     trace_winsize("win_adapt_term_size > win_fix_position");
 
@@ -1841,7 +1865,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     term_height -= SEARCHBAR_HEIGHT;
   }
 
-  if (scale_font_with_size && term->cols != 0 && term->rows != 0) {
+  if (scale_font_with_size && term.cols != 0 && term.rows != 0) {
     // calc preliminary size (without font scaling), as below
     // should use term_height rather than rows; calc and store in term_resize
     int cols0 = max(1, term_width / cell_width);
@@ -1851,7 +1875,7 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
     // cols0/term.cols gives a rough scaling factor for cell_width
     // cell_height, cell_width give a rough scaling indication for font_size
     // height or width could be considered more according to preference
-    bool bigger = rows0 * cols0 > term->rows * term->cols;
+    bool bigger = rows0 * cols0 > term.rows * term.cols;
     int font_size1 =
       // heuristic best approach taken...
       // bigger
@@ -1861,12 +1885,12 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
       //   ? font_size * rows0 / term.rows + 2
       //   : font_size * rows0 / term.rows;
       bigger
-        ? (font_size * rows0 / term->rows + font_size * cols0 / term->cols) / 2 + 1
-        : (font_size * rows0 / term->rows + font_size * cols0 / term->cols) / 2;
+        ? (font_size * rows0 / term.rows + font_size * cols0 / term.cols) / 2 + 1
+        : (font_size * rows0 / term.rows + font_size * cols0 / term.cols) / 2;
       // bigger
       //   ? font_size * rows0 * cols0 / (term.rows * term.cols)
       //   : font_size * rows0 * cols0 / (term.rows * term.cols);
-      trace_resize(("term size %d %d -> %d %d\n", term->rows, term->cols, rows0, cols0));
+      trace_resize(("term size %d %d -> %d %d\n", term.rows, term.cols, rows0, cols0));
       trace_resize(("font size %d -> %d\n", font_size, font_size1));
 
     // heuristic attempt to stabilize font size roundtrips, esp. after fullscreen
@@ -1878,15 +1902,15 @@ win_adapt_term_size(bool sync_size_with_font, bool scale_font_with_size)
 
   int cols = max(1, term_width / cell_width);
   int rows = max(1, term_height / cell_height);
-  if (rows != term->rows || cols != term->cols) {
-    term_resize(term, rows, cols);
-    struct winsize ws = {rows, cols, cols * cell_width, rows * cell_height};
-    child_resize(term->child, &ws);
+  if (rows != term.rows || cols != term.cols) {
+    term_resize(term_p, rows, cols);
+    struct winsize ws = {(unsigned short)rows, (unsigned short)cols, (unsigned short)(cols * cell_width), (unsigned short)(rows * cell_height)};
+    child_resize(term.child, &ws);
   }
   win_invalidate_all(false);
 
   win_update_search();
-  term_schedule_search_update(term);
+  term_schedule_search_update(term_p);
   win_schedule_update();
 }
 
@@ -2019,17 +2043,19 @@ win_update_scrollbar(bool inner)
 }
 
 void
-win_font_cs_reconfig(struct term* term, bool font_changed)
+win_font_cs_reconfig(struct term* term_p, bool font_changed)
 {
+  struct term& term = *term_p;
+  
   bool old_ambig_wide = cs_ambig_wide;
   cs_reconfig();
-  if (term->report_font_changed && font_changed)
-    if (term->report_ambig_width)
-      child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
+  if (term.report_font_changed && font_changed)
+    if (term.report_ambig_width)
+      child_write(term.child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
     else
-      child_write(term->child, "\e[0W", 4);
-  else if (term->report_ambig_width && old_ambig_wide != cs_ambig_wide)
-    child_write(term->child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
+      child_write(term.child, "\e[0W", 4);
+  else if (term.report_ambig_width && old_ambig_wide != cs_ambig_wide)
+    child_write(term.child, cs_ambig_wide ? "\e[2W" : "\e[1W", 4);
 }
 
 static void
@@ -2075,7 +2101,7 @@ win_reconfig(void)
     win_set_colour(CURSOR_COLOUR_I, new_cfg.cursor_colour);
 
   /* Copy the new config and refresh everything */
-  copy_config("win_reconfig", &cfg, &new_cfg);
+  copy_config((char *)"win_reconfig", &cfg, &new_cfg);
 
   if (emojistyle_changed) {
     clear_emoji_data();
@@ -2135,12 +2161,12 @@ confirm_multi_tab(void)
 void
 win_close(void)
 {
-  struct term* term = 0;
-  if (term_initialized) term = win_active_terminal();
+  struct term* term_p = 0;
+  if (term_initialized) term_p = win_active_terminal();
   if (win_tab_count() > 1) {
     switch (confirm_multi_tab()) {
       when IDNO: {
-        win_tab_close(&term);
+        win_tab_close(&term_p);
         return;
       }
       when IDCANCEL:
@@ -2152,12 +2178,12 @@ win_close(void)
 }
 
 void
-win_tab_close(struct term** term)
+win_tab_close(struct term** term_pp)
 {
   if (win_tab_count() > 1) {
     if (!cfg.confirm_exit || confirm_tab_exit()) {
-      win_tab_delete(*term);
-      *term = win_active_terminal();
+      win_tab_delete(*term_pp);
+      *term_pp = win_active_terminal();
     }
   } else {
     win_close();
@@ -2176,7 +2202,7 @@ show_message(char * msg, UINT type)
   char * outmsg = cs__utftombs(msg);
   if (fputs(outmsg, out) < 0 || fputs("\n", out) < 0 || fflush(out) < 0) {
     wchar * wmsg = cs__utftowcs(msg);
-    message_box_w(0, wmsg, W(APPNAME), type, null);
+    message_box_w(0, wmsg, (wchar *)(W(APPNAME)), type, null);
     std_delete(wmsg);
   }
   std_delete(outmsg);
@@ -2251,7 +2277,7 @@ option_error(char * msg, char * option, int err)
   char * optmsg = opterror_msg(_(msg), false, option, null);
   //char * fullmsg = asform("%s\n%s", optmsg, _("Try '--help' for more information"));
   char * fullmsg = strdup(optmsg);
-  strappend(fullmsg, "\n");
+  strappend(fullmsg, (char *)"\n");
   if (err) {
     strappend(fullmsg, asform("[Error info %d]\n", err));
   }
@@ -2327,8 +2353,10 @@ static struct {
     printf("[%d]->%8p %04X %s (%04X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
-  struct term* term = 0;
-  if (term_initialized) term = win_active_terminal();
+  struct term* term_p = 0;
+  if (term_initialized) term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   switch (message) {
     when WM_NCCREATE:
       if (cfg.handle_dpichanged && pEnableNonClientDpiScaling) {
@@ -2466,26 +2494,26 @@ static struct {
       else if ((wp & ~0xF) >= IDM_SESSIONCOMMAND)
         win_launch(wp - IDM_SESSIONCOMMAND);
       else if ((wp & ~0xF) >= IDM_USERCOMMAND)
-        user_command(term->child, cfg.user_commands, wp - IDM_USERCOMMAND);
+        user_command(term.child, cfg.user_commands, wp - IDM_USERCOMMAND);
       else
       switch (wp & ~0xF) {  /* low 4 bits reserved to Windows */
-        when IDM_BREAK: child_break(term->child);
-        when IDM_OPEN: term_open(term);
-        when IDM_COPY: term_copy(term);
-        when IDM_COPY_TEXT: term_copy_as(term, 't');
-        when IDM_COPY_RTF: term_copy_as(term, 'r');
-        when IDM_COPY_HTXT: term_copy_as(term, 'h');
-        when IDM_COPY_HFMT: term_copy_as(term, 'f');
-        when IDM_COPY_HTML: term_copy_as(term, 'H');
-        when IDM_COPASTE: term_copy(term); win_paste();
-        when IDM_CLRSCRLBCK: term_clear_scrollback(term); term->disptop = 0;
+        when IDM_BREAK: child_break(term.child);
+        when IDM_OPEN: term_open(term_p);
+        when IDM_COPY: term_copy(term_p);
+        when IDM_COPY_TEXT: term_copy_as(term_p, 't');
+        when IDM_COPY_RTF: term_copy_as(term_p, 'r');
+        when IDM_COPY_HTXT: term_copy_as(term_p, 'h');
+        when IDM_COPY_HFMT: term_copy_as(term_p, 'f');
+        when IDM_COPY_HTML: term_copy_as(term_p, 'H');
+        when IDM_COPASTE: term_copy(term_p); win_paste();
+        when IDM_CLRSCRLBCK: term_clear_scrollback(term_p); term.disptop = 0;
         when IDM_TOGLOG: toggle_logging();
         when IDM_HTML: term_export_html(GetKeyState(VK_SHIFT) & 0x80);
         when IDM_TOGCHARINFO: toggle_charinfo();
-        when IDM_TOGVT220KB: toggle_vt220_term(term);
+        when IDM_TOGVT220KB: toggle_vt220_term(term_p);
         when IDM_PASTE: win_paste();
-        when IDM_SELALL: term_select_all(term); win_update(false);
-        when IDM_RESET: winimgs_clear(term); term_reset(term, true); win_update(false);
+        when IDM_SELALL: term_select_all(term_p); win_update(false);
+        when IDM_RESET: winimgs_clear(term_p); term_reset(term_p, true); win_update(false);
         when IDM_DEFSIZE:
           default_size_token = true;
           default_size();
@@ -2516,14 +2544,14 @@ static struct {
           }
           win_maximise(win_is_fullscreen ? 0 : 2);
 
-          term_schedule_search_update(term);
+          term_schedule_search_update(term_p);
           win_update_search();
         }
         when IDM_SCROLLBAR:
-          term->show_scrollbar = !term->show_scrollbar;
+          term.show_scrollbar = !term.show_scrollbar;
           win_update_scrollbar(false);
         when IDM_SEARCH: win_open_search();
-        when IDM_FLIPSCREEN: term_flip_screen(term);
+        when IDM_FLIPSCREEN: term_flip_screen(term_p);
         when IDM_OPTIONS: win_open_config();
 //        when IDM_NEW: {
 //          HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
@@ -2536,12 +2564,12 @@ static struct {
 //          child_fork(main_argc, main_argv, moni);
 //        }
         when IDM_COPYTITLE: win_copy_title();
-        when IDM_NEWTAB: win_tab_create(term);
-        when IDM_KILLTAB: win_tab_close(&term);
-        when IDM_PREVTAB: win_tab_change(term, -1);
-        when IDM_NEXTTAB: win_tab_change(term, +1);
-        when IDM_MOVELEFT: win_tab_move(term, -1);
-        when IDM_MOVERIGHT: win_tab_move(term, +1);
+        when IDM_NEWTAB: win_tab_create(term_p);
+        when IDM_KILLTAB: win_tab_close(&term_p);
+        when IDM_PREVTAB: win_tab_change(term_p, -1);
+        when IDM_NEXTTAB: win_tab_change(term_p, +1);
+        when IDM_MOVELEFT: win_tab_move(term_p, -1);
+        when IDM_MOVERIGHT: win_tab_move(term_p, +1);
         when IDM_KEY_DOWN_UP: {
           bool on = lp & 0x10000;
           int vk = lp & 0xFFFF;
@@ -2556,50 +2584,50 @@ static struct {
 
     when WM_VSCROLL:
       //printf("WM_VSCROLL %d\n", LOWORD(wp));
-      if (!term->app_scrollbar)
+      if (!term.app_scrollbar)
         switch (LOWORD(wp)) {
-          when SB_LINEUP:   term_scroll(term, 0, -1);
-          when SB_LINEDOWN: term_scroll(term, 0, +1);
-          when SB_PAGEUP:   term_scroll(term, 0, -max(1, term->rows - 1));
-          when SB_PAGEDOWN: term_scroll(term, 0, +max(1, term->rows - 1));
+          when SB_LINEUP:   term_scroll(term_p, 0, -1);
+          when SB_LINEDOWN: term_scroll(term_p, 0, +1);
+          when SB_PAGEUP:   term_scroll(term_p, 0, -max(1, term.rows - 1));
+          when SB_PAGEDOWN: term_scroll(term_p, 0, +max(1, term.rows - 1));
           when SB_THUMBPOSITION case_or SB_THUMBTRACK: {
             SCROLLINFO info;
             info.cbSize = sizeof(SCROLLINFO);
             info.fMask = SIF_TRACKPOS;
             GetScrollInfo(wnd, SB_VERT, &info);
-            term_scroll(term, 1, info.nTrackPos);
+            term_scroll(term_p, 1, info.nTrackPos);
           }
-          when SB_TOP:      term_scroll(term, +1, 0);
-          when SB_BOTTOM:   term_scroll(term, -1, 0);
+          when SB_TOP:      term_scroll(term_p, +1, 0);
+          when SB_BOTTOM:   term_scroll(term_p, -1, 0);
           //when SB_ENDSCROLL: ;
           // these two may be used by mintty keyboard shortcuts (not by Windows)
-          when SB_PRIOR:    term_scroll(term, SB_PRIOR, 0);
-          when SB_NEXT:     term_scroll(term, SB_NEXT, 0);
+          when SB_PRIOR:    term_scroll(term_p, SB_PRIOR, 0);
+          when SB_NEXT:     term_scroll(term_p, SB_NEXT, 0);
         }
       else {
         switch (LOWORD(wp)) {
           when SB_LINEUP:
             //win_key_down(VK_UP, 1);
-            win_csi_seq(term->child, "65", "#e");
+            win_csi_seq(term.child, (char *)"65", (char *)"#e");
           when SB_LINEDOWN:
             //win_key_down(VK_DOWN, 1);
-            win_csi_seq(term->child, "66", "#e");
+            win_csi_seq(term.child, (char *)"66", (char *)"#e");
           when SB_PAGEUP:
             //win_key_down(VK_PRIOR, 1);
-            win_csi_seq(term->child, "5", "#e");
+            win_csi_seq(term.child, (char *)"5", (char *)"#e");
           when SB_PAGEDOWN:
             //win_key_down(VK_NEXT, 1);
-            win_csi_seq(term->child, "6", "#e");
+            win_csi_seq(term.child, (char *)"6", (char *)"#e");
           when SB_TOP:
-            child_printf(term->child, "\e[0#d");
+            child_printf(term.child, "\e[0#d");
           when SB_BOTTOM:
-            child_printf(term->child, "\e[%u#d", scroll_len);
+            child_printf(term.child, "\e[%u#d", scroll_len);
           when SB_THUMBPOSITION case_or SB_THUMBTRACK: {
             SCROLLINFO info;
             info.cbSize = sizeof(SCROLLINFO);
             info.fMask = SIF_TRACKPOS;
             GetScrollInfo(wnd, SB_VERT, &info);
-            child_printf(term->child, "\e[%u#d", info.nTrackPos);
+            child_printf(term.child, "\e[%u#d", info.nTrackPos);
           }
         }
         // flush notification to handle auto-repeat click on scrollbar,
@@ -2628,7 +2656,7 @@ static struct {
           win_mouse_wheel(wpos, horizontal, delta);
         else if (!horizontal) {
           int hsb = win_has_scrollbar();
-          if (hsb && term->app_scrollbar) {
+          if (hsb && term.app_scrollbar) {
             int wsb = GetSystemMetrics(SM_CXVSCROLL);
             if ((hsb > 0 && wpos.x >= width && wpos.x < width + wsb)
              || (hsb < 0 && wpos.x < 0 && wpos.x >= - wsb)
@@ -2636,10 +2664,10 @@ static struct {
             {
               if (delta > 0) // mouse wheel up
                 //win_key_down(VK_UP, 1);
-                win_csi_seq(term->child, "65", "#e");
+                win_csi_seq(term.child, (char *)"65", (char *)"#e");
               else // mouse wheel down
                 //win_key_down(VK_DOWN, 1);
-                win_csi_seq(term->child, "66", "#e");
+                win_csi_seq(term.child, (char *)"66", (char *)"#e");
             }
           }
         }
@@ -2684,15 +2712,19 @@ static struct {
       if (win_key_up(wp, lp))
         return 0;
 
-    when WM_CHAR case_or WM_SYSCHAR:
-      child_sendw(term->child, &(wchar){wp}, 1);
+    when WM_CHAR case_or WM_SYSCHAR: {
+      wchar tmp_wp = {(wchar)wp};
+      child_sendw(term.child, &tmp_wp, 1);
       return 0;
+    }
 
-    when WM_MENUCHAR:
+    when WM_MENUCHAR: {
       // this is sent after leaving the system menu with ESC 
       // and typing a key; insert the key and prevent the beep
-      child_sendw(term->child, &(wchar){wp}, 1);
+      wchar tmp_wp = {(wchar)wp};
+      child_sendw(term.child, &tmp_wp, 1);
       return MNC_CLOSE << 16;
+    }
 
 #ifndef WM_CLIPBOARDUPDATE
 #define WM_CLIPBOARDUPDATE 0x031D
@@ -2702,7 +2734,7 @@ static struct {
       if (clipboard_token)
         clipboard_token = false;
       else {
-        term->selected = false;
+        term.selected = false;
         win_update(false);
       }
       return 0;
@@ -2736,7 +2768,7 @@ static struct {
         if (len > 0) {
           char buf[len];
           ImmGetCompositionStringW(imc, GCS_RESULTSTR, buf, len);
-          child_sendw(term->child, (wchar *)buf, len / 2);
+          child_sendw(term.child, (wchar *)buf, len / 2);
         }
         return 1;
       }
@@ -2798,16 +2830,16 @@ static struct {
     when WM_ACTIVATE:
       if ((wp & 0xF) != WA_INACTIVE) {
         flash_taskbar(false);  /* stop */
-        term_set_focus(term, true, true);
+        term_set_focus(term_p, true, true);
       } else {
-        term_set_focus(term, false, true);
+        term_set_focus(term_p, false, true);
       }
       win_update_transparency(cfg.opaque_when_focused);
       win_key_reset();
 
     when WM_SETFOCUS:
       trace_resize(("# WM_SETFOCUS VK_SHIFT %02X\n", (uchar)GetKeyState(VK_SHIFT)));
-      term_set_focus(term, true, false);
+      term_set_focus(term_p, true, false);
       win_sys_style(true);
       CreateCaret(wnd, caretbm, 0, 0);
       //flash_taskbar(false);  /* stop; not needed when leaving search bar */
@@ -2817,7 +2849,7 @@ static struct {
 
     when WM_KILLFOCUS:
       win_show_mouse();
-      term_set_focus(term, false, false);
+      term_set_focus(term_p, false, false);
       win_sys_style(false);
       win_destroy_tip();
       DestroyCaret();
@@ -2852,8 +2884,8 @@ static struct {
       LPRECT r = (LPRECT) lp;
       int width = r->right - r->left - extra_width - 2 * PADDING;
       int height = r->bottom - r->top - extra_height - 2 * PADDING - g_render_tab_height;
-      int cols = max(1, (float)width / cell_width + 0.5);
-      int rows = max(1, (float)height / cell_height + 0.5);
+      int cols = max(1, (int)((float)width / cell_width + 0.5));
+      int rows = max(1, (int)((float)height / cell_height + 0.5));
 
       int ew = width - cols * cell_width;
       int eh = height - rows * cell_height;
@@ -3022,16 +3054,16 @@ static struct {
 #endif
         dpi = new_dpi;
 
-        int y = term->rows, x = term->cols;
+        int y = term.rows, x = term.cols;
         SetWindowPos(wnd, 0, r->left, r->top, r->right - r->left, r->bottom - r->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
 
         font_cs_reconfig(true);
 
         // reestablish terminal size
-        if (term->rows != y || term->cols != x) {
+        if (term.rows != y || term.cols != x) {
 #ifdef debug_dpi
-          printf("term w/h %d/%d -> %d/%d, fixing\n", x, y, term->cols, term->rows);
+          printf("term w/h %d/%d -> %d/%d, fixing\n", x, y, term.cols, term.rows);
 #endif
           // win_fix_position also clips the window to desktop size
           win_set_chars(y, x);
@@ -3072,11 +3104,11 @@ static struct {
           long height = (r->bottom - r->top) * 20 / 19;
           SetWindowPos(wnd, 0, r->left, r->top, width, height,
                        SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
-          int y = term.rows, x = term->cols;
+          int y = term.rows, x = term.cols;
           win_adapt_term_size(false, true);
           //?win_init_fonts(cfg.font.size);
           // try to stabilize terminal size roundtrip
-          if (term.rows != y || term->cols != x) {
+          if (term.rows != y || term.cols != x) {
             // win_fix_position also clips the window to desktop size
             win_set_chars(y, x);
           }
@@ -3195,11 +3227,11 @@ report_pos(void)
     printf(*report_geom == 'o' ? " -o X=%d -o Y=%d" : " -p %d,%d", x, y);
     char * winstate = 0;
     if (win_is_fullscreen)
-      winstate = "full";
+      winstate = (char *)"full";
     else if (IsZoomed(wnd))
-      winstate = "max";
+      winstate = (char *)"max";
     else if (IsIconic(wnd))
-      winstate = "min";
+      winstate = (char *)"min";
     if (winstate)
       printf(*report_geom == 'o' ? " -o Window=%s" : " -w %s", winstate);
     printf("\n");
@@ -3245,12 +3277,12 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
   if (hres != S_FALSE && hres != S_OK)
     return 0;
 
-  hres = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
-                          &IID_IShellLinkW, (voidrefref) &shell_link);
+  hres = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER,
+                          IID_IShellLinkW, (voidrefref) &shell_link);
   if (!SUCCEEDED(hres))
     return 0;
 
-  hres = shell_link->lpVtbl->QueryInterface(shell_link, &IID_IPersistFile,
+  hres = shell_link->lpVtbl->QueryInterface(shell_link, IID_IPersistFile,
                                             (voidrefref) &persist_file);
   if (!SUCCEEDED(hres)) {
     shell_link->lpVtbl->Release(shell_link);
@@ -3273,7 +3305,7 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
     wchar * wicon = wil;
 
     /* Append ,icon-index if non-zero.  */
-    wchar * widx = W("");
+    wchar * widx = (wchar *)(W(""));
     if (index) {
       char idx[22];
       sprintf(idx, ",%d", index);
@@ -3281,7 +3313,7 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
     }
 
     /* Resolve leading Windows environment variable component.  */
-    wchar * wenv = W("");
+    wchar * wenv = (wchar *)(W(""));
     wchar * fin;
     if (wil[0] == '%' && wil[1] && wil[1] != '%' && (fin = wcschr(&wil[2], '%'))) {
       char var[fin - wil];
@@ -3364,15 +3396,15 @@ get_shortcut_appid(wchar * shortcut)
     return 0;
 
   IShellLink * link;
-  hres = CoCreateInstance(&CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, 
-                          &IID_IShellLink, (voidrefref) &link);
+  hres = CoCreateInstance(CLSID_ShellLink, NULL, CLSCTX_INPROC_SERVER, 
+                          IID_IShellLink, (voidrefref) &link);
   if (!SUCCEEDED(hres))
     return 0;
 
   wchar * res = 0;
 
   IPersistFile * file;
-  hres = link->lpVtbl->QueryInterface(link, &IID_IPersistFile, (voidrefref) &file);
+  hres = link->lpVtbl->QueryInterface(link, IID_IPersistFile, (voidrefref) &file);
   if (!SUCCEEDED(hres))
     goto rel1;
 
@@ -3381,12 +3413,12 @@ get_shortcut_appid(wchar * shortcut)
     goto rel2;
 
   IPropertyStore * store;
-  hres = link->lpVtbl->QueryInterface(link, &IID_IPropertyStore, (voidrefref) &store);
+  hres = link->lpVtbl->QueryInterface(link, IID_IPropertyStore, (voidrefref) &store);
   if (!SUCCEEDED(hres))
     goto rel3;
 
   PROPVARIANT pv;
-  hres = store->lpVtbl->GetValue(store, &PKEY_AppUserModel_ID, &pv);
+  hres = store->lpVtbl->GetValue(store, PKEY_AppUserModel_ID, &pv);
   if (!SUCCEEDED(hres))
     goto rel3;
 
@@ -3450,7 +3482,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
     load_library_func("wslapi.dll", "WslGetDistributionConfiguration");
 #endif
 
-  wchar * legacy_icon()
+  auto legacy_icon = [&]() -> wchar *
   {
     // "%LOCALAPPDATA%/lxss/bash.ico"
     char * icf = getenv("LOCALAPPDATA");
@@ -3461,9 +3493,9 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
       return icon;
     }
     return 0;
-  }
+  };
 
-  int getlxssdistinfo(bool list, HKEY lxss, wchar * guid)
+  auto getlxssdistinfo = [&](bool list, HKEY lxss, wchar * guid) -> int
   {
     wchar * rootfs;
     wchar * icon = 0;
@@ -3531,7 +3563,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
     *wsl_rootfs = rootfs;
     *wsl_icon = icon;
     return 0;
-  }
+  };
 
   if (!list && (!wslname || !*wslname)) {
     wchar * dd = getregstr(HKEY_CURRENT_USER, lxsskeyname, W("DefaultDistribution"));
@@ -3558,7 +3590,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
         err = 7;
 #else
       *wsl_ver = 1;
-      *wsl_guid = "";
+      *wsl_guid = (char *)"";
       *wsl_rootfs = W("");  // activate legacy tricks in winclip.c
       *wsl_icon = legacy_icon();
       err = 0;
@@ -3796,7 +3828,7 @@ configure_taskbar(wchar * app_id)
   if (prevent_pinning || (app_id && *app_id)) {
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
-      (void *)GetProcAddress(shell, "SHGetPropertyStoreForWindow");
+      (HRESULT (*)(HWND, const IID&, void**))GetProcAddress(shell, "SHGetPropertyStoreForWindow");
 #ifdef debug_properties
       printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
 #endif
@@ -3805,7 +3837,7 @@ configure_taskbar(wchar * app_id)
       HRESULT hr;
       PROPVARIANT var;
 
-      hr = pGetPropertyStore(wnd, &IID_IPropertyStore, (void **) &pps);
+      hr = pGetPropertyStore(wnd, IID_IPropertyStore, (void **) &pps);
 #ifdef debug_properties
       printf("IPropertyStore found %d\n", SUCCEEDED(hr));
 #endif
@@ -3821,7 +3853,7 @@ configure_taskbar(wchar * app_id)
           var.pwszVal = relaunch_command;
           var.vt = VT_LPWSTR;
           pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchCommand, &var);
+              PKEY_AppUserModel_RelaunchCommand, var);
         }
         if (relaunch_display_name && *relaunch_display_name) {
 #ifdef debug_properties
@@ -3830,7 +3862,7 @@ configure_taskbar(wchar * app_id)
           var.pwszVal = relaunch_display_name;
           var.vt = VT_LPWSTR;
           pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchDisplayNameResource, &var);
+              PKEY_AppUserModel_RelaunchDisplayNameResource, var);
         }
         if (relaunch_icon && *relaunch_icon) {
 #ifdef debug_properties
@@ -3839,7 +3871,7 @@ configure_taskbar(wchar * app_id)
           var.pwszVal = relaunch_icon;
           var.vt = VT_LPWSTR;
           pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_RelaunchIconResource, &var);
+              PKEY_AppUserModel_RelaunchIconResource, var);
         }
         if (prevent_pinning) {
           var.boolVal = VARIANT_TRUE;
@@ -3849,7 +3881,7 @@ configure_taskbar(wchar * app_id)
           var.vt = VT_BOOL;
           // PreventPinning must be set before setting ID
           pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_PreventPinning, &var);
+              PKEY_AppUserModel_PreventPinning, var);
         }
 #ifdef set_userpinned
 DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0xa8,0xd0,0xe1,0xd4,0x2d,0xe1,0xd5,0xf3,12);
@@ -3872,7 +3904,7 @@ DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0x
           var.pwszVal = app_id;
           var.vt = VT_LPWSTR;  // VT_EMPTY should remove but has no effect
           pps->lpVtbl->SetValue(pps,
-              &PKEY_AppUserModel_ID, &var);
+              PKEY_AppUserModel_ID, var);
         }
 
         pps->lpVtbl->Commit(pps);
@@ -4035,7 +4067,7 @@ main(int argc, char *argv[])
 
   main_argv = argv;
   main_argc = argc;
-  fatty_debug = getenv("FATTY_DEBUG") ?: "";
+  fatty_debug = getenv("FATTY_DEBUG") ?: (char *)"";
 #ifdef debuglog
   mtlog = fopen("/tmp/mtlog", "a");
   {
@@ -4088,14 +4120,14 @@ main(int argc, char *argv[])
       exearg ++;
     int err = select_WSL(exearg);
     if (err)
-      option_error(__("WSL distribution '%s' not found"), exearg ?: _("(Default)"), err);
+      option_error((char *)(__("WSL distribution '%s' not found")), exearg ?: _("(Default)"), err);
     else {
       wsl_launch = true;
       wsltty_appx = true;
     }
   }
 
-  char * getlocalappdata(void)
+  auto getlocalappdata = [&](void) -> char *
   {
     // get appx-redirected system dir, as investigated by Biswapriyo Nath
 #ifndef KF_FLAG_FORCE_APP_DATA_REDIRECTION
@@ -4103,7 +4135,7 @@ main(int argc, char *argv[])
 #endif
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pSHGetKnownFolderPath)(const GUID*, DWORD, HANDLE, wchar**) =
-      (void *)GetProcAddress(shell, "SHGetKnownFolderPath");
+      (HRESULT (*)(const GUID*, DWORD, HANDLE, wchar**))GetProcAddress(shell, "SHGetKnownFolderPath");
     if (!pSHGetKnownFolderPath)
       return 0;
     wchar * wlappdata;
@@ -4112,7 +4144,7 @@ main(int argc, char *argv[])
       return 0;
     else
       return path_win_w_to_posix(wlappdata);
-  }
+  };
 
   char * lappdata = 0;
   if (wsltty_appx)
@@ -4197,7 +4229,7 @@ main(int argc, char *argv[])
     if (opt == -1 || opt == 'e')
       break;
     char * longopt = argv[optind - 1];
-    char * shortopt = (char[]){'-', optopt, 0};
+    char shortopt[] = {'-', (char)optopt, 0};
     switch (opt) {
       when 'c': load_config(optarg, 3);
       when 'C': load_config(optarg, false);
@@ -4207,14 +4239,14 @@ main(int argc, char *argv[])
       when '': {
         int err = select_WSL(optarg);
         if (err)
-          option_error(__("WSL distribution '%s' not found"), optarg ?: _("(Default)"), err);
+          option_error((char *)(__("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
         else
           wsl_launch = true;
       }
       when '': {
         int err = select_WSL(optarg);
         if (err)
-          option_error(__("WSL distribution '%s' not found"), optarg ?: _("(Default)"), err);
+          option_error((char *)(__("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
       }
 #endif
       when '~':
@@ -4245,7 +4277,7 @@ main(int argc, char *argv[])
       }
       when '':
         if (config_dir)
-          option_error(__("Duplicate option '%s'"), "configdir", 0);
+          option_error((char *)(__("Duplicate option '%s'")), (char *)("configdir"), 0);
         else {
           config_dir = strdup(optarg);
           string rc_file = asform("%s/config", config_dir);
@@ -4253,9 +4285,9 @@ main(int argc, char *argv[])
           std_delete(rc_file);
         }
       when '?':
-        option_error(__("Unknown option '%s'"), optopt ? shortopt : longopt, 0);
+        option_error((char *)(__("Unknown option '%s'")), optopt ? shortopt : longopt, 0);
       when ':':
-        option_error(__("Option '%s' requires an argument"),
+        option_error((char *)(__("Option '%s' requires an argument")),
                      longopt[1] == '-' ? longopt : shortopt, 0);
       when 'h': set_arg_option("Hold", optarg);
       when 'i': set_arg_option("Icon", optarg);
@@ -4266,7 +4298,8 @@ main(int argc, char *argv[])
         set_arg_option("Log", optarg);
         set_arg_option("Logging", strdup("0"));
       when 'o': parse_arg_option(optarg);
-      when 'p':
+      when 'p': {
+        char tmp_c[2];
         if (strcmp(optarg, "center") == 0 || strcmp(optarg, "centre") == 0)
           center = true;
         else if (strcmp(optarg, "right") == 0)
@@ -4277,23 +4310,26 @@ main(int argc, char *argv[])
           left = true;
         else if (strcmp(optarg, "top") == 0)
           top = true;
-        else if (sscanf(optarg, "@%i%1s", &monitor, (char[2]){}) == 1)
+        else if (sscanf(optarg, "@%i%1s", &monitor, tmp_c) == 1)
           ;
-        else if (sscanf(optarg, "%i,%i%1s", &cfg.x, &cfg.y, (char[2]){}) == 2)
+        else if (sscanf(optarg, "%i,%i%1s", &cfg.x, &cfg.y, tmp_c) == 2)
           ;
         else
-          option_error(__("Syntax error in position argument '%s'"), optarg, 0);
-      when 's':
+          option_error((char *)(__("Syntax error in position argument '%s'")), optarg, 0);
+      }
+      when 's': {
+        char tmp_c[2];
         if (strcmp(optarg, "maxwidth") == 0)
           maxwidth = true;
         else if (strcmp(optarg, "maxheight") == 0)
           maxheight = true;
-        else if (sscanf(optarg, "%u,%u%1s", &cfg.cols, &cfg.rows, (char[2]){}) == 2)
+        else if (sscanf(optarg, "%u,%u%1s", &cfg.cols, &cfg.rows, tmp_c) == 2)
           ;
-        else if (sscanf(optarg, "%ux%u%1s", &cfg.cols, &cfg.rows, (char[2]){}) == 2)
+        else if (sscanf(optarg, "%ux%u%1s", &cfg.cols, &cfg.rows, tmp_c) == 2)
           ;
         else
-          option_error(__("Syntax error in size argument '%s'"), optarg, 0);
+          option_error((char *)(__("Syntax error in size argument '%s'")), optarg, 0);
+      }
       when 't':
         tablist_title[current_tab_size] = optarg;
       when 'T':
@@ -4321,8 +4357,9 @@ main(int argc, char *argv[])
             report_child_pid = true;
           when 'P':
             report_winpid = true;
-          otherwise:
-            option_error(__("Unknown option '%s'"), optarg, 0);
+            break;
+          default:
+            option_error((char *)(__("Unknown option '%s'")), optarg, 0);
         }
       when 'u': cfg.create_utmp = true;
       when '':
@@ -4343,11 +4380,11 @@ main(int argc, char *argv[])
         finish_config();  // ensure localized message
         //char * helptext = asform("%s %s %s\n\n%s", _(usage), APPNAME, _(synopsis), _(help));
         char * helptext = strdup(_(usage));
-        strappend(helptext, " ");
-        strappend(helptext, APPNAME);
-        strappend(helptext, " ");
+        strappend(helptext, (char *)" ");
+        strappend(helptext, (char *)APPNAME);
+        strappend(helptext, (char *)" ");
         strappend(helptext, _(synopsis));
-        strappend(helptext, "\n\n");
+        strappend(helptext, (char *)"\n\n");
         strappend(helptext, _(help));
         show_info(helptext);
         free(helptext);
@@ -4359,13 +4396,13 @@ main(int argc, char *argv[])
         //  asform("%s\n%s\n%s\n%s\n", 
         //         VERSION_TEXT, COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT));
         char * vertext = strdup(VERSION_TEXT);
-        strappend(vertext, "\n");
-        strappend(vertext, COPYRIGHT);
-        strappend(vertext, "\n");
-        strappend(vertext, LICENSE_TEXT);
-        strappend(vertext, "\n");
+        strappend(vertext, (char *)"\n");
+        strappend(vertext, (char *)COPYRIGHT);
+        strappend(vertext, (char *)"\n");
+        strappend(vertext, (char *)LICENSE_TEXT);
+        strappend(vertext, (char *)"\n");
         strappend(vertext, _(WARRANTY_TEXT));
-        strappend(vertext, "\n");
+        strappend(vertext, (char *)"\n");
         show_info(vertext);
         free(vertext);
         return 0;
@@ -4434,7 +4471,7 @@ main(int argc, char *argv[])
           oa += n;
 
         if (*oa)
-          option_error(__("Syntax error in geometry argument '%s'"), optarg, 0);
+          option_error((char *)(__("Syntax error in geometry argument '%s'")), optarg, 0);
       }
       when '': {
         int tfd = open(optarg, O_WRONLY | O_CREAT | O_APPEND | O_NOCTTY, 0600);
@@ -4445,7 +4482,7 @@ main(int argc, char *argv[])
     }
   }
 
-  copy_config("main after -o", &file_cfg, &cfg);
+  copy_config((char *)"main after -o", &file_cfg, &cfg);
   if (*cfg.colour_scheme)
     load_scheme(cfg.colour_scheme);
   else if (*cfg.theme_file)
@@ -4535,11 +4572,11 @@ main(int argc, char *argv[])
 # ifndef __x86_64__
     argc += 2;  // -V 1/2
 # endif
-    cmd = "/bin/wslbridge2";
-    char * cmd0 = "-wslbridge2";
+    cmd = (char *)"/bin/wslbridge2";
+    char * cmd0 = (char *)"-wslbridge2";
 #else
-    cmd = "/bin/wslbridge";
-    char * cmd0 = "-wslbridge";
+    cmd = (char *)"/bin/wslbridge";
+    char * cmd0 = (char *)"-wslbridge";
 #endif
     bool login_dash = false;
     if (*argv && !strcmp(*argv, "-") && !argv[1]) {
@@ -4575,7 +4612,7 @@ main(int argc, char *argv[])
     if (*wsl_guid) {
 #ifdef wslbridge2
       if (*wslname) {
-        *pargv++ = "-d";
+        *pargv++ = (char *)"-d";
         *pargv++ = cs__wcstombs(wslname);
       }
 #else
@@ -4586,12 +4623,12 @@ main(int argc, char *argv[])
 #ifdef wslbridge_t
     *pargv++ = "-t";
 #endif
-    *pargv++ = "-e";
-    *pargv++ = "APPDATA";
+    *pargv++ = (char *)"-e";
+    *pargv++ = (char *)"APPDATA";
     if (start_home) {
 #ifdef wslbridge2
-      *pargv++ = "--wsldir";
-      *pargv++ = "~";
+      *pargv++ = (char *)"--wsldir";
+      *pargv++ = (char *)"~";
 #else
       *pargv++ = "-C~";
 #endif
@@ -4599,7 +4636,7 @@ main(int argc, char *argv[])
 
 #if CYGWIN_VERSION_API_MINOR >= 74
     // provide wslbridge-backend in a reachable place for invocation
-    bool copyfile(char * fn, char * tn, bool overwrite)
+    auto copyfile = [&](char * fn, char * tn, bool overwrite) -> bool
     {
 # ifdef copyfile_posix
       int f = open(fn, O_BINARY | O_RDONLY);
@@ -4631,12 +4668,12 @@ main(int argc, char *argv[])
       free(src);
       return ok;
 # endif
-    }
+    };
 
     if (wsltty_appx && lappdata && *lappdata) {
 #ifdef wslbridge2
       char * wslbridge_backend = asform("%s/wslbridge2-backend", lappdata);
-      char * bin_backend = "/bin/wslbridge2-backend";
+      char * bin_backend = (char *)"/bin/wslbridge2-backend";
       bool ok = copyfile(bin_backend, wslbridge_backend, true);
 #else
       char * wslbridge_backend = asform("%s/wslbridge-backend", lappdata);
@@ -4644,7 +4681,7 @@ main(int argc, char *argv[])
 #endif
       (void)ok;
 
-      *pargv++ = "--backend";
+      *pargv++ = (char *)"--backend";
       *pargv++ = wslbridge_backend;
       // don't free(wslbridge_backend);
     }
@@ -4672,7 +4709,7 @@ main(int argc, char *argv[])
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
       (pw && pw->pw_shell && *pw->pw_shell) ? strdup(pw->pw_shell) :
 #endif
-      "/bin/sh";
+      (char *)"/bin/sh";
 
     // Determine the program name argument.
     char *slash = strrchr(cmd, '/');
@@ -4763,7 +4800,7 @@ main(int argc, char *argv[])
   if (*app_id && wcscmp(app_id, W("@")) != 0) {
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pSetAppID)(PCWSTR) =
-      (void *)GetProcAddress(shell, "SetCurrentProcessExplicitAppUserModelID");
+      (HRESULT (*)(PCWSTR))GetProcAddress(shell, "SetCurrentProcessExplicitAppUserModelID");
 
     if (pSetAppID)
       pSetAppID(app_id);
@@ -4797,20 +4834,21 @@ main(int argc, char *argv[])
   }
 
   // The window class.
-  class_atom = RegisterClassExW(&(WNDCLASSEXW){
-    .cbSize = sizeof(WNDCLASSEXW),
-    .style = 0,
-    .lpfnWndProc = win_proc,
-    .cbClsExtra = 0,
-    .cbWndExtra = 0,
-    .hInstance = inst,
-    .hIcon = large_icon ?: LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)),
-    .hIconSm = small_icon,
-    .hCursor = LoadCursor(null, IDC_IBEAM),
-    .hbrBackground = null,
-    .lpszMenuName = null,
-    .lpszClassName = wclass,
-  });
+  WNDCLASSEXW tmp_wndc = {
+    cbSize : sizeof(WNDCLASSEXW),
+    style : 0,
+    lpfnWndProc : win_proc,
+    cbClsExtra : 0,
+    cbWndExtra : 0,
+    hInstance : inst,
+    hIcon : large_icon ?: LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)),
+    hCursor : LoadCursor(null, IDC_IBEAM),
+    hbrBackground : null,
+    lpszMenuName : null,
+    lpszClassName : wclass,
+    hIconSm : small_icon
+  };
+  class_atom = RegisterClassExW(&tmp_wndc);
 
 
   // Initialise the fonts, thus also determining their width and height.
@@ -5099,7 +5137,7 @@ main(int argc, char *argv[])
     for (int i = 0; i < current_tab_size; i++) {
       if (tablist[i] != NULL) {
         char *tabexec = tablist[i];
-        char *tab_argv[4] = { cmd, "-c", tabexec, NULL };
+        char *tab_argv[4] = { cmd, (char *)"-c", tabexec, NULL };
 
         win_tab_init(home, cmd, tab_argv, term_width, term_height, tablist_title[i]);
       }
@@ -5115,14 +5153,16 @@ main(int argc, char *argv[])
   child_init();
 
   // Initialise the scroll bar.
+  SCROLLINFO tmp_si = {
+      cbSize : sizeof(SCROLLINFO),
+      fMask : SIF_ALL | SIF_DISABLENOSCROLL,
+      nMin : 0, nMax : term_rows - 1,
+      nPage : (uint)term_rows, nPos : 0,
+      nTrackPos : 0
+    };
   SetScrollInfo(
     wnd, SB_VERT,
-    &(SCROLLINFO){
-      .cbSize = sizeof(SCROLLINFO),
-      .fMask = SIF_ALL | SIF_DISABLENOSCROLL,
-      .nMin = 0, .nMax = term_rows - 1,
-      .nPage = term_rows, .nPos = 0,
-    },
+    &tmp_si,
     false
   );
 
@@ -5169,7 +5209,7 @@ main(int argc, char *argv[])
 
   // Set up clipboard notifications.
   HRESULT (WINAPI * pAddClipboardFormatListener)(HWND) =
-    load_library_func("user32.dll", "AddClipboardFormatListener");
+    (HRESULT (*)(HWND))load_library_func("user32.dll", "AddClipboardFormatListener");
   if (pAddClipboardFormatListener) {
     pAddClipboardFormatListener(wnd);
   }
@@ -5202,4 +5242,6 @@ main(int argc, char *argv[])
     }
     child_proc();
   } while (!win_should_die());
+}
+
 }

@@ -30,6 +30,8 @@
 // sale, use or other dealings in this Software without prior written
 // authorization.
 
+extern "C" {
+  
 #define SIXEL_RGB(r, g, b) (((r) << 16) + ((g) << 8) +  (b))
 
 int
@@ -112,4 +114,6 @@ hls_to_rgb(int hue, int lum, int sat)
     b = 100;
   }
   return SIXEL_RGB(r * 255 / 100, g * 255 / 100, b * 255 / 100);
+}
+
 }

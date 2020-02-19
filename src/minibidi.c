@@ -1,3 +1,5 @@
+extern "C" {
+  
 #include "minibidi.h"
 #include "term.h"  // UCSWIDE
 
@@ -58,7 +60,7 @@ shapetypes[(xh)-SHAPE_FIRST].type : SU) /*)) */
 #define leastGreaterEven(x) ( ((x)+2) &~ 1 )
 
 /* Shaping Types */
-enum {
+enum shape_type {
   SL,   /* Left-Joining, doesn't exist in U+0600 - U+06FF */
   SR,   /* Right-Joining, i.e. has Isolated, Final */
   SD,   /* Dual-Joining, i.e. has Isolated, Final, Initial, Medial */
@@ -67,7 +69,7 @@ enum {
 };
 
 typedef struct {
-  uchar type;
+  shape_type type;
   uchar form_b;
 } shape_node;
 
@@ -506,7 +508,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   uchar tempType;
   int i, j;
 
-  uchar bidi_class_of(int i) {
+  auto bidi_class_of = [&](int i) -> uchar {
     ucschar c = line[i].wc;
 
 #ifdef try_to_handle_CJK_here
@@ -539,7 +541,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       return R;
 
     return bidi_class(c);
-  }
+  };
 
  /* Rule (P1)  NOT IMPLEMENTED
   * P1. Split the text into separate paragraphs. A paragraph separator is
@@ -691,16 +693,16 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   bool dss_isol[count + 1];
   int dss_top = -1;
 
-  int countdss() { return dss_top + 1; }
+  auto countdss = [&]() -> int { return dss_top + 1; };
 
-  void pushdss() {
+  auto pushdss = [&]() {
     dss_top++;
     dss_emb[dss_top] = currentEmbedding;
     dss_ovr[dss_top] = currentOverride;
     dss_isol[dss_top] = currentIsolate;
-  }
+  };
 
-  void popdss() {
+  auto popdss = [&]() {
     // remove top
     if (dss_top >= 0)
       dss_top--;
@@ -710,7 +712,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       currentOverride = dss_ovr[dss_top];
       currentIsolate = dss_isol[dss_top];
     }
-  }
+  };
 
   pushdss();
   //int ovfIsolate = 0;
@@ -822,7 +824,8 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       when WS case_or S: /* Whitespace is treated as neutral for now */
         if (currentOverride != ON)
           tempType = currentOverride;
-      otherwise:
+        break;
+      default:
         if (currentOverride != ON)
           tempType = currentOverride;
     }
@@ -841,7 +844,8 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
         //types[i] = BN;
         types[i] = NSM;  // fixes 4594 test cases + 28 char test cases
         skip[i] = true;  // remove char from algorithm... (usage incomplete)
-      otherwise:
+        break;
+      default:
         skip[i] = false;
     }
   }
@@ -873,7 +877,8 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       switch (types[i - 1]) {
         when LRI case_or RLI case_or FSI case_or PDI:
           types[i] = ON;
-        otherwise:
+          break;
+        default:
           types[i] = types[i - 1];
       }
   }
@@ -974,13 +979,13 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
 #ifdef consider_BD13
   int isol_run_level;
 #endif
-  void clear_isol()
+  auto clear_isol = [&]()
   {
 #ifdef consider_BD13
     isol_run_level = 0;
 #endif
-  }
-  bool break_isol(int j)
+  };
+  auto break_isol = [&](int j) -> bool
   {
     if (!j)
       return true;
@@ -1019,7 +1024,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
     }
 #endif
     return false;
-  }
+  };
 
  /* Rule (W7)
   * W7. Search backwards from each instance of a European number until
@@ -1364,4 +1369,6 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
   // hidden from this algorithm and are maintained transparently to it.
 
   return resLevel;
+}
+
 }

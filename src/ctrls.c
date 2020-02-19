@@ -4,6 +4,12 @@
 // (corresponds to putty:dialog.c)
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#include <algorithm>
+
+using std::max;
+  
+extern "C" {
+  
 #include "ctrls.h"
 
 /*
@@ -359,7 +365,7 @@ ctrl_free(control *ctrl)
 void
 dlg_stdradiobutton_handler(control *ctrl, int event)
 {
-  char *val_p = ctrl->context;
+  char *val_p = (char *)ctrl->context;
   if (event == EVENT_REFRESH) {
     int button;
     for (button = 0; button < ctrl->radio.nbuttons; button++) {
@@ -378,7 +384,7 @@ dlg_stdradiobutton_handler(control *ctrl, int event)
 void
 dlg_stdcheckbox_handler(control *ctrl, int event)
 {
-  bool *bp = ctrl->context;
+  bool *bp = (bool *)ctrl->context;
   if (event == EVENT_REFRESH)
     dlg_checkbox_set(ctrl, *bp);
   else if (event == EVENT_VALCHANGE)
@@ -388,7 +394,7 @@ dlg_stdcheckbox_handler(control *ctrl, int event)
 void
 dlg_stdfontsel_handler(control *ctrl, int event)
 {
-  font_spec *fp = ctrl->context;
+  font_spec *fp = (font_spec *)ctrl->context;
   if (event == EVENT_REFRESH)
     dlg_fontsel_set(ctrl, fp);
   else if (event == EVENT_VALCHANGE)
@@ -398,7 +404,7 @@ dlg_stdfontsel_handler(control *ctrl, int event)
 void
 dlg_stdstringbox_handler(control *ctrl, int event)
 {
-  wstring *sp = ctrl->context;
+  wstring *sp = (wstring *)ctrl->context;
   if (event == EVENT_VALCHANGE)
     dlg_editbox_get_w(ctrl, sp);
   else if (event == EVENT_REFRESH)
@@ -408,7 +414,7 @@ dlg_stdstringbox_handler(control *ctrl, int event)
 void
 dlg_stdintbox_handler(control *ctrl, int event)
 {
-  int *ip = ctrl->context;
+  int *ip = (int *)ctrl->context;
   if (event == EVENT_VALCHANGE) {
       string val = 0;
       dlg_editbox_get(ctrl, &val);
@@ -425,7 +431,7 @@ dlg_stdintbox_handler(control *ctrl, int event)
 void
 dlg_stdcolour_handler(control *ctrl, int event)
 {
-  colour *cp = ctrl->context;
+  colour *cp = (colour *)ctrl->context;
   if (event == EVENT_ACTION)
     dlg_coloursel_start(*cp);
   else if (event == EVENT_CALLBACK) {
@@ -433,4 +439,6 @@ dlg_stdcolour_handler(control *ctrl, int event)
     if (dlg_coloursel_results(&c))
       *cp = c;
   }
+}
+
 }

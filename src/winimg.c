@@ -1,12 +1,20 @@
 // winimg.c (part of fatty)
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define CINTERFACE
+
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>   /* isdigit */
 #include <string.h>  /* memcpy */
 #include <windows.h>
+#include <algorithm>
 
+using std::min;
+using std::max;
+  
+extern "C" {
+  
 #include "term.h"
 #include "winpriv.h"
 #include "termpriv.h"
@@ -34,6 +42,9 @@ static IStream * (WINAPI * pSHCreateMemStream)(void *, UINT) = 0;
 #include <w32api/gdiplus/gdiplus.h>
 #include <w32api/gdiplus/gdiplusflat.h>
 
+using namespace Gdiplus;
+using namespace Gdiplus::DllExports;
+  
 #define dont_debug_gdiplus
 
 #ifdef debug_gdiplus
@@ -75,14 +86,14 @@ static void
 gdiplus_init(void)
 {
   GpStatus s;
-  static GdiplusStartupInput gi = (GdiplusStartupInput){1, NULL, FALSE, FALSE};
+  static GdiplusStartupInput gi = (GdiplusStartupInput){NULL, FALSE, FALSE};
   static ULONG_PTR gis = 0;
   if (!gis) {
     s = GdiplusStartup(&gis, &gi, NULL);
     gpcheck("startup", s);
 
     HMODULE shc = GetModuleHandleA("shlwapi");
-    pSHCreateMemStream = (void *)GetProcAddress(shc, "SHCreateMemStream");
+    pSHCreateMemStream = (IStream* (*)(void*, UINT))GetProcAddress(shc, "SHCreateMemStream");
   }
 }
 
@@ -96,7 +107,7 @@ tempfile_new(void)
   if (!fp)
     return NULL;
 
-  tempfile_t *tempfile = malloc(sizeof(tempfile_t));
+  tempfile_t *tempfile = (tempfile_t *)malloc(sizeof(tempfile_t));
   //printf("tempfile alloc %d -> %p\n", (int)sizeof(tempfile_t), tempfile);
   if (!tempfile)
     return NULL;
@@ -114,7 +125,7 @@ tempfile_destroy(tempfile_t *tempfile)
 {
   if (tempfile == tempfile_current)
     tempfile_current = NULL;
-  fclose(tempfile->fp);
+  fclose((FILE *)(tempfile->fp));
   //printf("free tempfile %p\n", tempfile);
   free(tempfile);
   tempfile_num--;
@@ -136,9 +147,9 @@ tempfile_deref(tempfile_t *tempfile)
 static size_t
 tempfile_size(tempfile_t *tempfile)
 {
-  fseek(tempfile->fp, 0L, SEEK_END);
+  fseek((FILE *)(tempfile->fp), 0L, SEEK_END);
   fpos_t fsize = 0;
-  fgetpos(tempfile->fp, &fsize);
+  fgetpos((FILE *)(tempfile->fp), &fsize);
 
   return (size_t)fsize;
 }
@@ -170,7 +181,7 @@ static bool
 tempfile_write(tempfile_t *tempfile, unsigned char *p, size_t pos, size_t size)
 {
   fseek((FILE *)tempfile->fp, pos, SEEK_SET);
-  size_t nbytes = fwrite(p, 1, size, tempfile->fp);
+  size_t nbytes = fwrite(p, 1, size, (FILE *)(tempfile->fp));
   if (nbytes != size)
     return false;
 
@@ -198,7 +209,7 @@ strage_create(void)
   if (!tempfile)
     return NULL;
 
-  temp_strage_t *strage = malloc(sizeof(temp_strage_t));
+  temp_strage_t *strage = (temp_strage_t *)malloc(sizeof(temp_strage_t));
   //printf("strage alloc %d -> %p\n", (int)sizeof(temp_strage_t), strage);
   if (!strage)
     return NULL;
@@ -419,10 +430,10 @@ winimg_lazyinit(imglist *img)
     bmpinfo.bmiHeader.biBitCount = 32;
     bmpinfo.bmiHeader.biCompression = BI_RGB;
     bmpinfo.bmiHeader.biSizeImage = 0;
-    img->hbmp = CreateDIBSection(dc, &bmpinfo, DIB_RGB_COLORS, (void*)&pixels, NULL, 0);
+    img->hbmp = CreateDIBSection(dc, &bmpinfo, DIB_RGB_COLORS, (void**)&pixels, NULL, 0);
     if (img->hbmp) {
       /*HGDIOBJ res =*/
-      SelectObject(img->hdc, img->hbmp);
+      SelectObject((HDC)(img->hdc), img->hbmp);
       uint size = winimg_len(img);
       if (img->pixels) {
         CopyMemory(pixels, img->pixels, size);
@@ -468,7 +479,7 @@ winimg_hibernate(imglist *img)
 #ifdef debug_dc
   printf("release dc, capacity ->%d\n", cdc);
 #endif
-  DeleteDC(img->hdc);
+  DeleteDC((HDC)(img->hdc));
   DeleteObject(img->hbmp);  // this also deallocates img->pixels
   img->hdc = NULL;
   img->hbmp = NULL;
@@ -483,7 +494,7 @@ winimg_destroy(imglist *img)
 #ifdef debug_dc
   printf("release dc, capacity ->%d\n", cdc);
 #endif
-    DeleteDC(img->hdc);
+    DeleteDC((HDC)(img->hdc));
     DeleteObject(img->hbmp);
   } else if (img->pixels) {
     //printf("winimg_destroy free pixels %p\n", img->pixels);
@@ -497,39 +508,43 @@ winimg_destroy(imglist *img)
 }
 
 void
-winimgs_clear(struct term* term)
+winimgs_clear(struct term* term_p)
 {
+  struct term& term = *term_p;
+    
   // clear parser state
-  sixel_parser_deinit(term->imgs.parser_state);
+  sixel_parser_deinit((sixel_state_t*)(term.imgs.parser_state));
   //printf("winimgs_clear free state %p\n", term.imgs.parser_state);
-  free(term->imgs.parser_state);
-  term->imgs.parser_state = NULL;
+  free(term.imgs.parser_state);
+  term.imgs.parser_state = NULL;
 
   imglist *img, *prev;
 
   // clear images in current screen
-  for (img = term->imgs.first; img; ) {
+  for (img = term.imgs.first; img; ) {
     prev = img;
     img = img->next;
     winimg_destroy(prev);
   }
 
   // clear images in alternate screen
-  for (img = term->imgs.altfirst; img; ) {
+  for (img = term.imgs.altfirst; img; ) {
     prev = img;
     img = img->next;
     winimg_destroy(prev);
   }
 
-  term->imgs.first = NULL;
-  term->imgs.last = NULL;
-  term->imgs.altfirst = NULL;
-  term->imgs.altlast = NULL;
+  term.imgs.first = NULL;
+  term.imgs.last = NULL;
+  term.imgs.altfirst = NULL;
+  term.imgs.altlast = NULL;
 }
 
 static void
-draw_img(struct term* term, HDC dc, imglist * img)
+draw_img(struct term* term_p, HDC dc, imglist * img)
 {
+    struct term& term = *term_p;
+    
 #if CYGWIN_VERSION_API_MINOR >= 74
     gdiplus_init();
 
@@ -547,7 +562,7 @@ draw_img(struct term* term, HDC dc, imglist * img)
 
     // position
     int left = img->left * cell_width;
-    int top = (img->top - term->virtuallines - term->disptop) * cell_height;
+    int top = (img->top - term.virtuallines - term.disptop) * cell_height;
     int width = img->pixelwidth;
     int height = img->pixelheight;
     left += PADDING;
@@ -561,7 +576,7 @@ draw_img(struct term* term, HDC dc, imglist * img)
         XFORM xform =
           (XFORM){(float)cell_width / (float)img->cwidth, 0.0,
                   0.0, (float)cell_height / (float)img->cheight,
-                  left, top};
+                  (float)left, (float)top};
         coord_transformed = SetWorldTransform(dc, &xform);
         left = 0;
         top = 0;
@@ -632,14 +647,17 @@ draw_img(struct term* term, HDC dc, imglist * img)
 }
 
 void
-winimgs_paint(struct term* term)
+winimgs_paint(struct term* term_p)
 {
+  struct term& term = *term_p;
+    
   imglist * img;
+  RECT tmp_rect;
 
   /* free disk space if number of tempfile exceeds TEMPFILE_MAX_NUM */
-  while (tempfile_num > TEMPFILE_MAX_NUM && term->imgs.first) {
-    img = term->imgs.first;
-    term->imgs.first = term->imgs.first->next;
+  while (tempfile_num > TEMPFILE_MAX_NUM && term.imgs.first) {
+    img = term.imgs.first;
+    term.imgs.first = term.imgs.first->next;
     winimg_destroy(img);
   }
 
@@ -648,23 +666,23 @@ winimgs_paint(struct term* term)
   RECT rc;
   GetClientRect(wnd, &rc);
   IntersectClipRect(dc, rc.left + PADDING, rc.top + PADDING,
-                    rc.left + PADDING +term->cols * cell_width,
-                    rc.top + PADDING + term->rows * cell_height);
+                    rc.left + PADDING +term.cols * cell_width,
+                    rc.top + PADDING + term.rows * cell_height);
 
   imglist * prev = 0;
-  for (img = term->imgs.first; img;) {
+  for (img = term.imgs.first; img;) {
     imglist * destrimg = 0;
 
-    if (img->top + img->height - term->virtuallines < - term->sblines) {
+    if (img->top + img->height - term.virtuallines < - term.sblines) {
       // if the image is out of scrollback, collect it
 #ifdef debug_img_list
-      printf("paint: destroy @%d h %d virt %lld sb %d\n", img->top, img->height, term->virtuallines, term->sblines);
+      printf("paint: destroy @%d h %d virt %lld sb %d\n", img->top, img->height, term.virtuallines, term.sblines);
 #endif
       destrimg = img;
     } else {
       int left = img->left;
-      int top = img->top - term->virtuallines - term->disptop;
-      if (top + img->height < 0 || top > term->rows) {
+      int top = img->top - term.virtuallines - term.disptop;
+      if (top + img->height < 0 || top > term.rows) {
         // if the image is scrolled out, serialize it into a temp file
 #ifdef debug_img_list
         if (img->hdc)
@@ -682,11 +700,11 @@ winimgs_paint(struct term* term)
         // overwritten cells are excluded from display,
         // if all cells are overwritten, flag for deletion
         bool disp_flag = false;
-        for (int y = max(0, top); y < min(top + img->height, term->rows); ++y) {
+        for (int y = max(0, top); y < min(top + img->height, term.rows); ++y) {
           int wide_factor =
-            (term->displines[y]->lattr & LATTR_MODE) == LATTR_NORM ? 1 : 2;
-          for (int x = left; x < min(left + img->width, term->cols); ++x) {
-            termchar *dchar = &term->displines[y]->chars[x];
+            (term.displines[y]->lattr & LATTR_MODE) == LATTR_NORM ? 1 : 2;
+          for (int x = left; x < min(left + img->width, term.cols); ++x) {
+            termchar *dchar = &term.displines[y]->chars[x];
 
             // if sixel image is overwritten by characters,
             // exclude the area from the clipping rect.
@@ -699,11 +717,11 @@ winimgs_paint(struct term* term)
             // if cell is overlaid by selection or cursor, exclude
             if (dchar->attr.attr & (TATTR_RESULT | TATTR_CURRESULT | TATTR_MARKED | TATTR_CURMARKED))
               clip_flag = true;
-            if (term->selected && !clip_flag) {
-              pos scrpos = {y + term->disptop, x, false};
-              clip_flag = term->sel_rect
-                  ? posPle(term->sel_start, scrpos) && posPlt(scrpos, term->sel_end)
-                  : posle(term->sel_start, scrpos) && poslt(scrpos, term->sel_end);
+            if (term.selected && !clip_flag) {
+              pos scrpos = {y + term.disptop, x, false};
+              clip_flag = term.sel_rect
+                  ? posPle(term.sel_start, scrpos) && posPlt(scrpos, term.sel_end)
+                  : posle(term.sel_start, scrpos) && poslt(scrpos, term.sel_end);
             }
             if (clip_flag)
               ExcludeClipRect(dc,
@@ -717,9 +735,9 @@ winimgs_paint(struct term* term)
         // fill image area background (in case it's smaller or transparent)
         // calculate area for padding
         int ytop = max(0, top) * cell_height + PADDING;
-        int ybot = min(top + img->height, term->rows) * cell_height + PADDING;
+        int ybot = min(top + img->height, term.rows) * cell_height + PADDING;
         int xlft = left * cell_width + PADDING;
-        int xrgt = min(left + img->width, term->cols) * cell_width + PADDING;
+        int xrgt = min(left + img->width, term.cols) * cell_width + PADDING;
         if (img->len) {
           // better background handling implemented below; this version 
           // would expose artefacts if a transparent image is scrolled
@@ -741,15 +759,19 @@ winimgs_paint(struct term* term)
           int ibot = max(0, top * cell_height + iheight) + PADDING;
           // fill either background image or colour
           if (*cfg.background) {
-            fill_background(dc, &(RECT){xlft + iwidth, ytop, xrgt, ibot});
-            fill_background(dc, &(RECT){xlft, ibot, xrgt, ybot});
+            tmp_rect = {xlft + iwidth, ytop, xrgt, ibot};
+            fill_background(dc, &tmp_rect);
+            tmp_rect = {xlft, ibot, xrgt, ybot};
+            fill_background(dc, &tmp_rect);
           }
           else {
-            colour bg = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
+            colour bg = colours[term.rvideo ? FG_COLOUR_I : BG_COLOUR_I];
             //bg = RGB(90, 150, 222);  // test background filling
             HBRUSH br = CreateSolidBrush(bg);
-            FillRect(dc, &(RECT){xlft + iwidth, ytop, xrgt, ibot}, br);
-            FillRect(dc, &(RECT){xlft, ibot, xrgt, ybot}, br);
+            tmp_rect = {xlft + iwidth, ytop, xrgt, ibot};
+            FillRect(dc, &tmp_rect, br);
+            tmp_rect = {xlft, ibot, xrgt, ybot};
+            FillRect(dc, &tmp_rect, br);
             DeleteObject(br);
           }
           if (!img->len) {
@@ -771,15 +793,17 @@ winimgs_paint(struct term* term)
             HDC hdc = CreateCompatibleDC(dc);
             HBITMAP hbm = CreateCompatibleBitmap(dc, xrgt, ybot);
             (void)SelectObject(hdc, hbm);
-            if (*cfg.background)
-              fill_background(hdc, &(RECT){0, 0, xrgt, ybot});
-            else {
-              colour bg = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
+            if (*cfg.background) {
+              tmp_rect = {0, 0, xrgt, ybot};
+              fill_background(hdc, &tmp_rect);
+            } else {
+              colour bg = colours[term.rvideo ? FG_COLOUR_I : BG_COLOUR_I];
               //bg = RGB(90, 150, 222);  // test background filling
               HBRUSH br = CreateSolidBrush(bg);
-              FillRect(hdc, &(RECT){0, 0, xrgt, ybot}, br);
+              tmp_rect = {0, 0, xrgt, ybot};
+              FillRect(hdc, &tmp_rect, br);
             }
-            draw_img(term, hdc, img);
+            draw_img(term_p, hdc, img);
             BitBlt(dc, xlft, ytop, xrgt - xlft, ybot - ytop,
                        hdc, xlft, ytop, SRCCOPY);
             DeleteObject(hbm);
@@ -789,10 +813,10 @@ winimgs_paint(struct term* term)
             StretchBlt(dc,
                        left * cell_width + PADDING, top * cell_height + PADDING,
                        img->width * cell_width, img->height * cell_height,
-                       img->hdc,
+                       (HDC)(img->hdc),
                        0, 0, img->pixelwidth, img->pixelheight, SRCCOPY);
         }
-        else if (top < 0 || top + img->height > term->rows) {
+        else if (top < 0 || top + img->height > term.rows) {
           // we did not check the scrolled-out image part, 
           // so keep the image for later display (when scrolled-in again)
         }
@@ -808,12 +832,12 @@ winimgs_paint(struct term* term)
 
     // proceed to next image in list; destroy current if requested
     if (destrimg) {
-      if (img == term->imgs.first)
-        term->imgs.first = img->next;
+      if (img == term.imgs.first)
+        term.imgs.first = img->next;
       if (prev)
         prev->next = img->next;
-      if (img == term->imgs.last)
-        term->imgs.last = prev;
+      if (img == term.imgs.last)
+        term.imgs.last = prev;
 
       img = img->next;
       winimg_destroy(destrimg);
@@ -961,3 +985,4 @@ win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int ele
 
 #endif
 
+}

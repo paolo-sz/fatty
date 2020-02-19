@@ -3,6 +3,8 @@
 // Based on mintty code by Andy Koppe, Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "child.h"
 
 #include "term.h"
@@ -742,7 +744,7 @@ child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
     if (rest)
       *rest++ = 0;
     else
-      rest = "";
+      rest = (char *)"";
     char * base;
     if (!*name)
       base = child->home;
@@ -750,7 +752,7 @@ child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
       // Find named user's home directory
       struct passwd * pw = getpwnam(name);
-      base = (pw ? pw->pw_dir : 0) ?: "";
+      base = (pw ? pw->pw_dir : 0) ?: (char *)"";
 #else
       // Pre-1.5 Cygwin simply copies HOME into pw_dir, which is no use here.
       base = "";
@@ -825,16 +827,16 @@ setup_sync()
 {
   if (cfg.geom_sync) {
     if (win_is_fullscreen) {
-      setenvi("FATTY_DX", 0);
-      setenvi("FATTY_DY", 0);
+      setenvi((char *)"FATTY_DX", 0);
+      setenvi((char *)"FATTY_DY", 0);
     }
     else {
       RECT r;
       GetWindowRect(wnd, &r);
-      setenvi("FATTY_X", r.left);
-      setenvi("FATTY_Y", r.top);
-      setenvi("FATTY_DX", r.right - r.left);
-      setenvi("FATTY_DY", r.bottom - r.top);
+      setenvi((char *)"FATTY_X", r.left);
+      setenvi((char *)"FATTY_Y", r.top);
+      setenvi((char *)"FATTY_DX", r.right - r.left);
+      setenvi((char *)"FATTY_DY", r.bottom - r.top);
     }
   }
 }
@@ -848,10 +850,10 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
   trace_dir(asform("do_child_fork: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
   setup_sync();
 
-  void reset_fork_mode()
+  auto reset_fork_mode = [&]()
   {
     clone_size_token = true;
-  }
+  };
 
   pid_t clone = fork();
 
@@ -949,15 +951,15 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
     // provide environment to clone size
     if (clone_size_token) {
-      setenvi("FATTY_ROWS", child->term->rows);
-      setenvi("FATTY_COLS", child->term->cols);
+      setenvi((char *)"FATTY_ROWS", child->term->rows);
+      setenvi((char *)"FATTY_COLS", child->term->cols);
     }
     // provide environment to select monitor
     if (moni > 0)
-      setenvi("FATTY_MONITOR", moni);
+      setenvi((char *)"FATTY_MONITOR", moni);
     // propagate shortcut-inherited icon
     if (icon_is_from_shortcut)
-      setenv("FATTY_ICON", cs__wcstoutf(cfg.icon), true);
+      setenv((char *)"FATTY_ICON", cs__wcstoutf(cfg.icon), true);
 
     //setenv("FATTY_CHILD", "1", true);
 
@@ -1059,3 +1061,4 @@ child_launch(struct child* child, int n, int argc, char * argv[], int moni)
   }
 }
 
+}

@@ -4,6 +4,13 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#include <algorithm>
+
+using std::max;
+using std::min;
+  
+extern "C" {
+  
 #include "term.h"
 #include "winpriv.h"
 #include "winsearch.h"
@@ -189,14 +196,14 @@ brighten(colour c, colour against, bool monotone)
   printf("%s %06X against %06X\n", darken ? "darkening" : "brighting", c, against);
 #endif
 
-  uint _brighter() {
-    uint s = min(85, 255 - max(max(r, g), b));
+  auto _brighter = [&]() -> uint {
+    uint s = min(85U, 255U - max(max(r, g), b));
     return make_colour(r + s, g + s, b + s);
-  }
-  uint _darker() {
+  };
+  auto _darker = [&]() -> uint {
     int sub = 70;
     return make_colour(max(0, (int)r - sub), max(0, (int)g - sub), max(0, (int)b - sub));
-  }
+  };
 
   colour bright;
   uint thrsh = 22222;  // contrast threshhold;
@@ -245,8 +252,8 @@ get_font_quality(void)
   return
     (uchar[]){
       [FS_DEFAULT] = DEFAULT_QUALITY,
-      [FS_NONE] = NONANTIALIASED_QUALITY,
       [FS_PARTIAL] = ANTIALIASED_QUALITY,
+      [FS_NONE] = NONANTIALIASED_QUALITY,
       [FS_FULL] = CLEARTYPE_QUALITY
     }[(int)cfg.font_smoothing];
 }
@@ -717,7 +724,7 @@ win_init_fontfamily(HDC dc, int findex)
   if (ff->und_mode == UND_FONT) {
     HDC und_dc = CreateCompatibleDC(dc);
     HBITMAP und_bm = CreateCompatibleBitmap(dc, cell_width, cell_height);
-    HBITMAP und_oldbm = SelectObject(und_dc, und_bm);
+    HBITMAP und_oldbm = (HBITMAP)SelectObject(und_dc, und_bm);
     SelectObject(und_dc, ff->fonts[FONT_UNDERLINE]);
     SetTextAlign(und_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
     SetTextColor(und_dc, RGB(255, 255, 255));
@@ -837,7 +844,7 @@ findFraktur(wstring * fnp)
   lf.lfPitchAndFamily = 0;
   lf.lfCharSet = ANSI_CHARSET;   // report only ANSI character range
 
-  int CALLBACK enum_fonts(const LOGFONTW * lfp, const TEXTMETRICW * tmp, DWORD fontType, LPARAM lParam)
+  auto enum_fonts = [](const LOGFONTW * lfp, const TEXTMETRICW * tmp, DWORD fontType, LPARAM lParam) -> int CALLBACK
   {
     (void)tmp;
     (void)fontType;
@@ -861,7 +868,7 @@ findFraktur(wstring * fnp)
       }
     }
     return 1;  // continue
-  }
+  };
 
   HDC dc = GetDC(0);
   EnumFontFamiliesExW(dc, 0, enum_fonts, (LPARAM)fnp, 0);
@@ -993,7 +1000,7 @@ init_charnametable()
     return;
   charnametable_init = true;
 
-  void add_charname(uint cc, char * cn) {
+  auto add_charname = [&](uint cc, char * cn) {
     if (charnametable_len >= charnametable_alloced) {
       charnametable_alloced += 999;
       if (!charnametable)
@@ -1005,7 +1012,7 @@ init_charnametable()
     charnametable[charnametable_len].uc = cc;
     charnametable[charnametable_len].un = strdup(cn);
     charnametable_len++;
-  }
+  };
 
   char * cnfn = get_resource_file(W("info"), W("charnames.txt"), false);
   FILE * cnf = fopen(cnfn, "r");
@@ -1069,7 +1076,7 @@ charname(xchar ucs)
       return (char *) mide;
     }
   }
-  return "";
+  return (char *)"";
 }
 
 void
@@ -1088,7 +1095,7 @@ show_curchar_info(char tag)
   static termchar * pp = 0;
   static termchar prev; // = (termchar) {.cc_next = 0, .chr = 0, .attr = CATTR_DEFAULT};
 
-  void show_char_msg(char * cs) {
+  auto show_char_msg = [&](char * cs) {
     static char * prev = null;
     if (!prev || 0 != strcmp(cs, prev)) {
       //printf("[%c]%s\n", tag, cs);
@@ -1103,9 +1110,9 @@ show_curchar_info(char tag)
     if (prev)
       free(prev);
     prev = cs;
-  }
+  };
 
-  void show_char_info(termchar * cpoi) {
+  auto show_char_info = [&](termchar * cpoi) {
     char * cs = 0;
 
     // return if base character same as previous and no combining chars
@@ -1180,17 +1187,18 @@ show_curchar_info(char tag)
     }
 
     show_char_msg(cs);  // does free(cs);
-  }
+  };
   
-  struct term *term = win_active_terminal();
-
-  int line = term->curs.y - term->disptop;
-  if (line < 0 || line >= term->rows) {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
+  int line = term.curs.y - term.disptop;
+  if (line < 0 || line >= term.rows) {
     show_char_info(null);
   }
   else {
-    termline * displine = term->displines[line];
-    termchar * dispchar = &displine->chars[term->curs.x];
+    termline * displine = term.displines[line];
+    termchar * dispchar = &displine->chars[term.curs.x];
     show_char_info(dispchar);
   }
 }
@@ -1207,15 +1215,16 @@ do_update(void)
   printf("do_update cursor_on %d @%d,%d\n", term.cursor_on, term.curs.y, term.curs.x);
 #endif
 
-  struct term* term = win_active_terminal();
-
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
     return;
   }
 
   update_skipped++;
-  int output_speed = lines_scrolled / (term->rows ?: cfg.rows);
+  int output_speed = lines_scrolled / (term.rows ?: cfg.rows);
   lines_scrolled = 0;
   if ((update_skipped < cfg.display_speedup && cfg.display_speedup < 10
        && output_speed > update_skipped
@@ -1234,23 +1243,24 @@ do_update(void)
   dc = GetDC(wnd);
 
   win_paint_exclude_search(dc);
-  term_update_search(term);
+  term_update_search(term_p);
 
-  term_paint(term);
-  winimgs_paint(term);
+  term_paint(term_p);
+  winimgs_paint(term_p);
 
   ReleaseDC(wnd, dc);
 
   // Update scrollbar
-  if (cfg.scrollbar && term->show_scrollbar && !term->app_scrollbar) {
-    int lines = sblines(term);
+  if (cfg.scrollbar && term.show_scrollbar && !term.app_scrollbar) {
+    int lines = sblines(term_p);
     SCROLLINFO si = {
-      .cbSize = sizeof si,
-      .fMask = SIF_ALL | SIF_DISABLENOSCROLL,
-      .nMin = 0,
-      .nMax = lines + term->rows - 1,
-      .nPage = term->rows,
-      .nPos = lines + term->disptop
+      cbSize : sizeof si,
+      fMask : SIF_ALL | SIF_DISABLENOSCROLL,
+      nMin : 0,
+      nMax : lines + term.rows - 1,
+      nPage : (uint)term.rows,
+      nPos : lines + term.disptop,
+      nTrackPos : 0
     };
     SetScrollInfo(wnd, SB_VERT, &si, true);
   }
@@ -1259,12 +1269,12 @@ do_update(void)
   // (We maintain a caret, even though it's invisible, for the benefit of
   // blind people: apparently some helper software tracks the system caret,
   // so we should arrange to have one.)
-  if (term->has_focus) {
-    int x = term->curs.x * cell_width + PADDING;
-    int y = (term->curs.y - term->disptop) * cell_height + PADDING;
+  if (term.has_focus) {
+    int x = term.curs.x * cell_width + PADDING;
+    int y = (term.curs.y - term.disptop) * cell_height + PADDING;
     SetCaretPos(x, y);
     if (ime_open) {
-      COMPOSITIONFORM cf = {.dwStyle = CFS_POINT, .ptCurrentPos = {x, y}};
+      COMPOSITIONFORM cf = {dwStyle : CFS_POINT, ptCurrentPos : {x, y}, rcArea : {0, 0, 0, 0}};
       ImmSetCompositionWindow(imc, &cf);
     }
   }
@@ -1285,21 +1295,23 @@ do_update(void)
 static void
 sel_update(bool update_sel_tip)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   static bool selection_tip_active = false;
   //printf("sel_update tok %d sel %d act %d\n", tip_token, term.selected, selection_tip_active);
-  if (term->selected && cfg.selection_show_size && update_sel_tip) {
+  if (term.selected && cfg.selection_show_size && update_sel_tip) {
     int cols, rows;
-    if (term->sel_rect) {
-      rows = abs(term->sel_end.y - term->sel_start.y) + 1;
-      cols = abs(term->sel_end.x - term->sel_start.x);
+    if (term.sel_rect) {
+      rows = abs(term.sel_end.y - term.sel_start.y) + 1;
+      cols = abs(term.sel_end.x - term.sel_start.x);
     }
     else {
-      rows = term->sel_end.y - term->sel_start.y + 1;
+      rows = term.sel_end.y - term.sel_start.y + 1;
       if (rows == 1)
-        cols = term->sel_end.x - term->sel_start.x;
+        cols = term.sel_end.x - term.sel_start.x;
       else
-        cols = term->cols;
+        cols = term.cols;
     }
     RECT wr;
     GetWindowRect(wnd, &wr);
@@ -1324,7 +1336,7 @@ sel_update(bool update_sel_tip)
     win_show_tip(x + dx, y + dy, cols, rows);
     selection_tip_active = true;
   }
-  else if (!term->selected && selection_tip_active) {
+  else if (!term.selected && selection_tip_active) {
     win_destroy_tip();
     selection_tip_active = false;
   }
@@ -1333,15 +1345,16 @@ sel_update(bool update_sel_tip)
 static void
 show_link(void)
 {
-  struct term* term = win_active_terminal();
-
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   static int lasthoverlink = -1;
 
-  int hoverlink = term->hovering ? term->hoverlink : -1;
+  int hoverlink = term.hovering ? term.hoverlink : -1;
   if (hoverlink != lasthoverlink) {
     lasthoverlink = hoverlink;
 
-    char * url = geturl(hoverlink) ?: "";
+    char * url = geturl(hoverlink) ?: (char *)"";
 
     if (nonascii(url)) {
       wchar * wcs = cs__utftowcs(url);
@@ -1377,9 +1390,9 @@ win_update(bool update_sel_tip)
     show_link();
 }
 
-void win_update_term(struct term* term, bool update_sel_tip)
+void win_update_term(struct term* term_p, bool update_sel_tip)
 {
-  if (win_active_terminal() == term) win_update(update_sel_tip);
+  if (win_active_terminal() == term_p) win_update(update_sel_tip);
 }
 
 void
@@ -1481,7 +1494,7 @@ alpha_blend_bg(int alpha, HDC dc, HBITMAP hbm, int bw, int bh, colour bg)
 {
   // load GDI function
   if (!pAlphaBlend) {
-    pAlphaBlend = load_library_func("msimg32.dll", "AlphaBlend");
+    pAlphaBlend = (BOOL (*)(HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION))load_library_func("msimg32.dll", "AlphaBlend");
   }
   if (!pAlphaBlend)
     return hbm;
@@ -1497,20 +1510,21 @@ alpha_blend_bg(int alpha, HDC dc, HBITMAP hbm, int bw, int bh, colour bg)
 
   // prepare source memory DC and select the source bitmap into it
   HDC dc0 = CreateCompatibleDC(dc);
-  HBITMAP oldhbm0 = SelectObject(dc0, hbm);
+  HBITMAP oldhbm0 = (HBITMAP)SelectObject(dc0, hbm);
 
   // prepare destination memory DC, 
   // create and select the destination bitmap into it
   HDC dc1 = CreateCompatibleDC(dc);
   HBITMAP hbm1 = CreateCompatibleBitmap(dc0, bw, bh);
-  HBITMAP oldhbm1 = SelectObject(dc1, hbm1);
+  HBITMAP oldhbm1 = (HBITMAP)SelectObject(dc1, hbm1);
 
   HBRUSH bgb = CreateSolidBrush(bg);
-  FillRect(dc1, &(RECT){0, 0, bw, bh}, bgb);
+  RECT tmp_rec = {0, 0, bw, bh};
+  FillRect(dc1, &tmp_rec, bgb);
   DeleteObject(bgb);
 
   BYTE alphafmt = alpha == 255 ? AC_SRC_ALPHA : 0;
-  BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, alpha, alphafmt};
+  BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, (BYTE)alpha, alphafmt};
   int ok = pAlphaBlend(dc1, 0, 0, bw, bh, dc0, 0, 0, bw, bh, bf);
 
   // release everything
@@ -1545,6 +1559,9 @@ offset_bg(HDC dc)
 #include <w32api/wtypes.h>
 #include <w32api/gdiplus/gdiplus.h>
 #include <w32api/gdiplus/gdiplusflat.h>
+
+using namespace Gdiplus;
+using namespace Gdiplus::DllExports;
 
 static GpBrush * bgbrush_img = 0;
 static GpGraphics * bg_graphics = 0;
@@ -1599,7 +1616,7 @@ drop_background_image_brush(void)
 static void
 init_gdiplus(void)
 {
-  static GdiplusStartupInput gi = (GdiplusStartupInput){1, NULL, FALSE, FALSE};
+  static GdiplusStartupInput gi = (GdiplusStartupInput){NULL, FALSE, FALSE};
   static ULONG_PTR gis = 0;
   if (!gis) {
     GpStatus s = GdiplusStartup(&gis, &gi, NULL);
@@ -1727,16 +1744,16 @@ load_background_image_brush(HDC dc, wstring fn)
 
       // prepare source memory DC and select the source bitmap into it
       HDC dc0 = CreateCompatibleDC(dc);
-      HBITMAP oldhbm0 = SelectObject(dc0, hbm);
+      HBITMAP oldhbm0 = (HBITMAP)SelectObject(dc0, hbm);
 
       // prepare destination memory DC, 
       // create and select the destination bitmap into it
       HDC dc1 = CreateCompatibleDC(dc);
       HBITMAP hbm1 = CreateCompatibleBitmap(dc0, w, h);
-      HBITMAP oldhbm1 = SelectObject(dc1, hbm1);
+      HBITMAP oldhbm1 = (HBITMAP)SelectObject(dc1, hbm1);
 
       if (alpha >= 0 && !pAlphaBlend) {
-        pAlphaBlend = load_library_func("msimg32.dll", "AlphaBlend");
+        pAlphaBlend = (BOOL (*)(HDC, int, int, int, int, HDC, int, int, int, int, BLENDFUNCTION))load_library_func("msimg32.dll", "AlphaBlend");
       }
 
       if (alpha < 0 || !pAlphaBlend) {
@@ -1756,12 +1773,13 @@ load_background_image_brush(HDC dc, wstring fn)
         DeleteObject(SelectObject(dc1, oldbrush));
 #else
         HBRUSH br = CreateSolidBrush(win_get_colour(BG_COLOUR_I));
-        FillRect(dc1, &(RECT){0, 0, w, h}, br);
+        RECT tmp_rec = {0, 0, w, h};
+        FillRect(dc1, &tmp_rec, br);
         DeleteObject(br);
 #endif
 
         BYTE alphafmt = alpha == 255 ? AC_SRC_ALPHA : 0;
-        BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, alpha, alphafmt};
+        BLENDFUNCTION bf = (BLENDFUNCTION) {AC_SRC_OVER, 0, (BYTE)alpha, alphafmt};
         if (pAlphaBlend(dc1, 0, 0, w, h, dc0, 0, 0, bw, bh, bf)) {
           DeleteObject(hbm);
           hbm = hbm1;
@@ -1846,17 +1864,17 @@ load_background_image_brush(HDC dc, wstring fn)
 static bool
 fill_rect(HDC dc, RECT * boxp, GpBrush * br)
 {
-  GpStatus s, sbrush = -1;
+  GpStatus s, sbrush = (GpStatus)(-1);
 #ifdef debug_gdiplus
   static int nfills = 0;
   nfills ++;
 #endif
 
-  void fill(void)
+  auto fill = [&](void)
   {
     sbrush = GdipFillRectangleI(bg_graphics, br, boxp->left, boxp->top, boxp->right - boxp->left, boxp->bottom - boxp->top);
     gpcheck("fill", sbrush);
-  }
+  };
 
   if (bg_graphics) {
     fill();
@@ -1939,14 +1957,14 @@ get_bg_filename(void)
     if (!wallpfn)
       wallpfn = newn(wchar, MAX_PATH + 1);
 
-    void readregstr(HKEY key, wstring attribute, wchar * val, DWORD len) {
+    auto readregstr = [&](HKEY key, wstring attribute, wchar * val, DWORD len) {
       DWORD type;
-      int err = RegQueryValueExW(key, attribute, 0, &type, (void *)val, &len);
+      int err = RegQueryValueExW(key, attribute, 0, &type, (LPBYTE)val, &len);
       if (err ||
           !(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ)
          )
         *val = 0;
-    }
+    };
 
     HKEY wpk = 0;
     RegOpenKeyA(HKEY_CURRENT_USER, "Control Panel\\Desktop", &wpk);
@@ -1984,7 +2002,8 @@ get_bg_filename(void)
   if (salpha) {
     *salpha = 0;
     salpha++;
-    if (sscanf(salpha, "%u%c", &alpha, &(char){0}) != 1)
+    char tmp_c = 0;
+    if (sscanf(salpha, "%u%c", &alpha, &tmp_c) != 1)
       alpha = -1;
   }
 
@@ -2049,8 +2068,8 @@ load_background_brush(HDC dc)
 
   wchar * bgfn = get_bg_filename();  // also set tiled and alpha
 
-  HBITMAP
-  load_background_bitmap(wstring fn)
+  auto
+  load_background_bitmap = [&](wstring fn) -> HBITMAP
   {
     HBITMAP bm = 0;
     wstring bmpsuf = wcscasestr(fn, W(".bmp"));
@@ -2074,7 +2093,7 @@ load_background_brush(HDC dc)
     }
 
     return bm;
-  }
+  };
 
   if (!bgbrush_bmp) {
     HBITMAP bm = load_background_bitmap(bgfn);
@@ -2359,11 +2378,11 @@ old_apply_bold_colour(colour_i *pfgi)
   //   .. and bold_as_font=yes: ANSI+default are thickened, ANSI also coloured (xterm)
   if (cfg.bold_as_colour) {
     if (CCL_ANSI8(*pfgi)) {
-      *pfgi |= 8;     // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
+      *pfgi |= (colour_i)8;     // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
       return cfg.bold_as_font;
     }
     if (CCL_DEFAULT(*pfgi) && !cfg.bold_as_font) {
-      *pfgi |= 1;     // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
+      *pfgi |= (colour_i)1;     // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
       return false;
     }
   }
@@ -2408,8 +2427,8 @@ old_apply_attr_colour(cattr a, attr_colour_mode mode)
   bool do_finalize_rtf_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
   bool do_rtf_bold_decolour_i = mode & (ACM_RTF_GEN);
 
-  colour_i fgi = (a.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
-  colour_i bgi = (a.attr & ATTR_BGMASK) >> ATTR_BGSHIFT;
+  colour_i fgi = (colour_i)((a.attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+  colour_i bgi = (colour_i)((a.attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
   a.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);  // we'll refill it later
 
   if (do_reverse_i && (a.attr & ATTR_REVERSE)) {
@@ -2423,9 +2442,9 @@ old_apply_attr_colour(cattr a, attr_colour_mode mode)
 
   if (do_blink_i && (a.attr & ATTR_BLINK)) {
     if (CCL_ANSI8(bgi))
-      bgi |= 8;
+      bgi |= (colour_i)8;
     else if (CCL_DEFAULT(bgi))
-      bgi |= 1;
+      bgi |= (colour_i)1;
   }
 
   if (do_finalize_rtf_i) {
@@ -2497,7 +2516,7 @@ apply_bold_colour(colour_i *pfgi)
 
   if (!cfg.bold_as_colour && !cfg.bold_as_font) {  // the exception: xterm-like
     if (ansi)  // coloured
-      *pfgi |= 8;  // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
+      *pfgi |= (colour_i)8;  // (BLACK|...|WHITE)_I -> BOLD_(BLACK|...|WHITE)_I
     return true;  // both thickened
   }
   // switchable bold_colour
@@ -2509,9 +2528,9 @@ apply_bold_colour(colour_i *pfgi)
   // normal independent as_font/as_colour controls
   if (cfg.bold_as_colour) {
     if (ansi)
-      *pfgi |= 8;
+      *pfgi |= (colour_i)8;
     else  // default
-      *pfgi |= 1;  // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
+      *pfgi |= (colour_i)1;  // (FG|BG)_COLOUR_I -> BOLD_(FG|BG)_COLOUR_I
   }
   return cfg.bold_as_font;  // thicken if bold_as_font
 }
@@ -2557,8 +2576,8 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
   bool do_finalize_rtf_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
   bool do_rtf_bold_decolour_i = mode & (ACM_RTF_GEN);
 
-  colour_i fgi = (a.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
-  colour_i bgi = (a.attr & ATTR_BGMASK) >> ATTR_BGSHIFT;
+  colour_i fgi = (colour_i)((a.attr & ATTR_FGMASK) >> ATTR_FGSHIFT);
+  colour_i bgi = (colour_i)((a.attr & ATTR_BGMASK) >> ATTR_BGSHIFT);
   a.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);  // we'll refill it later
 
   if (do_reverse_i && (a.attr & ATTR_REVERSE)) {
@@ -2572,9 +2591,9 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
 
   if (do_blink_i && (a.attr & ATTR_BLINK)) {
     if (CCL_ANSI8(bgi))
-      bgi |= 8;
+      bgi |= (colour_i)8;
     else if (CCL_DEFAULT(bgi))
-      bgi |= 1;
+      bgi |= (colour_i)1;
   }
 
   if (do_finalize_rtf_i) {
@@ -2778,7 +2797,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   switch (lattr) {
     when LATTR_NORM: nfont = 0;
     when LATTR_WIDE: nfont = FONT_WIDE;
-    otherwise:       nfont = FONT_WIDE + FONT_HIGH;
+      break;
+    default:       nfont = FONT_WIDE + FONT_HIGH;
   }
 
   int wscale = 100;
@@ -2877,10 +2897,15 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     memset(classes, GCPCLASS_NEUTRAL, len);
 
     GCP_RESULTSW gcpr = {
-      .lStructSize = sizeof(GCP_RESULTSW),
-      .lpClass = (void *)classes,
-      .lpGlyphs = text,
-      .nGlyphs = len
+      lStructSize : sizeof(GCP_RESULTSW),
+      lpOutString : null,
+      lpOrder : null,
+      lpDx : null,
+      lpCaretPos : null,
+      lpClass : (LPSTR)classes,
+      lpGlyphs : text,
+      nGlyphs : (uint)len,
+      nMaxFit : 0
     };
 
     trace_line(" <ChrPlc:");
@@ -2949,8 +2974,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
  /* Painting box */
   int width = char_width * (combining ? 1 : ulen);
   RECT box = {
-    .top = y, .bottom = y + cell_height,
-    .left = x, .right = min(x + width, cell_width * win_active_terminal()->cols + PADDING)
+    left : x, top : y,
+    right : min(x + width, cell_width * win_active_terminal()->cols + PADDING), bottom : y + cell_height
   };
   RECT box0 = box;
   if (ldisp2) {  // e.g. attr.attr & ATTR_ITALIC
@@ -3043,13 +3068,13 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
 #endif
 
   bool underlaid = false;
-  void clear_run() {
+  auto clear_run = [&]() {
     if (!underlaid) {
       ExtTextOutW(dc, xt, yt, eto_options | ETO_OPAQUE, &box0, W(" "), 1, dxs);
 
       underlaid = true;
     }
-  }
+  };
 
  /* Graphic background: picture or texture */
   if (*cfg.background && default_bg) {
@@ -3078,7 +3103,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   if (lpresrtl) {
     coord_transformed = SetGraphicsMode(dc, GM_ADVANCED);
     if (coord_transformed && GetWorldTransform(dc, &old_xform)) {
-      XFORM xform = (XFORM){-1.0, 0.0, 0.0, 1.0,  win_active_terminal()->cols * cell_width + 2 * PADDING, 0.0};
+      XFORM xform = (XFORM){-1.0, 0.0, 0.0, 1.0, (float)(win_active_terminal()->cols * cell_width + 2 * PADDING), 0.0};
       coord_transformed = SetWorldTransform(dc, &xform);
     }
   }
@@ -3183,8 +3208,8 @@ draw:;
         x' = sc * x + (1 - sc) * xt'
       */
       XFORM xform = (XFORM){scale, 0.0, 0.0, scale, 
-                    ((float)xt + (float)cell_width / 2) * (1.0 - scale), 
-                    ((float)yt + (float)cell_height / 2) * (1.0 - scale)};
+                    (float)(((float)xt + (float)cell_width / 2) * (1.0 - scale)), 
+                    (float)(((float)yt + (float)cell_height / 2) * (1.0 - scale))};
       coord_transformed_bloom = ModifyWorldTransform(dc, &xform, MWT_LEFTMULTIPLY);
     }
   }
@@ -3232,14 +3257,14 @@ draw:;
     GetClipRgn(dc, ur);
     IntersectClipRect(dc, box.left, box.top, box.right, box.bottom);
 
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
       if (l)
         for (int i = 0; i <= rep * 3; i++)
           bezier[i].y--;
       PolyBezier(dc, (const POINT *)bezier, 1 + rep * 3);
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
 
     SelectClipRgn(dc, ur);
@@ -3262,7 +3287,7 @@ draw:;
                      ? PS_DASH
                      : PS_DOT
                    : PS_SOLID;
-    HPEN oldpen = SelectObject(dc, CreatePen(penstyle, 0, ul));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(penstyle, 0, ul));
     int gapfrom = 0, gapdone = 0;
     int _line_width = line_width;
     if ((attr.attr & UNDER_MASK) == ATTR_DOUBLYUND) {
@@ -3278,7 +3303,7 @@ draw:;
         LineTo(dc, x + ulen * char_width, y + uloff - l);
       }
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
@@ -3286,12 +3311,12 @@ draw:;
   if (!ldisp2 && lattr != LATTR_BOT && attr.attr & ATTR_OVERL) {
     clear_run();
 
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
       MoveToEx(dc, x, y + l, null);
       LineTo(dc, x + ulen * char_width, y + l);
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
@@ -3303,6 +3328,8 @@ draw:;
       clear_run();
     goto _return;
   }
+  
+  {
 
  /* DEC Tech adjustments */
   if (graph >= 0xE0) {  // adjust rendering of DEC Technical and VT52 fraction
@@ -3330,7 +3357,7 @@ draw:;
       clear_run();
 
       float scale = (float)wscale / 100.0;
-      XFORM xform = (XFORM){scale, 0.0, 0.0, 1.0, xt * (1.0 - scale), 0.0};
+      XFORM xform = (XFORM){scale, 0.0, 0.0, 1.0, (float)(xt * (1.0 - scale)), 0.0};
       coord_transformed2 = ModifyWorldTransform(dc, &xform, MWT_LEFTMULTIPLY);
       if (coord_transformed2) {
         for (int i = 0; i < len; i++)
@@ -3536,7 +3563,7 @@ draw:;
       }
       // draw:
       //HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, sum_width, fg));
-      HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, line_width, fg));
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, line_width, fg));
       sum_width = 1;  // now handled by pen width
       for (int i = 0; i < len; i++) {
         for (int l = 0; l < sum_width; l++) {
@@ -3565,7 +3592,7 @@ draw:;
         xl += char_width;
         xr += char_width;
       }
-      oldpen = SelectObject(dc, oldpen);
+      oldpen = (HPEN)SelectObject(dc, oldpen);
       DeleteObject(oldpen);
     }
   }
@@ -3587,7 +3614,7 @@ draw:;
     /*
        Mix fg at mix/8 with bg.
      */
-    colour colmix(char mix)
+    auto colmix = [&](char mix) -> colour
     {
       uint r = (red(fg) * mix + red(bg) * (8 - mix)) / 8;
       uint g = (green(fg) * mix + green(bg) * (8 - mix)) / 8;
@@ -3596,16 +3623,16 @@ draw:;
       if (layer)
         res = ((res & 0xFEFEFEFE) >> 1) + ((win_get_colour(BG_COLOUR_I) & 0xFEFEFEFE) >> 1);
       return res;
-    }
-    void linedraw(char l, char t, char r, char b, colour c)
+    };
+    auto linedraw = [&](char l, char t, char r, char b, colour c)
     {
-      HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, c));
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, c));
       //printf("line %d %d %d %d\n", xi + l, y0 + t, xi + r, y0 + b);
       MoveToEx(dc, xi + l, y0 + t, null);
       LineTo(dc, xi + r, y0 + b);
       DeleteObject(SelectObject(dc, oldpen));
-    }
-    void lines(char x1, char y1, char x2, char y2, char x3, char y3)
+    };
+    auto lines = [&](char x1, char y1, char x2, char y2, char x3, char y3)
     {
       int _x1 = char_width * x1 / 8;
       int _y1 = char_height * y1 / 8;
@@ -3618,7 +3645,7 @@ draw:;
       }
 
       int w = y3 >= 0 ? line_width : 0;
-      HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, w, fg));
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, w, fg));
       MoveToEx(dc, xi + _x1, y0 + _y1, null);
       LineTo(dc, xi + _x2, y0 + _y2);
       if (y3 >= 0) {
@@ -3626,8 +3653,8 @@ draw:;
         LineTo(dc, xi + _x2, y0 + _y2 - 1);
       }
       DeleteObject(SelectObject(dc, oldpen));
-    }
-    void trio(char x1, char y1, char x2, char y2, char x3, char y3, bool chord)
+    };
+    auto trio = [&](char x1, char y1, char x2, char y2, char x3, char y3, bool chord)
     {
       int _x1 = char_width * x1 / 8;
       int _y1 = char_height * y1 / 8;
@@ -3644,8 +3671,8 @@ draw:;
         _x1++; _x2++; _x3++;
       }
 
-      HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-      HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(fg));
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+      HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(fg));
       if (chord) {
         if (x1)
           Chord(dc, xi, y0 + _y1, xi + 2 * _x1, y0 + _y3,
@@ -3654,22 +3681,24 @@ draw:;
           Chord(dc, xi - _x2, y0 + _y1, xi + x2, y0 + _y3,
                     xi + _x3, y0 + _y3, xi + _x1, y0 + _y1);
       }
-      else
-        Polygon(dc, (POINT[]){{xi + _x1, y0 + _y1},
-                              {xi + _x2, y0 + _y2},
-                              {xi + _x3, y0 + _y3}}, 3);
+      else {
+        POINT tmp_p[] = {{xi + _x1, y0 + _y1},
+                         {xi + _x2, y0 + _y2},
+                         {xi + _x3, y0 + _y3}};
+        Polygon(dc, tmp_p, 3);
+      }
       DeleteObject(SelectObject(dc, oldbrush));
       DeleteObject(SelectObject(dc, oldpen));
-    }
-    void triangle(char x1, char y1, char x2, char y2, char x3, char y3)
+    };
+    auto triangle = [&](char x1, char y1, char x2, char y2, char x3, char y3)
     {
       trio(x1, y1, x2, y2, x3, y3, false);
-    }
-    void trichord(char x1, char y1, char x2, char y2, char x3, char y3)
+    };
+    auto trichord = [&](char x1, char y1, char x2, char y2, char x3, char y3)
     {
       trio(x1, y1, x2, y2, x3, y3, true);
-    }
-    void rectdraw(char l, char t, char r, char b, char sol, colour c)
+    };
+    auto rectdraw = [&](char l, char t, char r, char b, char sol, colour c)
     {
       // solid 0b1111 top right bottom left
       int cl = char_width * l;
@@ -3716,7 +3745,8 @@ draw:;
       //printf("25%02X >%d%%%d %d%%%d %d%%%d %d%%%d\n", graph, cl, dl, ct, dt, cr, dr, cb, db);
       //printf("Rect %d %d %d %d\n", xi + cl_, y0 + ct_, xi + cr_, y0 + cb_);
       HBRUSH br = CreateSolidBrush(c);
-      FillRect(dc, &(RECT){xi + cl_, y0 + ct_, xi + cr_, y0 + cb_}, br);
+      RECT tmp_rec = {xi + cl_, y0 + ct_, xi + cr_, y0 + cb_};
+      FillRect(dc, &tmp_rec, br);
       DeleteObject(br);
       if (dl)
         linedraw(cl, ct, cl, cb, colmix(8 - dl));
@@ -3726,19 +3756,19 @@ draw:;
         linedraw(cr, ct, cr, cb, colmix(dr));
       if (db)
         linedraw(cl, cb, cr, cb, colmix(db));
-    }
-    inline void rect(char l, char t, char r, char b)
+    };
+    auto rect = [&](char l, char t, char r, char b)
     {
       rectdraw(l, t, r, b, 0, fg);
-    }
-    inline void rectsolcol(char l, char t, char r, char b, char mix)
+    };
+    auto rectsolcol = [&](char l, char t, char r, char b, char mix)
     {
       rectdraw(l, t, r, b, 0xF, colmix(mix));
-    }
-    inline void rectsolid(char l, char t, char r, char b, char sol)
+    };
+    auto rectsolid = [&](char l, char t, char r, char b, char sol)
     {
       rectdraw(l, t, r, b, sol, fg);
-    }
+    };
 
     for (int i = 0; i < ulen; i++) {
       if (powerline && origtext) switch (origtext[i]) {
@@ -3807,7 +3837,7 @@ draw:;
   }
   else if (graph >> 4) {  // VT100/VT52 horizontal "scanlines"
     int parts = graph_vt52 ? 8 : 5;
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
     int yoff = (cell_height - line_width) * (graph >> 4) / parts;
     if (lattr >= LATTR_TOP)
       yoff *= 2;
@@ -3817,11 +3847,11 @@ draw:;
       MoveToEx(dc, x, y + yoff + l, null);
       LineTo(dc, x + len * char_width, y + yoff + l);
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
   else if (graph) {  // VT100 box drawing characters ┘┐┌└┼ ─ ├┤┴┬│
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
     int y0 = (lattr == LATTR_BOT) ? y - cell_height : y;
     int yoff = (cell_height - line_width) * 3 / 5;
     if (lattr >= LATTR_TOP)
@@ -3860,7 +3890,7 @@ draw:;
         }
       }
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
@@ -3872,12 +3902,12 @@ draw:;
      )
   {
     int soff = (ff->descent + (ff->row_spacing / 2)) * 2 / 3;
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, ul));
     for (int l = 0; l < line_width; l++) {
       MoveToEx(dc, x, y + soff + l, null);
       LineTo(dc, x + ulen * char_width, y + soff + l);
     }
-    oldpen = SelectObject(dc, oldpen);
+    oldpen = (HPEN)SelectObject(dc, oldpen);
     DeleteObject(oldpen);
   }
 
@@ -3892,11 +3922,11 @@ draw:;
 #if defined(debug_cursor) && debug_cursor > 1
     printf("painting cursor_type '%c' cursor_on %d\n", "?b_l"[term_cursor_type()+1], term.cursor_on);
 #endif
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, _cc));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, _cc));
     switch (term_cursor_type(win_active_terminal())) {
       when CUR_BLOCK:
         if (attr.attr & TATTR_PASCURS) {
-          HBRUSH oldbrush = SelectObject(dc, GetStockObject(NULL_BRUSH));
+          HBRUSH oldbrush = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
           Rectangle(dc, x, y, x + char_width, y + cell_height);
           SelectObject(dc, oldbrush);
         }
@@ -3909,14 +3939,16 @@ draw:;
         if (attr.attr & TATTR_RIGHTCURS)
           xx += char_width - caret_width;
         if (attr.attr & TATTR_ACTCURS) {
-          HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(_cc));
+          HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(_cc));
           Rectangle(dc, xx, y, xx + caret_width, y + cell_height);
           DeleteObject(SelectObject(dc, oldbrush));
         }
         else if (attr.attr & TATTR_PASCURS) {
-          for (int dy = 0; dy < cell_height; dy += 2)
+          for (int dy = 0; dy < cell_height; dy += 2) {
+            POINT tmp_p[] = {{xx, y + dy}, {xx + caret_width, y + dy}};
             Polyline(
-              dc, (POINT[]){{xx, y + dy}, {xx + caret_width, y + dy}}, 2);
+              dc, tmp_p, 2);
+          }
         }
       }
       when CUR_UNDERSCORE: {
@@ -3948,7 +3980,7 @@ draw:;
             when 6: up = cell_height - 2;
           }
           if (up) {
-            HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(_cc));
+            HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(_cc));
             Rectangle(dc, x, yy - up, x + char_width, yy + 2);
             DeleteObject(SelectObject(dc, oldbrush));
           }
@@ -3964,6 +3996,8 @@ draw:;
       }
     }
     DeleteObject(SelectObject(dc, oldpen));
+  }
+  
   }
 
   _return:
@@ -4175,11 +4209,11 @@ win_char_width(xchar c, cattrflags attr)
   }
 
 #ifdef measure_width
-  int act_char_width(wchar wc)
+  auto act_char_width = [&](wchar wc) -> int
   {
     HDC wid_dc = CreateCompatibleDC(dc);
     HBITMAP wid_bm = CreateCompatibleBitmap(dc, cell_width * 2, cell_height);
-    HBITMAP wid_oldbm = SelectObject(wid_dc, wid_bm);
+    HBITMAP wid_oldbm = (HBITMAP)SelectObject(wid_dc, wid_bm);
     SelectObject(wid_dc, ff->fonts[FONT_NORMAL]);
     SetTextAlign(wid_dc, TA_TOP | TA_LEFT | TA_NOUPDATECP);
     SetTextColor(wid_dc, RGB(255, 255, 255));
@@ -4214,7 +4248,7 @@ win_char_width(xchar c, cattrflags attr)
     DeleteObject(wid_bm);
     DeleteDC(wid_dc);
     return wid;
-  }
+  };
 
   if (c >= 0x2160 && c <= 0x2179) {  // Roman Numerals
     ReleaseDC(wnd, dc);
@@ -4313,7 +4347,8 @@ wchar
 win_combine_chars(wchar c, wchar cc, cattrflags attr)
 {
   wchar cs[2];
-  int len = FoldStringW(MAP_PRECOMPOSED, (wchar[]){c, cc}, 2, cs, 2);
+  wchar tmp_wc[] = {c, cc};
+  int len = FoldStringW(MAP_PRECOMPOSED, tmp_wc, 2, cs, 2);
   if (len == 1) {  // check whether the combined glyph exists
     int findex = (attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
     if (findex > 10)
@@ -4351,13 +4386,13 @@ win_set_colour(colour_i i, colour c)
   static bool bold_colour_selected = false;
 
   bool changed_something = false;
-  void cc(colour_i i, colour c)
+  auto cc = [&](colour_i i, colour c)
   {
     if (c != colours[i]) {
       colours[i] = c;
       changed_something = true;
     }
-  }
+  };
 
   if (c == (colour)-1) {
     // ... reset to default ...
@@ -4388,7 +4423,7 @@ win_set_colour(colour_i i, colour c)
   else {
     cc(i, c);
     if (i < 16)
-      cc(i + ANSI0, c);
+      cc((colour_i)(i + ANSI0), c);
 #ifdef debug_brighten
     printf("colours[%d] = %06X\n", i, c);
 #endif
@@ -4433,20 +4468,21 @@ win_set_colour(colour_i i, colour c)
           uint r = (uint)red(_cc) * (uint)red(cfg.ime_cursor_colour);
           if (red(cfg.cursor_colour))
             r /= red(cfg.cursor_colour);
-          r = max(r, 255);
+          r = max(r, 255U);
           uint g = (uint)green(_cc) * (uint)green(cfg.ime_cursor_colour);
           if (green(cfg.cursor_colour))
             g /= green(cfg.cursor_colour);
-          g = max(r, 255);
+          g = max(r, 255U);
           uint b = (uint)blue(_cc) * (uint)blue(cfg.ime_cursor_colour);
           if (blue(cfg.cursor_colour))
             b /= blue(cfg.cursor_colour);
-          b = max(r, 255);
+          b = max(r, 255U);
           c = RGB(r, g, b);
         }
         cc(IME_CURSOR_COLOUR_I, c);
       }
-      otherwise:
+      break;
+      default:
         break;
     }
   }
@@ -4473,18 +4509,21 @@ win_reset_colours(void)
   memcpy(&colours[ANSI0], cfg.ansi_colours, sizeof cfg.ansi_colours);
 
   // Colour cube
-  colour_i i = 16;
+  colour_i i = (colour_i)16;
   for (uint r = 0; r < 6; r++)
     for (uint g = 0; g < 6; g++)
-      for (uint b = 0; b < 6; b++)
-        colours[i++] = RGB(r ? r * 40 + 55 : 0,
+      for (uint b = 0; b < 6; b++) {
+        colours[i] = RGB(r ? r * 40 + 55 : 0,
                            g ? g * 40 + 55 : 0,
                            b ? b * 40 + 55 : 0);
+        i = (colour_i)(i + 1);
+      }
 
   // Grayscale
   for (uint s = 0; s < 24; s++) {
     uint c = s * 10 + 8;
-    colours[i++] = RGB(c, c, c);
+    colours[i] = RGB(c, c, c);
+    i = (colour_i)(i + 1);
   }
 
   // Foreground, background, cursor
@@ -4511,7 +4550,9 @@ win_reset_colours(void)
 void
 win_paint(void)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   PAINTSTRUCT p;
   dc = BeginPaint(wnd, &p);
 
@@ -4519,7 +4560,7 @@ win_paint(void)
   // to be consistent during with the visual state of things
   g_render_tab_height = win_tab_height();
 
-  term_invalidate(term,
+  term_invalidate(term_p,
     (p.rcPaint.left - PADDING) / cell_width,
     (p.rcPaint.top - PADDING) / cell_height,
     (p.rcPaint.right - PADDING - 1) / cell_width,
@@ -4528,8 +4569,8 @@ win_paint(void)
 
   //if (kb_trace) printf("[%ld] win_paint state %d (idl/blk/pnd)\n", mtime(), update_state);
   if (update_state != UPDATE_PENDING) {
-    term_paint(term);
-    winimgs_paint(term);
+    term_paint(term_p);
+    winimgs_paint(term_p);
   }
 
   win_paint_tabs(0, p.rcPaint.right - p.rcPaint.left);
@@ -4544,8 +4585,8 @@ win_paint(void)
       (p.fErase
        || p.rcPaint.left < PADDING
        || p.rcPaint.top < PADDING
-       || p.rcPaint.right >= PADDING + cell_width * term->cols
-       || p.rcPaint.bottom >= PADDING + cell_height * term->rows
+       || p.rcPaint.right >= PADDING + cell_width * term.cols
+       || p.rcPaint.bottom >= PADDING + cell_height * term.rows
       )
      )
   {
@@ -4559,16 +4600,16 @@ win_paint(void)
        * So let's keep finer control and paint background with text chunks 
          but not modify the established behaviour if there is no background.
      */
-    colour bg_colour = colours[term->rvideo ? FG_COLOUR_I : BG_COLOUR_I];
-    HBRUSH oldbrush = SelectObject(dc, CreateSolidBrush(bg_colour));
-    HPEN oldpen = SelectObject(dc, CreatePen(PS_SOLID, 0, bg_colour));
+    colour bg_colour = colours[term.rvideo ? FG_COLOUR_I : BG_COLOUR_I];
+    HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(bg_colour));
+    HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, bg_colour));
 
     IntersectClipRect(dc, p.rcPaint.left, p.rcPaint.top, p.rcPaint.right,
                       p.rcPaint.bottom);
 
     ExcludeClipRect(dc, PADDING, PADDING,
-                    PADDING + cell_width * term->cols,
-                    PADDING + g_render_tab_height + cell_height * term->rows);
+                    PADDING + cell_width * term.cols,
+                    PADDING + g_render_tab_height + cell_height * term.rows);
 
     Rectangle(dc, p.rcPaint.left, p.rcPaint.top,
                   p.rcPaint.right, p.rcPaint.bottom);
@@ -4580,3 +4621,4 @@ win_paint(void)
   EndPaint(wnd, &p);
 }
 
+}

@@ -4,6 +4,8 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "termpriv.h"
 
 #include "win.h"
@@ -43,18 +45,20 @@ clip_addchar(clip_workbuf * b, wchar chr, cattr * ca)
 
 // except OOM, guaranteed at least emtpy null terminated wstring and one cattr
 static clip_workbuf *
-get_selection(struct term* term, pos start, pos end, bool rect, bool allinline)
+get_selection(struct term* term_p, pos start, pos end, bool rect, bool allinline)
 {
+  struct term& term = *term_p;
+  
   int old_top_x = start.x;    /* needed for rect==1 */
   clip_workbuf *buf = newn(clip_workbuf, 1);
   *buf = (clip_workbuf){0, 0, 0, 0};  // all members to 0 initially
 
   while (poslt(start, end)) {
     bool nl = false;
-    termline *line = fetch_line(term, start.y);
+    termline *line = fetch_line(term_p, start.y);
 
-    if (start.y == term->curs.y) {
-      line->chars[term->curs.x].attr.attr |= TATTR_ACTCURS;
+    if (start.y == term.curs.y) {
+      line->chars[term.curs.x].attr.attr |= TATTR_ACTCURS;
     }
 
     pos nlpos;
@@ -65,7 +69,7 @@ get_selection(struct term* term, pos start, pos end, bool rect, bool allinline)
     * should copy up to. So we start it at the end of the line...
     */
     nlpos.y = start.y;
-    nlpos.x = term->cols;
+    nlpos.x = term.cols;
     nlpos.r = false;
 
    /*
@@ -160,28 +164,32 @@ get_selection(struct term* term, pos start, pos end, bool rect, bool allinline)
 }
 
 void
-term_copy_as(struct term* term, char what)
+term_copy_as(struct term* term_p, char what)
 {
-  if (!term->selected)
+  struct term& term = *term_p;
+  
+  if (!term.selected)
     return;
 
-  clip_workbuf *buf = get_selection(term, term->sel_start, term->sel_end, term->sel_rect, false);
+  clip_workbuf *buf = get_selection(term_p, term.sel_start, term.sel_end, term.sel_rect, false);
   win_copy_as(buf->text, buf->cattrs, buf->len, what);
   destroy_clip_workbuf(buf);
 }
 
 void
-term_copy(struct term* term)
+term_copy(struct term* term_p)
 {
-  term_copy_as(term, 0);
+  term_copy_as(term_p, 0);
 }
 
 void
-term_open(struct term* term)
+term_open(struct term* term_p)
 {
-  if (!term->selected)
+  struct term& term = *term_p;
+  
+  if (!term.selected)
     return;
-  clip_workbuf *buf = get_selection(term, term->sel_start, term->sel_end, term->sel_rect, false);
+  clip_workbuf *buf = get_selection(term_p, term.sel_start, term.sel_end, term.sel_rect, false);
 
   // Don't bother opening if it's all whitespace.
   wchar *p = buf->text;
@@ -205,7 +213,8 @@ contains(string s, wchar c)
     when '\f': tag = "FF";
     when '\e': tag = "ESC";
     when '\177': tag = "DEL";
-    otherwise:
+      break;
+    default:
       if (c < ' ')
         tag = "C0";
       else if (c >= 0x80 && c < 0xA0)
@@ -218,12 +227,14 @@ contains(string s, wchar c)
 }
 
 void
-term_paste(struct term* term, wchar *data, uint len, bool all)
+term_paste(struct term* term_p, wchar *data, uint len, bool all)
 {
-  term_cancel_paste(term);
+  struct term& term = *term_p;
+  
+  term_cancel_paste(term_p);
 
-  term->paste_buffer = newn(wchar, len);
-  term->paste_len = term->paste_pos = 0;
+  term.paste_buffer = newn(wchar, len);
+  term.paste_len = term.paste_pos = 0;
 
   // Copy data to the paste buffer, converting both Windows-style \r\n and
   // Unix-style \n line endings to \r, because that's what the Enter key sends.
@@ -235,46 +246,50 @@ term_paste(struct term* term, wchar *data, uint len, bool all)
       wc = ' ';
 
     if (data[i] != '\n')
-      term->paste_buffer[term->paste_len++] = wc;
+      term.paste_buffer[term.paste_len++] = wc;
     else if (i == 0 || data[i - 1] != '\r')
-      term->paste_buffer[term->paste_len++] = wc;
+      term.paste_buffer[term.paste_len++] = wc;
   }
 
-  if (term->bracketed_paste)
-    child_write(term->child, "\e[200~", 6);
-  term_send_paste(term);
+  if (term.bracketed_paste)
+    child_write(term.child, "\e[200~", 6);
+  term_send_paste(term_p);
 }
 
 void
-term_cancel_paste(struct term* term)
+term_cancel_paste(struct term* term_p)
 {
-  if (term->paste_buffer) {
-    free(term->paste_buffer);
-    term->paste_buffer = 0;
-    if (term->bracketed_paste)
-      child_write(term->child, "\e[201~", 6);
+  struct term& term = *term_p;
+  
+  if (term.paste_buffer) {
+    free(term.paste_buffer);
+    term.paste_buffer = 0;
+    if (term.bracketed_paste)
+      child_write(term.child, "\e[201~", 6);
   }
 }
 
 void
-term_send_paste(struct term* term)
+term_send_paste(struct term* term_p)
 {
-  int i = term->paste_pos;
+  struct term& term = *term_p;
+  
+  int i = term.paste_pos;
   /* We must not feed more than MAXPASTEMAX bytes into the pty in one chunk 
      or it will block on the receiving side (write() does not return).
    */
 #define MAXPASTEMAX 7819
 #define PASTEMAX 2222
-  while (i < term->paste_len && i - term->paste_pos < PASTEMAX
-         && term->paste_buffer[i++] != '\r'
+  while (i < term.paste_len && i - term.paste_pos < PASTEMAX
+         && term.paste_buffer[i++] != '\r'
         )
     ;
-  if (i < term->paste_len && is_high_surrogate(term->paste_buffer[i]))
+  if (i < term.paste_len && is_high_surrogate(term.paste_buffer[i]))
     i++;
-  //printf("term_send_paste pos %d @ %d (len %d)\n", term->paste_pos, i, term->paste_len);
-  child_sendw(term->child, term->paste_buffer + term->paste_pos, i - term->paste_pos);
-  if (i < term->paste_len) {
-    term->paste_pos = i;
+  //printf("term_send_paste pos %d @ %d (len %d)\n", term.paste_pos, i, term.paste_len);
+  child_sendw(term.child, term.paste_buffer + term.paste_pos, i - term.paste_pos);
+  if (i < term.paste_len) {
+    term.paste_pos = i;
     // if only part of the paste buffer has been written to the child,
     // the current strategy is to leave the rest pending for on-demand 
     // invocation of term_send_paste from child_proc within the main loop,
@@ -285,31 +300,35 @@ term_send_paste(struct term* term)
     // paste the whole contents) were not successful to solve the stalling
   }
   else
-    term_cancel_paste(term);
+    term_cancel_paste(term_p);
 }
 
 void
-term_select_all(struct term* term)
+term_select_all(struct term* term_p)
 {
-  term->sel_start = (pos){-sblines(term), 0, false};
-  term->sel_end = (pos){term_last_nonempty_line(term), term->cols, true};
-  term->selected = true;
+  struct term& term = *term_p;
+  
+  term.sel_start = (pos){-sblines(term_p), 0, false};
+  term.sel_end = (pos){term_last_nonempty_line(term_p), term.cols, true};
+  term.selected = true;
   if (cfg.copy_on_select)
-    term_copy(term);
+    term_copy(term_p);
 }
 
 #define dont_debug_user_cmd_clip
 
 static wchar *
-term_get_text(struct term* term, bool all, bool screen, bool command)
+term_get_text(struct term* term_p, bool all, bool screen, bool command)
 {
+  struct term& term = *term_p;
+  
   pos start;
   pos end;
   bool rect = false;
 
   if (command) {
-    int sbtop = -sblines(term);
-    int y = term_last_nonempty_line(term);
+    int sbtop = -sblines(term_p);
+    int y = term_last_nonempty_line(term_p);
     bool skipprompt = true;  // skip upper lines of multi-line prompt
 
     if (y < sbtop) {
@@ -317,12 +336,12 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
       end = (pos){y, 0, false};
     }
     else {
-      termline * line = fetch_line(term, y);
+      termline * line = fetch_line(term_p, y);
       if (line->lattr & LATTR_MARKED) {
         if (y > sbtop) {
           y--;
-          end = (pos){y, term->cols, false};
-          termline * line = fetch_line(term, y);
+          end = (pos){y, term.cols, false};
+          termline * line = fetch_line(term_p, y);
           if (line->lattr & LATTR_MARKED)
             y++;
         }
@@ -332,16 +351,16 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
       }
       else {
         skipprompt = line->lattr & LATTR_UNMARKED;
-        end = (pos){y, term->cols, false};
+        end = (pos){y, term.cols, false};
       }
 
-      if (fetch_line(term, y)->lattr & LATTR_UNMARKED)
+      if (fetch_line(term_p, y)->lattr & LATTR_UNMARKED)
         end = (pos){y, 0, false};
     }
 
     int yok = y;
     while (y-- > sbtop) {
-      termline * line = fetch_line(term, y);
+      termline * line = fetch_line(term_p, y);
 #ifdef debug_user_cmd_clip
       printf("y %d skip %d marked %X\n", y, skipprompt, line->lattr & (LATTR_UNMARKED | LATTR_MARKED));
 #endif
@@ -360,51 +379,53 @@ term_get_text(struct term* term, bool all, bool screen, bool command)
 #endif
   }
   else if (screen) {
-    start = (pos){term->disptop, 0, false};
-    end = (pos){term_last_nonempty_line(term), term->cols, false};
+    start = (pos){term.disptop, 0, false};
+    end = (pos){term_last_nonempty_line(term_p), term.cols, false};
   }
   else if (all) {
-    start = (pos){-sblines(term), 0, false};
-    end = (pos){term_last_nonempty_line(term), term->cols, false};
+    start = (pos){-sblines(term_p), 0, false};
+    end = (pos){term_last_nonempty_line(term_p), term.cols, false};
   }
-  else if (!term->selected) {
+  else if (!term.selected) {
     return wcsdup(W(""));
   }
   else {
-    start = term->sel_start;
-    end = term->sel_end;
-    rect = term->sel_rect;
+    start = term.sel_start;
+    end = term.sel_end;
+    rect = term.sel_rect;
   }
 
-  clip_workbuf *buf = get_selection(term, start, end, rect, false);
+  clip_workbuf *buf = get_selection(term_p, start, end, rect, false);
   wchar * tbuf = wcsdup(buf->text);
   destroy_clip_workbuf(buf);
   return tbuf;
 }
 
 void
-term_cmd(struct term * term, char * cmd)
+term_cmd(struct term* term_p, char * cmd)
 {
+  struct term& term = *term_p;
+  
   // provide scrollback buffer
-  wchar * wsel = term_get_text(term, true, false, false);
+  wchar * wsel = term_get_text(term_p, true, false, false);
   char * sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_BUFFER", sel, true);
   free(sel);
   // provide current selection
-  wsel = term_get_text(term, false, false, false);
+  wsel = term_get_text(term_p, false, false, false);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_SELECT", sel, true);
   free(sel);
   // provide current screen
-  wsel = term_get_text(term, false, true, false);
+  wsel = term_get_text(term_p, false, true, false);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_SCREEN", sel, true);
   free(sel);
   // provide last command output
-  wsel = term_get_text(term, false, false, true);
+  wsel = term_get_text(term_p, false, false, true);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_OUTPUT", sel, true);
@@ -434,15 +455,15 @@ term_cmd(struct term * term, char * cmd)
   unsetenv("FATTY_SELECT");
   unsetenv("FATTY_BUFFER");
   if (cmdf) {
-    if (term->bracketed_paste)
-      child_write(term->child, "\e[200~", 6);
+    if (term.bracketed_paste)
+      child_write(term.child, "\e[200~", 6);
     char line[222];
     while (fgets(line, sizeof line, cmdf)) {
-      child_send(term->child, line, strlen(line));
+      child_send(term.child, line, strlen(line));
     }
     pclose(cmdf);
-    if (term->bracketed_paste)
-      child_write(term->child, "\e[201~", 6);
+    if (term.bracketed_paste)
+      child_write(term.child, "\e[201~", 6);
   }
   if (path0)
     setenv("PATH", path0, true);
@@ -456,11 +477,13 @@ term_cmd(struct term * term, char * cmd)
 #include "winpriv.h"  // PADDING
 
 static char *
-term_create_html(struct term * term, FILE * hf, int level)
+term_create_html(struct term* term_p, FILE * hf, int level)
 {
+  struct term& term = *term_p;
+  
   char * hbuf = hf ? 0 : strdup("");
-  void
-  hprintf(FILE * hf, const char * fmt, ...)
+  auto
+  hprintf = [&](FILE * hf, const char * fmt, ...)
   {
     char * buf;
     va_list va;
@@ -474,14 +497,14 @@ term_create_html(struct term * term, FILE * hf, int level)
       strcat(hbuf, buf);
     }
     free(buf);
-  }
+  };
 
-  pos start = term->sel_start;
-  pos end = term->sel_end;
-  bool rect = term->sel_rect;
-  if (!term->selected) {
-    start = (pos){term->disptop, 0, false};
-    end = (pos){term->disptop + term->rows - 1, term->cols, false};
+  pos start = term.sel_start;
+  pos end = term.sel_end;
+  bool rect = term.sel_rect;
+  if (!term.selected) {
+    start = (pos){term.disptop, 0, false};
+    end = (pos){term.disptop + term.rows - 1, term.cols, false};
     rect = false;
   }
 
@@ -531,7 +554,7 @@ term_create_html(struct term * term, FILE * hf, int level)
   }
 
   if (level >= 3) {
-    if (*cfg.background && !term->selected) {
+    if (*cfg.background && !term.selected) {
       wstring wbg = cfg.background;
       bool tiled = *wbg == '*';
       if (*wbg == '*' || *wbg == '_')
@@ -540,9 +563,10 @@ term_create_html(struct term * term, FILE * hf, int level)
       int alpha = -1;
       char * salpha = strrchr(bg, ',');
       if (salpha) {
+        char tmp_char = 0;
         *salpha = 0;
         salpha++;
-        sscanf(salpha, "%u%c", &alpha, &(char){0});
+        sscanf(salpha, "%u%c", &alpha, &tmp_char);
       }
   
       if (alpha >= 0) {
@@ -599,7 +623,7 @@ term_create_html(struct term * term, FILE * hf, int level)
     hprintf(hf, "  .bold-color { color: #%02X%02X%02X }\n",
             red(bold_colour), green(bold_colour), blue(bold_colour));
   for (int i = 0; i < 16; i++) {
-    colour ansii = win_get_colour(ANSI0 + i);
+    colour ansii = win_get_colour((colour_i)(ANSI0 + i));
     uchar r = red(ansii), g = green(ansii), b = blue(ansii);
     hprintf(hf, "  .fg-color%d { color: #%02X%02X%02X }"
                 " .bg-color%d { background-color: #%02X%02X%02X }\n",
@@ -643,7 +667,7 @@ term_create_html(struct term * term, FILE * hf, int level)
   hprintf(hf, "  <div class=background id='vt100'>\n");
   hprintf(hf, "   <pre>");
 
-  clip_workbuf * buf = get_selection(term, start, end, rect, level >= 3);
+  clip_workbuf * buf = get_selection(term_p, start, end, rect, level >= 3);
   int i0 = 0;
   bool odd = true;
   for (uint i = 0; i < buf->len; i++) {
@@ -673,12 +697,12 @@ term_create_html(struct term * term, FILE * hf, int level)
       // is not applicable in HTML export, and we do not want to simply 
       // always retrieve a plain colour value because we want to specify 
       // colour style or class only if the respective default is overridden
-      colour fg = fgi >= TRUE_COLOUR ? ca->truefg : win_get_colour(fgi);
-      colour bg = bgi >= TRUE_COLOUR ? ca->truebg : win_get_colour(bgi);
+      colour fg = fgi >= TRUE_COLOUR ? ca->truefg : win_get_colour((colour_i)(fgi));
+      colour bg = bgi >= TRUE_COLOUR ? ca->truebg : win_get_colour((colour_i)(bgi));
       // separate ANSI values subject to BoldAsColour
       int fga = fgi >= ANSI0 ? fgi & 0xFF : 999;
       int bga = bgi >= ANSI0 ? bgi & 0xFF : 999;
-      if ((ca->attr & ATTR_BOLD) && fga < 8 && term->enable_bold_colour && !rev) {
+      if ((ca->attr & ATTR_BOLD) && fga < 8 && term.enable_bold_colour && !rev) {
         if (bold_colour != (colour)-1)
           fg = bold_colour;
       }
@@ -702,20 +726,20 @@ term_create_html(struct term * term, FILE * hf, int level)
 
       // style adding function
       bool with_style = false;
-      void add_style(char * s) {
+      auto add_style = [&](char * s) {
         if (!with_style) {
           hprintf(hf, "' style='%s", s);
           with_style = true;
         }
         else
           hprintf(hf, " %s", s);
-      }
-      void add_color(char * pre, int col) {
-        colour ansii = win_get_colour(ANSI0 + col);
+      };
+      auto add_color = [&](char * pre, int col) {
+        colour ansii = win_get_colour((colour_i)(ANSI0 + col));
         uchar r = red(ansii), g = green(ansii), b = blue(ansii);
-        add_style("");
+        add_style((char *)"");
         hprintf(hf, "%scolor: #%02X%02X%02X;", pre, r, g, b);
-      }
+      };
 
       // add style classes or resolved styles;
       // explicit style= attributes instead of xterm-compatible classes
@@ -723,13 +747,13 @@ term_create_html(struct term * term, FILE * hf, int level)
       // (Powerpoint; Word would take id= but not class=)
       if (ca->attr & ATTR_BOLD) {
         if (enhtml)
-          add_style("font-weight: bold;");
+          add_style((char *)"font-weight: bold;");
         else
           hprintf(hf, " bd");
       }
       if (ca->attr & ATTR_ITALIC) {
         if (enhtml)
-          add_style("font-style: italic;");
+          add_style((char *)"font-style: italic;");
         else
           hprintf(hf, " it");
       }
@@ -747,7 +771,7 @@ term_create_html(struct term * term, FILE * hf, int level)
       if (findex) {
         if (enhtml) {
           if (*cfg.fontfams[findex].name || findex == 10) {
-            add_style("font-family: ");
+            add_style((char *)"font-family: ");
             if (*cfg.fontfams[findex].name) {
               char * fn = cs__wcstoutf(cfg.fontfams[findex].name);
               hprintf(hf, "\"%s\";", fn);
@@ -763,10 +787,10 @@ term_create_html(struct term * term, FILE * hf, int level)
 
       // catch and verify predefined colours and apply their colour classes
       if (fgi == FG_COLOUR_I) {
-        if ((ca->attr & ATTR_BOLD) && term->enable_bold_colour) {
+        if ((ca->attr & ATTR_BOLD) && term.enable_bold_colour) {
           if (fg == bold_colour) {
             if (enhtml) {
-              add_style("color: ");
+              add_style((char *)"color: ");
               hprintf(hf, "#%02X%02X%02X;",
                       red(bold_colour), green(bold_colour), blue(bold_colour));
             }
@@ -779,27 +803,27 @@ term_create_html(struct term * term, FILE * hf, int level)
           fg = (colour)-1;
       }
       else if (fga < 8 && cfg.bold_as_colour && (ca->attr & ATTR_BOLD)
-               && fg == win_get_colour(ANSI0 + fga + 8)
+               && fg == win_get_colour((colour_i)(ANSI0 + fga + 8))
               )
       {
         if (enhtml)
-          add_color("", fga + 8);
+          add_color((char *)"", fga + 8);
         else
           hprintf(hf, " fg-color%d", fga + 8);
         fg = (colour)-1;
       }
-      else if (fga < 16 && fg == win_get_colour(ANSI0 + fga)) {
+      else if (fga < 16 && fg == win_get_colour((colour_i)(ANSI0 + fga))) {
         if (enhtml)
-          add_color("", fga);
+          add_color((char *)"", fga);
         else
           hprintf(hf, " fg-color%d", fga);
         fg = (colour)-1;
       }
       if (bgi == BG_COLOUR_I && bg == bg_colour)
         bg = (colour)-1;
-      else if (bga < 16 && bg == win_get_colour(ANSI0 + bga)) {
+      else if (bga < 16 && bg == win_get_colour((colour_i)(ANSI0 + bga))) {
         if (enhtml)
-          add_color("background-", bga);
+          add_color((char *)"background-", bga);
         else
           hprintf(hf, " bg-color%d", bga);
         bg = (colour)-1;
@@ -810,19 +834,19 @@ term_create_html(struct term * term, FILE * hf, int level)
       // add individual colours, or fix unmatched colours
       if (fg != (colour)-1) {
         uchar r = red(fg), g = green(fg), b = blue(fg);
-        add_style("");
+        add_style((char *)"");
         hprintf(hf, "color: #%02X%02X%02X;", r, g, b);
       }
       if (bg != (colour)-1) {
         uchar r = red(bg), g = green(bg), b = blue(bg);
-        add_style("");
+        add_style((char *)"");
         hprintf(hf, "background-color: #%02X%02X%02X;", r, g, b);
       }
 
       if (enhtml && (ca->attr & (UNDER_MASK | ATTR_STRIKEOUT | ATTR_OVERL))) {
         // add explicit style= lining attributes for the sake of tools 
         // that do not take styles by class (Powerpoint)
-        add_style("text-decoration:");
+        add_style((char *)"text-decoration:");
         if (ca->attr & UNDER_MASK)
           hprintf(hf, " underline");
         if (ca->attr & ATTR_STRIKEOUT)
@@ -832,7 +856,7 @@ term_create_html(struct term * term, FILE * hf, int level)
         hprintf(hf, ";");
       }
       else if (ca->attr & ATTR_OVERL) {
-        add_style("text-decoration-line: overline");
+        add_style((char *)"text-decoration-line: overline");
         if (ca->attr & ATTR_STRIKEOUT)
           hprintf(hf, " line-through");
         if (ca->attr & ATTR_UNDER)
@@ -841,23 +865,23 @@ term_create_html(struct term * term, FILE * hf, int level)
       }
       if (ca->attr & ATTR_BROKENUND)
         if (ca->attr & ATTR_DOUBLYUND)
-          add_style("text-decoration-style: dashed;");
+          add_style((char *)"text-decoration-style: dashed;");
         else
-          add_style("text-decoration-style: dotted;");
+          add_style((char *)"text-decoration-style: dotted;");
       else if ((ca->attr & UNDER_MASK) == ATTR_CURLYUND)
-        add_style("text-decoration-style: wavy;");
+        add_style((char *)"text-decoration-style: wavy;");
       else if ((ca->attr & UNDER_MASK) == ATTR_DOUBLYUND)
-        add_style("text-decoration-style: double;");
+        add_style((char *)"text-decoration-style: double;");
 
       colour ul = (ca->attr & ATTR_ULCOLOUR) ? ca->ulcolr : cfg.underl_colour;
       if (ul != (colour)-1 && (ca->attr & (UNDER_MASK | ATTR_STRIKEOUT | ATTR_OVERL))) {
         uchar r = red(ul), g = green(ul), b = blue(ul);
-        add_style("");
+        add_style((char *)"");
         hprintf(hf, "text-decoration-color: #%02X%02X%02X;", r, g, b);
       }
 
       if (ca->attr & ATTR_INVISIBLE)
-        add_style("visibility: hidden;");
+        add_style((char *)"visibility: hidden;");
       else {
         // add JavaScript triggers
         if (ca->attr & ATTR_BLINK2)
@@ -952,7 +976,8 @@ term_get_html(int level)
 void
 term_export_html(bool do_open)
 {
-  struct term * term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  
   struct timeval now;
   gettimeofday(& now, 0);
   char * htmlf = newn(char, MAX_PATH + 1);
@@ -960,16 +985,16 @@ term_export_html(bool do_open)
 
   int hfd = open(htmlf, O_WRONLY | O_CREAT | O_EXCL, 0600);
   if (hfd < 0) {
-    win_bell(term, &cfg);
+    win_bell(term_p, &cfg);
     return;
   }
   FILE * hf = fdopen(hfd, "w");
   if (!hf) {
-    win_bell(term, &cfg);
+    win_bell(term_p, &cfg);
     return;
   }
 
-  term_create_html(term, hf, 3);
+  term_create_html(term_p, hf, 3);
 
   fclose(hf);  // implies close(hfd);
 
@@ -985,7 +1010,9 @@ term_export_html(bool do_open)
 void
 print_screen(void)
 {
-  struct term * term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+  
   if (*cfg.printer == '*')
     printer_start_job(printer_get_default());
   else if (*cfg.printer)
@@ -993,12 +1020,13 @@ print_screen(void)
   else
     return;
 
-  pos start = (pos){term->disptop, 0, false};
-  pos end = (pos){term->disptop + term->rows - 1, term->cols, false};
+  pos start = (pos){term.disptop, 0, false};
+  pos end = (pos){term.disptop + term.rows - 1, term.cols, false};
   bool rect = false;
-  clip_workbuf * buf = get_selection(term, start, end, rect, false);
+  clip_workbuf * buf = get_selection(term_p, start, end, rect, false);
   printer_wwrite(buf->text, buf->len);
   printer_finish_job();
   destroy_clip_workbuf(buf);
 }
 
+}

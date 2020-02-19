@@ -2,6 +2,8 @@
 // originally written by kmiya@cluti (https://github.com/saitoha/sixel/blob/master/fromsixel.c)
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include <stdlib.h>
 #include <stdio.h>
 #include <ctype.h>   /* isdigit */
@@ -662,3 +664,4 @@ sixel_parser_deinit(sixel_state_t * st)
     sixel_image_deinit(&st->image);
 }
 
+}

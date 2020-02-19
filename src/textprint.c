@@ -1,3 +1,5 @@
+extern "C" {
+  
 #include "print.h"
 #include "charset.h"
 #include "winpriv.h"  // win_prefix_title, win_unprefix_title
@@ -121,4 +123,6 @@ printer_finish_job(void)
 
     win_unprefix_title(_W("[Printing...] "));
   }
+}
+
 }

@@ -3,6 +3,13 @@
 // Based on code from mintty by Andy Koppe
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#include <algorithm>
+
+using std::max;
+using std::min;
+  
+extern "C" {
+  
 #include "termpriv.h"
 #include "winpriv.h"
 #include "winsearch.h"
@@ -315,9 +322,10 @@ win_update_menus(bool callback)
   else
     return;
 
-  struct term* term = win_active_terminal();
-
-  bool shorts = !term->shortcut_override;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  bool shorts = !term.shortcut_override;
   bool clip = shorts && cfg.clip_shortcuts;
   bool alt_fn = shorts && cfg.alt_fn_shortcuts;
   bool ct_sh = shorts && cfg.ctrl_shift_shortcuts;
@@ -326,8 +334,8 @@ win_update_menus(bool callback)
   printf("win_update_menus\n");
 #endif
 
-  void
-  modify_menu(HMENU menu, UINT item, UINT state, wchar * label, wchar * key)
+  auto
+  modify_menu = [&](HMENU menu, UINT item, UINT state, wchar * label, wchar * key)
   // if item is sysentry: ignore state
   // state: MF_ENABLED, MF_GRAYED, MF_CHECKED, MF_UNCHECKED
   // label: if null, use current label
@@ -392,7 +400,7 @@ win_update_menus(bool callback)
       *tab = '\0';
     if (key) {
       // append TAB and shortcut to label; localize "Ctrl+Alt+Shift+"
-      mod_keys mod = 0;
+      mod_keys mod = (mod_keys)(0);
       if (0 == wcsncmp(key, W("Ctrl+"), 5)) {
         mod |= MDK_CTRL;
         key += 5;
@@ -425,10 +433,10 @@ win_update_menus(bool callback)
     SetMenuItemInfoW(menu, item, 0, &mi);
 
     free(mi.dwTypeData);
-  }
+  };
 
-  wchar *
-  itemlabel(char * label)
+  auto
+  itemlabel = [&](char * label) -> wchar *
   {
     char * loc = _(label);
     if (loc == label)
@@ -436,21 +444,21 @@ win_update_menus(bool callback)
       return null;  // indicate to use system localization
     else
       return _W(label);  // use our localization
-  }
+  };
 
   //__ System menu:
-  modify_menu(sysmenu, SC_RESTORE, 0, itemlabel(__("&Restore")), null);
+  modify_menu(sysmenu, SC_RESTORE, 0, itemlabel(__((char*)"&Restore")), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MOVE, 0, itemlabel(__("&Move")), null);
+  modify_menu(sysmenu, SC_MOVE, 0, itemlabel(__((char*)"&Move")), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_SIZE, 0, itemlabel(__("&Size")), null);
+  modify_menu(sysmenu, SC_SIZE, 0, itemlabel(__((char*)"&Size")), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MINIMIZE, 0, itemlabel(__("Mi&nimize")), null);
+  modify_menu(sysmenu, SC_MINIMIZE, 0, itemlabel(__((char*)"Mi&nimize")), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MAXIMIZE, 0, itemlabel(__("Ma&ximize")), null);
+  modify_menu(sysmenu, SC_MAXIMIZE, 0, itemlabel(__((char*)"Ma&ximize")), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_CLOSE, 0, itemlabel(__("&Close")),
-    alt_fn ? W("Alt+F4") : ct_sh ? W("Ctrl+Shift+W") : null
+  modify_menu(sysmenu, SC_CLOSE, 0, itemlabel(__((char*)"&Close")),
+    (wchar *)(alt_fn ? W("Alt+F4") : ct_sh ? W("Ctrl+Shift+W") : null)
   );
 
   //__ System menu:
@@ -465,11 +473,11 @@ win_update_menus(bool callback)
   EnableMenuItem(ctxmenu, IDM_MOVELEFT, switch_move_left_enabled);
   EnableMenuItem(ctxmenu, IDM_MOVERIGHT, switch_move_right_enabled);
   
-  uint sel_enabled = term->selected ? MF_ENABLED : MF_GRAYED;
+  uint sel_enabled = term.selected ? MF_ENABLED : MF_GRAYED;
   EnableMenuItem(ctxmenu, IDM_OPEN, sel_enabled);
   //__ Context menu:
   modify_menu(ctxmenu, IDM_COPY, sel_enabled, _W("&Copy"),
-    clip ? W("Ctrl+Ins") : ct_sh ? W("Ctrl+Shift+C") : null
+    (wchar *)(clip ? W("Ctrl+Ins") : ct_sh ? W("Ctrl+Shift+C") : null)
   );
   // enable/disable predefined extended context menu entries
   // (user-definable ones are handled via fct_status())
@@ -486,17 +494,17 @@ win_update_menus(bool callback)
     ? MF_ENABLED : MF_GRAYED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_PASTE, paste_enabled, _W("&Paste "),
-    clip ? W("Shift+Ins") : ct_sh ? W("Ctrl+Shift+V") : null
+    (wchar *)(clip ? W("Shift+Ins") : ct_sh ? W("Ctrl+Shift+V") : null)
   );
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_COPASTE, sel_enabled, _W("Copy → Paste"),
-    clip ? W("Ctrl+Shift+Ins") : null
+    (wchar *)(clip ? W("Ctrl+Shift+Ins") : null)
   );
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_SEARCH, 0, _W("S&earch"),
-    alt_fn ? W("Alt+F3") : ct_sh ? W("Ctrl+Shift+H") : null
+    (wchar *)(alt_fn ? W("Alt+F3") : ct_sh ? W("Ctrl+Shift+H") : null)
   );
 
   uint logging_enabled = (logging || *cfg.log) ? MF_ENABLED : MF_GRAYED;
@@ -512,7 +520,7 @@ win_update_menus(bool callback)
     null
   );
 
-  uint vt220kb = term->vt220_keys ? MF_CHECKED : MF_UNCHECKED;
+  uint vt220kb = term.vt220_keys ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_TOGVT220KB, vt220kb, _W("VT220 Keyboard"),
     null
@@ -520,18 +528,18 @@ win_update_menus(bool callback)
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_RESET, 0, _W("&Reset"),
-    alt_fn ? W("Alt+F8") : ct_sh ? W("Ctrl+Shift+R") : null
+    (wchar *)(alt_fn ? W("Alt+F8") : ct_sh ? W("Ctrl+Shift+R") : null)
   );
 
   uint defsize_enabled =
-    IsZoomed(wnd) || term->cols != cfg.cols || term->rows != cfg.rows
+    IsZoomed(wnd) || term.cols != cfg.cols || term.rows != cfg.rows
     ? MF_ENABLED : MF_GRAYED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_DEFSIZE_ZOOM, defsize_enabled, _W("&Default Size"),
-    alt_fn ? W("Alt+F10") : ct_sh ? W("Ctrl+Shift+D") : null
+    (wchar *)(alt_fn ? W("Alt+F10") : ct_sh ? W("Ctrl+Shift+D") : null)
   );
 
-  uint scrollbar_checked = term->show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
+  uint scrollbar_checked = term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
 #ifdef allow_disabling_scrollbar
   if (!cfg.scrollbar)
     scrollbar_checked |= MF_GRAYED;
@@ -544,10 +552,10 @@ win_update_menus(bool callback)
   uint fullscreen_checked = win_is_fullscreen ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_FULLSCREEN_ZOOM, fullscreen_checked, _W("&Full Screen"),
-    alt_fn ? W("Alt+F11") : ct_sh ? W("Ctrl+Shift+F") : null
+    (wchar *)(alt_fn ? W("Alt+F11") : ct_sh ? W("Ctrl+Shift+F") : null)
   );
 
-//  uint otherscreen_checked = term->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+//  uint otherscreen_checked = term.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
 //  modify_menu(ctxmenu, IDM_FLIPSCREEN, otherscreen_checked, _W("Flip &Screen"),
 //    alt_fn ? W("Alt+F12") : ct_sh ? W("Ctrl+Shift+S") : null
@@ -564,8 +572,8 @@ win_update_menus(bool callback)
   modify_menu(sysmenu, IDM_OPTIONS, 0, _W("&Options..."), null);
 
   // update user-defined menu functions (checked/enabled)
-  void
-  check_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd)
+  auto
+  check_commands = [&](HMENU menu, wstring commands, UINT_PTR idm_cmd)
   {
     char * cmds = cs__wcstoutf(commands);
     char * cmdp = cmds;
@@ -603,7 +611,7 @@ win_update_menus(bool callback)
       }
     }
     free(cmds);
-  }
+  };
   if (*cfg.ctx_user_commands)
     check_commands(ctxmenu, cfg.ctx_user_commands, IDM_CTXMENUFUNCTION);
   if (*cfg.sys_user_commands)
@@ -832,7 +840,7 @@ win_title_menu(bool leftbut)
 {
   string title_menu = leftbut ? cfg.menu_title_ctrl_l : cfg.menu_title_ctrl_r;
   if (*title_menu) {
-    open_popup_menu(false, title_menu, 0);
+    open_popup_menu(false, title_menu, (mod_keys)0);
     return true;
   }
   else
@@ -855,15 +863,15 @@ static int lctrl_time;
 static mod_keys
 get_mods(void)
 {
-  inline bool is_key_down(uchar vk) { return GetKeyState(vk) & 0x80; }
+  auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
   lctrl_time = 0;
   lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
-  return
+  return (mod_keys)(
     is_key_down(VK_SHIFT) * MDK_SHIFT
     | is_key_down(VK_MENU) * MDK_ALT
     | (lctrl | is_key_down(VK_RCONTROL)) * MDK_CTRL
     | (is_key_down(VK_LWIN) | is_key_down(VK_RWIN)) * MDK_WIN
-    ;
+    );
 }
 
 
@@ -897,9 +905,11 @@ static bool is_tab_bar_area(int y) {
 static void
 update_mouse(mod_keys mods)
 {
-  struct term* term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   bool new_app_mouse =
-    (term->mouse_mode && !term->show_other_screen &&
+    (term.mouse_mode && !term.show_other_screen &&
     cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)) || is_tab_bar_area(-1);
   set_app_cursor(new_app_mouse);
 }
@@ -938,9 +948,9 @@ static pos
 translate_pos(int x, int y)
 {
   return (pos){
-    .x = floorf((x - PADDING) / (float)cell_width),
-    .y = floorf((y - PADDING - win_tab_height()) / (float)cell_height),
-    .r = (cfg.elastic_mouse && !win_active_terminal()->mouse_mode)
+    y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
+    x : (int)floorf((x - PADDING) / (float)cell_width),
+    r : (cfg.elastic_mouse && !win_active_terminal()->mouse_mode)
          ? (x - PADDING) % cell_width > cell_width / 2
          : 0
   };
@@ -951,11 +961,11 @@ static LPARAM last_lp = -1;
 static int button_state = 0;
 
 bool click_focus_token = false;
-static mouse_button last_button = -1;
+static mouse_button last_button = (mouse_button)(-1);
 static mod_keys last_mods;
 static pos last_click_pos;
 static bool last_skipped = false;
-static mouse_button skip_release_token = -1;
+static mouse_button skip_release_token = (mouse_button)(-1);
 static uint last_skipped_time;
 static bool mouse_state = false;
 
@@ -1029,7 +1039,8 @@ win_mouse_click(mouse_button b, LPARAM lp)
       button_state |= 4;
     when MBT_4:
       button_state |= 8;
-    otherwise:;
+      break;
+    default:;
   }
 }
 
@@ -1039,7 +1050,7 @@ win_mouse_release(mouse_button b, LPARAM lp)
   mouse_state = false;
 
   if (b == skip_release_token) {
-    skip_release_token = -1;
+    skip_release_token = (mouse_button)(-1);
     return;
   }
 
@@ -1054,7 +1065,8 @@ win_mouse_release(mouse_button b, LPARAM lp)
       button_state &= ~4;
     when MBT_4:
       button_state &= ~8;
-    otherwise:;
+      break;
+    default:;
   }
 }
 
@@ -1078,7 +1090,7 @@ win_mouse_move(bool nc, LPARAM lp)
     if (dist * diff > 999) {
       term_mouse_click(win_active_terminal(), last_button, last_mods, last_click_pos, 1);
       last_skipped = false;
-      skip_release_token = -1;
+      skip_release_token = (mouse_button)(-1);
     }
   }
 
@@ -1246,16 +1258,20 @@ toggle_vt220()
 }
 
 void
-toggle_vt220_term(struct term * term)
+toggle_vt220_term(struct term* term_p)
 {
-  term->vt220_keys = !term->vt220_keys;
+  struct term& term = *term_p;
+    
+  term.vt220_keys = !term.vt220_keys;
 }
 
 void
 toggle_auto_repeat()
 {
-  struct term * term = win_active_terminal();
-  term->auto_repeat = !term->auto_repeat;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  term.auto_repeat = !term.auto_repeat;
 }
 
 void
@@ -1411,19 +1427,22 @@ mflags_vt220()
 static uint
 mflags_auto_repeat()
 {
-  struct term * term = win_active_terminal();
-  return term->auto_repeat ? MF_CHECKED : MF_UNCHECKED;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  return term.auto_repeat ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
 mflags_bidi()
 {
-  struct term * term = win_active_terminal();
-  
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   return (cfg.bidi == 0
-         || (cfg.bidi == 1 && (term->on_alt_screen ^ term->show_other_screen))
+         || (cfg.bidi == 1 && (term.on_alt_screen ^ term.show_other_screen))
          ) ? MF_GRAYED
-           : term->disable_bidi ? MF_UNCHECKED : MF_CHECKED;
+           : term.disable_bidi ? MF_UNCHECKED : MF_CHECKED;
 }
 
 static uint
@@ -1687,7 +1706,8 @@ win_key_nullify(uchar vk)
 static int
 pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mods, uint scancode)
 {
-  struct term* active_term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
 
   char * ukey_commands = cs__wcstoutf(key_commands);
   char * cmdp = ukey_commands;
@@ -1744,6 +1764,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
       }
 
       uint code;
+      char tmp_char = 0;
       if (ret) {
       }
       else if ((*fct == '"' && fct[wcslen(fct) - 1] == '"') ||
@@ -1751,7 +1772,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
       {
         int len = wcslen(fct) - 2;
         if (len > 0) {
-          child_sendw(active_term->child, &fct[1], wcslen(fct) - 2);
+          child_sendw(term.child, &fct[1], wcslen(fct) - 2);
           ret = true;
         }
       }
@@ -1766,10 +1787,10 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         if (cc[1] != ' ') {
           if (mods & MDK_ALT) {
             cc[0] = '\e';
-            child_send(active_term->child, cc, 2);
+            child_send(term.child, cc, 2);
           }
           else
-            child_send(active_term->child, &cc[1], 1);
+            child_send(term.child, &cc[1], 1);
           ret = true;
         }
       }
@@ -1777,15 +1798,15 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         fct[wcslen(fct) - 1] = 0;
         char * cmd = cs__wcstombs(&fct[1]);
         if (*cmd) {
-          term_cmd(active_term, cmd);
+          term_cmd(term_p, cmd);
           ret = true;
         }
         free(cmd);
       }
-      else if (sscanf (paramp, "%u%c", & code, &(char){0}) == 1) {
+      else if (sscanf (paramp, "%u%c", & code, &tmp_char) == 1) {
         char buf[33];
         int len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
-        child_send(active_term->child, buf, len);
+        child_send(term.child, buf, len);
         ret = true;
       }
       else if (!*paramp) {
@@ -1806,7 +1827,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         else {
           // invalid definition (e.g. "A+Enter:foo;"), shall 
           // not cause any action (return true) but provide a feedback
-          win_bell(active_term, &cfg);
+          win_bell(term_p, &cfg);
           ret = true;
         }
       }
@@ -1836,7 +1857,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
 void
 user_function(wstring commands, int n)
 {
-  pick_key_function(commands, 0, n, 0, 0, 0);
+  pick_key_function(commands, 0, n, 0, (mod_keys)0, 0);
 }
 
 bool
@@ -1850,8 +1871,9 @@ win_key_down(WPARAM wp, LPARAM lp)
   else if (comp_state == COMP_CLEAR)
     comp_state = COMP_NONE;
 
-  struct term* term = win_active_terminal();
-
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
   bool extended = HIWORD(lp) & KF_EXTENDED;
   bool repeat = HIWORD(lp) & KF_REPEAT;
@@ -1861,7 +1883,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   printf("win_key_down %04X %s scan %d ext %d rpt %d/%d other %02X\n", key, vk_name(key), scancode, extended, repeat, count, HIWORD(lp) >> 8);
 #endif
 
-  if (repeat && !term->auto_repeat) {
+  if (repeat && !term.auto_repeat) {
 #ifdef auto_repeat_cursor_keys_option
     switch (key) {
       when VK_PRIOR ... VK_DOWN: do not return...;
@@ -1871,15 +1893,16 @@ win_key_down(WPARAM wp, LPARAM lp)
   }
 
   if (key == VK_PROCESSKEY) {
+    MSG tmp_msg = {.hwnd = wnd, .message = WM_KEYDOWN, .wParam = wp, .lParam = lp, .time = 0, .pt = {0, 0}};
     TranslateMessage(
-      &(MSG){.hwnd = wnd, .message = WM_KEYDOWN, .wParam = wp, .lParam = lp}
+      &tmp_msg
     );
     return true;
   }
 
   uchar kbd[256];
   GetKeyboardState(kbd);
-  inline bool is_key_down(uchar vk) { return kbd[vk] & 0x80; }
+  auto is_key_down = [&](uchar vk) -> bool { return kbd[vk] & 0x80; };
 #ifdef debug_virtual_key_codes
   printf(" [%d %c%d] Shift %d:%d/%d Ctrl %d:%d/%d Alt %d:%d/%d\n",
          (int)GetMessageTime(), lctrl_time ? '+' : '=', (int)GetMessageTime() - lctrl_time,
@@ -1948,14 +1971,14 @@ win_key_down(WPARAM wp, LPARAM lp)
           || (is_key_down(VK_RWIN) && key != VK_RWIN);
   trace_alt("alt %d lalt %d ralt %d altgr %d\n", alt, lalt, ralt, altgr);
 
-  mod_keys mods = shift * MDK_SHIFT
+  mod_keys mods = (mod_keys)(shift * MDK_SHIFT
                 | alt * MDK_ALT
                 | ctrl * MDK_CTRL
                 | win * MDK_WIN
-                ;
+                );
   bool super = super_key && is_key_down(super_key);
   bool hyper__ = hyper_key && is_key_down(hyper_key);
-  mods |= super * MDK_SUPER | hyper__ * MDK_HYPER;
+  mods |= (mod_keys)(super * MDK_SUPER | hyper__ * MDK_HYPER);
 
   update_mouse(mods);
 
@@ -1978,7 +2001,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 
   // Exit when pressing Enter or Escape while holding the window open after
   // the child process has died.
-  if ((key == VK_RETURN || key == VK_ESCAPE) && !mods && !child_is_alive(term->child))
+  if ((key == VK_RETURN || key == VK_ESCAPE) && !mods && !child_is_alive(term.child))
     exit_fatty(1);
 
   // Handling special shifted key functions
@@ -2015,7 +2038,8 @@ win_key_down(WPARAM wp, LPARAM lp)
       when VK_RIGHT : set_transparency(cfg.transparency + 1);
       when VK_DOWN  : set_transparency(cfg.transparency - 1);
       when VK_NEXT  : set_transparency(cfg.transparency - 16);
-      otherwise: transparency_pending = 0;
+        break;
+      default: transparency_pending = 0;
     }
 #ifdef debug_transparency
     printf("==%d\n", transparency_pending);
@@ -2028,79 +2052,80 @@ win_key_down(WPARAM wp, LPARAM lp)
   if (selection_pending) {
     bool sel_adjust = false;
     //WPARAM scroll = 0;
-    int sbtop = -sblines(term);
-    int sbbot = term_last_nonempty_line(term);
-    int oldisptop = term->disptop;
+    int sbtop = -sblines(term_p);
+    int sbbot = term_last_nonempty_line(term_p);
+    int oldisptop = term.disptop;
     //printf("y %d disptop %d sb %d..%d\n", term.sel_pos.y, term.disptop, sbtop, sbbot);
     switch (key) {
       when VK_CLEAR:  // recalibrate
-        term->sel_anchor = term->sel_pos;
-        term->sel_start = term->sel_pos;
-        term->sel_end = term->sel_pos;
-        term->sel_rect = mods & MDK_ALT;
+        term.sel_anchor = term.sel_pos;
+        term.sel_start = term.sel_pos;
+        term.sel_end = term.sel_pos;
+        term.sel_rect = mods & MDK_ALT;
         sel_adjust = true;
       when VK_LEFT:
-        if (term->sel_pos.x > 0)
-          term->sel_pos.x--;
+        if (term.sel_pos.x > 0)
+          term.sel_pos.x--;
         sel_adjust = true;
       when VK_RIGHT:
-        if (term->sel_pos.x < term->cols)
-          term->sel_pos.x++;
+        if (term.sel_pos.x < term.cols)
+          term.sel_pos.x++;
         sel_adjust = true;
       when VK_UP:
-        if (term->sel_pos.y > sbtop) {
-          if (term->sel_pos.y <= term->disptop)
-            term_scroll(term, 0, -1);
-          term->sel_pos.y--;
+        if (term.sel_pos.y > sbtop) {
+          if (term.sel_pos.y <= term.disptop)
+            term_scroll(term_p, 0, -1);
+          term.sel_pos.y--;
           sel_adjust = true;
         }
       when VK_DOWN:
-        if (term->sel_pos.y < sbbot) {
-          if (term->sel_pos.y + 1 >= term->disptop + term->rows)
-            term_scroll(term, 0, +1);
-          term->sel_pos.y++;
+        if (term.sel_pos.y < sbbot) {
+          if (term.sel_pos.y + 1 >= term.disptop + term.rows)
+            term_scroll(term_p, 0, +1);
+          term.sel_pos.y++;
           sel_adjust = true;
         }
       when VK_PRIOR:
         //scroll = SB_PAGEUP;
-        term_scroll(term, 0, -max(1, term->rows - 1));
-        term->sel_pos.y += term->disptop - oldisptop;
+        term_scroll(term_p, 0, -max(1, term.rows - 1));
+        term.sel_pos.y += term.disptop - oldisptop;
         sel_adjust = true;
       when VK_NEXT:
         //scroll = SB_PAGEDOWN;
-        term_scroll(term, 0, +max(1, term->rows - 1));
-        term->sel_pos.y += term->disptop - oldisptop;
+        term_scroll(term_p, 0, +max(1, term.rows - 1));
+        term.sel_pos.y += term.disptop - oldisptop;
         sel_adjust = true;
       when VK_HOME:
         //scroll = SB_TOP;
-        term_scroll(term, +1, 0);
-        term->sel_pos.y += term->disptop - oldisptop;
-        term->sel_pos.y = sbtop;
-        term->sel_pos.x = 0;
+        term_scroll(term_p, +1, 0);
+        term.sel_pos.y += term.disptop - oldisptop;
+        term.sel_pos.y = sbtop;
+        term.sel_pos.x = 0;
         sel_adjust = true;
       when VK_END:
         //scroll = SB_BOTTOM;
-        term_scroll(term, -1, 0);
-        term->sel_pos.y += term->disptop - oldisptop;
-        term->sel_pos.y = sbbot;
-        if (sbbot < term->rows) {
-          termline *line = term->lines[sbbot];
+        term_scroll(term_p, -1, 0);
+        term.sel_pos.y += term.disptop - oldisptop;
+        term.sel_pos.y = sbbot;
+        if (sbbot < term.rows) {
+          termline *line = term.lines[sbbot];
           if (line)
             for (int j = line->cols - 1; j > 0; j--) {
-              term->sel_pos.x = j + 1;
-              if (!termchars_equal(&line->chars[j], &term->erase_char))
+              term.sel_pos.x = j + 1;
+              if (!termchars_equal(&line->chars[j], &term.erase_char))
                 break;
             }
         }
         sel_adjust = true;
       when VK_INSERT case_or VK_RETURN:  // copy
-        term_copy(term);
+        term_copy(term_p);
         selection_pending = false;
       when VK_DELETE case_or VK_ESCAPE:  // abort
         selection_pending = false;
-      otherwise:
+        break;
+      default:
         //selection_pending = false;
-        win_bell(term, &cfg);
+        win_bell(term_p, &cfg);
     }
     //if (scroll) {
     //  if (!term.app_scrollbar)
@@ -2108,34 +2133,34 @@ win_key_down(WPARAM wp, LPARAM lp)
     //  sel_adjust = true;
     //}
     if (sel_adjust) {
-      if (term->sel_rect) {
-        term->sel_start.y = min(term->sel_anchor.y, term->sel_pos.y);
-        term->sel_start.x = min(term->sel_anchor.x, term->sel_pos.x);
-        term->sel_end.y = max(term->sel_anchor.y, term->sel_pos.y);
-        term->sel_end.x = max(term->sel_anchor.x, term->sel_pos.x);
+      if (term.sel_rect) {
+        term.sel_start.y = min(term.sel_anchor.y, term.sel_pos.y);
+        term.sel_start.x = min(term.sel_anchor.x, term.sel_pos.x);
+        term.sel_end.y = max(term.sel_anchor.y, term.sel_pos.y);
+        term.sel_end.x = max(term.sel_anchor.x, term.sel_pos.x);
       }
-      else if (posle(term->sel_anchor, term->sel_pos)) {
-        term->sel_start = term->sel_anchor;
-        term->sel_end = term->sel_pos;
+      else if (posle(term.sel_anchor, term.sel_pos)) {
+        term.sel_start = term.sel_anchor;
+        term.sel_end = term.sel_pos;
       }
       else {
-        term->sel_start = term->sel_pos;
-        term->sel_end = term->sel_anchor;
+        term.sel_start = term.sel_pos;
+        term.sel_end = term.sel_anchor;
       }
       //printf("->sel %d:%d .. %d:%d\n", term.sel_start.y, term.sel_start.x, term.sel_end.y, term.sel_end.x);
-      term->selected = true;
+      term.selected = true;
       win_update(true);
     }
     if (selection_pending)
       return true;
     else
-      term->selected = false;
+      term.selected = false;
     return true;
   }
 
   bool allow_shortcut = true;
 
-  if (!term->shortcut_override) {
+  if (!term.shortcut_override) {
     // user-defined shortcuts
     //test: W("-:'foo';A+F3:;A+F5:flipscreen;A+F9:\"f9\";C+F10:\"f10\";p:paste;d:`date`;o:\"oo\";ö:\"öö\";€:\"euro\";~:'tilde';[:'[[';µ:'µµ'")
     if (*cfg.key_commands) {
@@ -2163,8 +2188,8 @@ win_key_down(WPARAM wp, LPARAM lp)
       bool editpad = !keypad && vktab[vki].unmod >= 2;
       if (vki >= 0 && !altgr
           && (mods || vktab[vki].unmod || extended)
-          && (!editpad || !term->app_cursor_keys)
-          && (!keypad || !term->app_keypad)
+          && (!editpad || !term.app_cursor_keys)
+          && (!keypad || !term.app_keypad)
          )
       {
         tag = asform("%s%s%s%s%s%s%s%s%s",
@@ -2264,7 +2289,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     // Copy&paste
     if (cfg.clip_shortcuts && key == VK_INSERT && mods && !alt) {
       if (ctrl)
-        term_copy(term);
+        term_copy(term_p);
       if (shift)
         win_paste();
       return true;
@@ -2304,8 +2329,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         mods == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT))
        ) {
       switch (key) {
-        when 'A': term_select_all(term);
-        when 'C': term_copy(term);
+        when 'A': term_select_all(term_p);
+        when 'C': term_copy(term_p);
         when 'V': win_paste();
 //        when 'I': open_popup_menu(true, "ls", mods);
 //        when 'N': send_syscommand(IDM_NEW);
@@ -2313,8 +2338,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
-        when 'T': win_tab_create(term);
-        when 'W': win_tab_close(&term);
+        when 'T': win_tab_create(term_p);
+        when 'W': win_tab_close(&term_p);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': if (!transparency_pending) {
                     previous_transparency = cfg.transparency;
@@ -2333,8 +2358,8 @@ win_key_down(WPARAM wp, LPARAM lp)
     }
 
     // Scrollback and Selection via keyboard
-    if (!term->on_alt_screen || term->show_other_screen) {
-      mod_keys scroll_mod = cfg.scroll_mod ?: 128;
+    if (!term.on_alt_screen || term.show_other_screen) {
+      mod_keys scroll_mod = (mod_keys)(cfg.scroll_mod ?: 128);
       if (cfg.pgupdn_scroll && (key == VK_PRIOR || key == VK_NEXT) &&
           !(mods & ~scroll_mod))
         mods ^= scroll_mod;
@@ -2350,17 +2375,18 @@ win_key_down(WPARAM wp, LPARAM lp)
           when VK_LEFT:  scroll = SB_PRIOR;
           when VK_RIGHT: scroll = SB_NEXT;
           when VK_CLEAR:
-            term->sel_pos = (pos){.y = term->curs.y, .x = term->curs.x, .r = 0};
-            term->sel_anchor = term->sel_pos;
-            term->sel_start = term->sel_pos;
-            term->sel_end = term->sel_pos;
-            term->sel_rect = mods & MDK_ALT;
+            term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .r = 0};
+            term.sel_anchor = term.sel_pos;
+            term.sel_start = term.sel_pos;
+            term.sel_end = term.sel_pos;
+            term.sel_rect = mods & MDK_ALT;
             selection_pending = true;
             //printf("selection_pending = true\n");
             return true;
-          otherwise: goto not_scroll;
+            break;
+          default: goto not_scroll;
         }
-        if (!term->app_scrollbar) // prevent recursion
+        if (!term.app_scrollbar) // prevent recursion
           SendMessage(wnd, WM_VSCROLL, scroll, 0);
         return true;
         not_scroll:;
@@ -2383,7 +2409,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         //when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
         //when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
         //when '0':          zoom = 0;
-        otherwise: goto not_zoom;
+          break;
+        default: goto not_zoom;
       }
       win_zoom_font(zoom, mods & MDK_SHIFT);
       return true;
@@ -2410,8 +2437,8 @@ win_key_down(WPARAM wp, LPARAM lp)
   // them anyway during user-defined key detection (using the '*' prefix)
   //mods |= super * MDK_SUPER | hyper * MDK_HYPER;
 
-  bool zoom_hotkey(void) {
-    if (!term->shortcut_override && cfg.zoom_shortcuts
+  auto zoom_hotkey = [&](void) -> bool {
+    if (!term.shortcut_override && cfg.zoom_shortcuts
         && (mods & ~MDK_SHIFT) == MDK_CTRL) {
       int zoom;
       switch (key) {
@@ -2431,79 +2458,80 @@ win_key_down(WPARAM wp, LPARAM lp)
         when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
         when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
         when '0':          zoom = 0;
-        otherwise: return false;
+          break;
+        default: return false;
       }
       win_zoom_font(zoom, mods & MDK_SHIFT);
       return true;
     }
     return false;
-  }
+  };
 
   // Keycode buffers
   char buf[32];
   int len = 0;
 
-  inline void ch(char c) { buf[len++] = c; }
-  inline void esc_if(bool b) { if (b) ch('\e'); }
-  void ss3(char c) { ch('\e'); ch('O'); ch(c); }
-  void csi(char c) { ch('\e'); ch('['); ch(c); }
-  void mod_csi(char c) { len = sprintf(buf, "\e[1;%u%c", mods + 1, c); }
-  void mod_ss3(char c) { mods ? mod_csi(c) : ss3(c); }
-  void tilde_code(uchar code) {
+  auto ch = [&](char c) { buf[len++] = c; };
+  auto esc_if = [&](bool b) { if (b) ch('\e'); };
+  auto ss3 = [&](char c) { ch('\e'); ch('O'); ch(c); };
+  auto csi = [&](char c) { ch('\e'); ch('['); ch(c); };
+  auto mod_csi = [&](char c) { len = sprintf(buf, "\e[1;%u%c", mods + 1, c); };
+  auto mod_ss3 = [&](char c) { mods ? mod_csi(c) : ss3(c); };
+  auto tilde_code = [&](uchar code) {
     trace_key("tilde");
     len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
-  }
-  void other_code(wchar c) {
+  };
+  auto other_code = [&](wchar c) {
     trace_key("other");
     len = sprintf(buf, "\e[%u;%uu", c, mods + 1);
-  }
-  void app_pad_code(char c) {
-    void mod_appl_xterm(char c) {len = sprintf(buf, "\eO%u%c", mods + 1, c);}
-    if (mods && term->app_keypad) switch (key) {
+  };
+  auto app_pad_code = [&](char c) {
+    auto mod_appl_xterm = [&](char c) {len = sprintf(buf, "\eO%u%c", mods + 1, c);};
+    if (mods && term.app_keypad) switch (key) {
       when VK_DIVIDE case_or VK_MULTIPLY case_or VK_SUBTRACT case_or VK_ADD case_or VK_RETURN:
         mod_appl_xterm(c - '0' + 'p');
         return;
     }
-    if (term->vt220_keys && mods && term->app_keypad) switch (key) {
+    if (term.vt220_keys && mods && term.app_keypad) switch (key) {
       when VK_CLEAR case_or VK_PRIOR ... VK_DOWN case_or VK_INSERT case_or VK_DELETE:
         mod_appl_xterm(c - '0' + 'p');
         return;
     }
     mod_ss3(c - '0' + 'p');
-  }
-  void strcode(string s) {
+  };
+  auto strcode = [&](string s) {
     unsigned int code;
     if (sscanf (s, "%u", & code) == 1)
       tilde_code(code);
     else
       len = sprintf(buf, "%s", s);
-  }
+  };
 
-  bool alt_code_key(char digit) {
+  auto alt_code_key = [&](char digit) -> bool {
     if (old_alt_state > ALT_ALONE && digit < old_alt_state) {
       alt_state = old_alt_state;
       alt_code = alt_code * alt_state + digit;
       return true;
     }
     return false;
-  }
+  };
 
-  bool alt_code_numpad_key(char digit) {
+  auto alt_code_numpad_key = [&](char digit) -> bool {
     if (old_alt_state == ALT_ALONE) {
       alt_code = digit;
       alt_state = digit ? ALT_DEC : ALT_OCT;
       return true;
     }
     return alt_code_key(digit);
-  }
+  };
 
-  bool app_pad_key(char symbol) {
+  auto app_pad_key = [&](char symbol) -> bool {
     if (extended)
       return false;
     // Mintty-specific: produce app_pad codes not only when vt220 mode is on,
     // but also in PC-style mode when app_cursor_keys is off, to allow the
     // numpad keys to be distinguished from the cursor/editing keys.
-    if (term->app_keypad && (!term->app_cursor_keys || term->vt220_keys)) {
+    if (term.app_keypad && (!term.app_cursor_keys || term.vt220_keys)) {
       // If NumLock is on, Shift must have been pressed to override it and
       // get a VK code for an editing or cursor key code.
       if (numlock)
@@ -2512,23 +2540,23 @@ win_key_down(WPARAM wp, LPARAM lp)
       return true;
     }
     return symbol != '.' && alt_code_numpad_key(symbol - '0');
-  }
+  };
 
-  void edit_key(uchar code, char symbol) {
+  auto edit_key = [&](uchar code, char symbol) {
     if (!app_pad_key(symbol)) {
-      if (code != 3 || ctrl || alt || shift || !term->delete_sends_del)
+      if (code != 3 || ctrl || alt || shift || !term.delete_sends_del)
         tilde_code(code);
       else
         ch(CDEL);
     }
-  }
+  };
 
-  void cursor_key(char code, char symbol) {
-    if (term->vt52_mode)
+  auto cursor_key = [&](char code, char symbol) {
+    if (term.vt52_mode)
       len = sprintf(buf, "\e%c", code);
     else if (!app_pad_key(symbol))
-      mods ? mod_csi(code) : term->app_cursor_keys ? ss3(code) : csi(code);
-  }
+      mods ? mod_csi(code) : term.app_cursor_keys ? ss3(code) : csi(code);
+  };
 
   static struct {
     unsigned int combined;
@@ -2539,7 +2567,7 @@ win_key_down(WPARAM wp, LPARAM lp)
   };
 
   // Keyboard layout
-  bool layout(void) {
+  auto layout = [&](void) -> bool {
     // ToUnicode returns up to 4 wchars according to
     // http://blogs.msdn.com/b/michkap/archive/2006/03/24/559169.aspx
     // https://web.archive.org/web/20120103012712/http://blogs.msdn.com/b/michkap/archive/2006/03/24/559169.aspx
@@ -2580,7 +2608,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 #endif
       for (int i = 0; i < wlen; i++)
         compose_buf[compose_buflen++] = wbuf[i];
-      uint comp_len = min((uint)compose_buflen, lengthof(composed->kc));
+      uint comp_len = min((uint)compose_buflen, (uint)lengthof(composed->kc));
       bool found = false;
       for (uint k = 0; k < lengthof(composed); k++)
         if (0 == wcsncmp(compose_buf, composed[k].kc, comp_len)) {
@@ -2635,9 +2663,9 @@ win_key_down(WPARAM wp, LPARAM lp)
     bool ok = mblen > 0;
     len = ok ? len + mblen : 0;
     return ok;
-  }
+  };
 
-  wchar undead_keycode(void) {
+  auto undead_keycode = [&](void) -> wchar {
     wchar wc;
     int len = ToUnicode(key, scancode, kbd, &wc, 1, 0);
 #ifdef debug_key
@@ -2653,9 +2681,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       return wc;
     }
     return len == 1 ? wc : 0;
-  }
+  };
 
-  void modify_other_key(void) {
+  auto modify_other_key = [&](void) {
     wchar wc = undead_keycode();
     if (!wc) {
 #ifdef debug_key
@@ -2679,9 +2707,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       else
         other_code(wc);
     }
-  }
+  };
 
-  bool char_key(void) {
+  auto char_key = [&](void) -> bool {
     trace_alt("char_key alt %d -> %d\n", alt, lalt & !ctrl_lalt_altgr);
     alt = lalt & !ctrl_lalt_altgr;
 
@@ -2706,9 +2734,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       return true;
     }
     return !ctrl;
-  }
+  };
 
-  bool altgr_key(void) {
+  auto altgr_key = [&](void) -> bool {
     if (!altgr)
       return false;
 
@@ -2725,9 +2753,9 @@ win_key_down(WPARAM wp, LPARAM lp)
 
     // Try the layout.
     return layout();
-  }
+  };
 
-  void ctrl_ch(uchar c) {
+  auto ctrl_ch = [&](uchar c) {
     esc_if(alt);
     if (shift && !cfg.ctrl_exchange_shift) {
       // Send C1 control char if the charset supports it.
@@ -2743,22 +2771,22 @@ win_key_down(WPARAM wp, LPARAM lp)
       esc_if(!alt);
     }
     ch(c);
-  }
+  };
 
-  bool ctrl_key(void) {
-    bool try_appctrl(wchar wc) {
+  auto ctrl_key = [&](void) -> bool {
+    auto try_appctrl = [&](wchar wc) -> bool {
       switch (wc) {
         when '@' case_or '[' ... '_' case_or 'a' ... 'z':
           if (win_active_terminal()->app_control & (1 << (wc & 0x1F))) {
-            mods = ctrl * MDK_CTRL;
+            mods = (mod_keys)(ctrl * MDK_CTRL);
             other_code((wc & 0x1F) + '@');
             return true;
           }
       }
       return false;
-    }
+    };
 
-    bool try_key(void) {
+    auto try_key = [&](void) -> bool {
       wchar wc = undead_keycode();  // should we fold that out into ctrl_key?
 
       if (try_appctrl(wc))
@@ -2769,25 +2797,26 @@ win_key_down(WPARAM wp, LPARAM lp)
         when '@' case_or '[' ... '_' case_or 'a' ... 'z': c = CTRL(wc);
         when '/': c = CTRL('_');
         when '?': c = CDEL;
-        otherwise: return false;
+          break;
+        default: return false;
       }
       ctrl_ch(c);
       return true;
-    }
+    };
 
-    bool try_shifts(void) {
+    auto try_shifts = [&](void) -> bool {
       shift = is_key_down(VK_LSHIFT) & is_key_down(VK_RSHIFT);
       if (try_key())
         return true;
       shift = is_key_down(VK_SHIFT);
-      if (shift || (key >= '0' && key <= '9' && !term->modify_other_keys)) {
+      if (shift || (key >= '0' && key <= '9' && !term.modify_other_keys)) {
         kbd[VK_SHIFT] ^= 0x80;
         if (try_key())
           return true;
         kbd[VK_SHIFT] ^= 0x80;
       }
       return false;
-    }
+    };
 
     if (try_shifts())
       return true;
@@ -2799,9 +2828,9 @@ win_key_down(WPARAM wp, LPARAM lp)
       return try_shifts();
     }
     return false;
-  }
+  };
 
-  bool vk_special(string key_mapped) {
+  auto vk_special = [&](string key_mapped) -> bool {
     if (!* key_mapped) {
       if (!layout())
         return false;
@@ -2811,11 +2840,11 @@ win_key_down(WPARAM wp, LPARAM lp)
     else
       strcode(key_mapped);
     return true;
-  }
+  };
 
   switch (key) {
     when VK_RETURN:
-      if (allow_shortcut && !term->shortcut_override && cfg.window_shortcuts
+      if (allow_shortcut && !term.shortcut_override && cfg.window_shortcuts
           && alt && !altgr
          )
       {
@@ -2823,25 +2852,25 @@ win_key_down(WPARAM wp, LPARAM lp)
         send_syscommand((shift && !ctrl) ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
         return true;
       }
-      else if (extended && term->vt52_mode && term->app_keypad)
+      else if (extended && term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?M");
-      else if (extended && !numlock && term->app_keypad)
+      else if (extended && !numlock && term.app_keypad)
         //mod_ss3('M');
         app_pad_code('M' - '@');
-      else if (!extended && term->modify_other_keys && (shift || ctrl))
+      else if (!extended && term.modify_other_keys && (shift || ctrl))
         other_code('\r');
       else if (!ctrl)
         esc_if(alt),
-        term->newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
+        term.newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
       else
         ctrl_ch(CTRL('^'));
     when VK_BACK:
       if (!ctrl)
-        esc_if(alt), ch(term->backspace_sends_bs ? '\b' : CDEL);
-      else if (term->modify_other_keys)
-        other_code(term->backspace_sends_bs ? '\b' : CDEL);
+        esc_if(alt), ch(term.backspace_sends_bs ? '\b' : CDEL);
+      else if (term.modify_other_keys)
+        other_code(term.backspace_sends_bs ? '\b' : CDEL);
       else
-        ctrl_ch(term->backspace_sends_bs ? CDEL : CTRL('_'));
+        ctrl_ch(term.backspace_sends_bs ? CDEL : CTRL('_'));
     when VK_TAB:
 #ifdef handle_alt_tab
       if (alt) {
@@ -2863,17 +2892,17 @@ win_key_down(WPARAM wp, LPARAM lp)
         return true;
       }
       else
-        term->modify_other_keys ? other_code('\t') : mod_csi('I');
+        term.modify_other_keys ? other_code('\t') : mod_csi('I');
     when VK_ESCAPE:
-      term->app_escape_key
+      term.app_escape_key
       ? ss3('[')
-      : ctrl_ch(term->escape_sends_fs ? CTRL('\\') : CTRL('['));
+      : ctrl_ch(term.escape_sends_fs ? CTRL('\\') : CTRL('['));
     when VK_PAUSE:
       if (!vk_special(ctrl & !extended ? cfg.key_break : cfg.key_pause))
         return false;
     when VK_CANCEL:
       if (!strcmp(cfg.key_break, "_BRK_")) {
-        child_break(term->child);
+        child_break(term.child);
         return false;
       }
       if (!vk_special(cfg.key_break))
@@ -2888,11 +2917,11 @@ win_key_down(WPARAM wp, LPARAM lp)
       if (!vk_special(cfg.key_scrlock))
         return false;
     when VK_F1 ... VK_F24:
-      if (key <= VK_F4 && term->vt52_mode) {
+      if (key <= VK_F4 && term.vt52_mode) {
         len = sprintf(buf, "\e%c", key - VK_F1 + 'P');
         break;
       }
-      if (term->vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
+      if (term.vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
         key += 10, mods &= ~MDK_CTRL;
       if (key <= VK_F4)
         mod_ss3(key - VK_F1 + 'P');
@@ -2908,43 +2937,43 @@ win_key_down(WPARAM wp, LPARAM lp)
     when VK_DELETE: edit_key(3, '.');
     when VK_PRIOR:
       if (shift && ctrl)
-        win_tab_move(term, -1);
+        win_tab_move(term_p, -1);
       else if (ctrl)
-        win_tab_change(term, -1);
+        win_tab_change(term_p, -1);
       else
         edit_key(5, '9');
     when VK_NEXT:
       if (shift && ctrl)
-        win_tab_move(term, +1);
+        win_tab_move(term_p, +1);
       else if (ctrl)
-        win_tab_change(term, +1);
+        win_tab_change(term_p, +1);
       else
         edit_key(6, '3');
-    when VK_HOME:   term->vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
-    when VK_END:    term->vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
+    when VK_HOME:   term.vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
+    when VK_END:    term.vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
     when VK_UP:     cursor_key('A', '8');
     when VK_DOWN:   cursor_key('B', '2');
     when VK_LEFT:   cursor_key('D', '4');
     when VK_RIGHT:  cursor_key('C', '6');
     when VK_CLEAR:  cursor_key('E', '5');
     when VK_MULTIPLY ... VK_DIVIDE:
-      if (term->vt52_mode && term->app_keypad)
+      if (term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?%c", key - VK_MULTIPLY + 'j');
       else if (key == VK_ADD && old_alt_state == ALT_ALONE)
         alt_state = ALT_HEX, alt_code = 0;
-      else if (mods || (term->app_keypad && !numlock) || !layout())
+      else if (mods || (term.app_keypad && !numlock) || !layout())
         app_pad_code(key - VK_MULTIPLY + '*');
     when VK_NUMPAD0 ... VK_NUMPAD9:
-      if (term->vt52_mode && term->app_keypad)
+      if (term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?%c", key - VK_NUMPAD0 + 'p');
-      else if ((term->app_cursor_keys || !term->app_keypad) &&
+      else if ((term.app_cursor_keys || !term.app_keypad) &&
           alt_code_numpad_key(key - VK_NUMPAD0));
       else if (layout())
         ;
       else
         app_pad_code(key - VK_NUMPAD0 + '0');
     when 'A' ... 'Z' case_or ' ': {
-      bool check_menu = key == VK_SPACE && !term->shortcut_override
+      bool check_menu = key == VK_SPACE && !term.shortcut_override
                         && cfg.window_shortcuts && alt && !altgr && !ctrl;
 #ifdef debug_key
       printf("mods %d (modf %d comp %d)\n", mods, term.modify_other_keys, comp_state);
@@ -2958,16 +2987,16 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
       else if (shift && ctrl && key == 'T')
-        win_tab_create(term);
+        win_tab_create(term_p);
       else if (shift && ctrl && key == 'W')
-        win_tab_close(&term);
-      else if (term->modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
+        win_tab_close(&term_p);
+      else if (term.modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
         // only in modify-other-keys mode 2
         modify_other_key();
       else if (char_key())
         trace_key("char");
-      else if (term->modify_other_keys > 1 || (term->modify_other_keys && altgr))
+      else if (term.modify_other_keys > 1 || (term.modify_other_keys && altgr))
         // handle Alt+space after char_key, avoiding undead_ glitch;
         // also handle combinations like Ctrl+AltGr+e
         modify_other_key();
@@ -2981,9 +3010,9 @@ win_key_down(WPARAM wp, LPARAM lp)
         ;
       else if (char_key())
         trace_key("0... char_key");
-      else if (term->modify_other_keys <= 1 && ctrl_key())
+      else if (term.modify_other_keys <= 1 && ctrl_key())
         trace_key("0... ctrl_key");
-      else if (term->modify_other_keys)
+      else if (term.modify_other_keys)
         modify_other_key();
       else if (zoom_hotkey())
         ;
@@ -2999,18 +3028,19 @@ win_key_down(WPARAM wp, LPARAM lp)
         alt = lalt;
       if (!layout())
         return false;
-    otherwise:
+      break;
+    default:
       if (!layout())
         return false;
   }
 
   hide_mouse();
-  term_cancel_paste(term);
+  term_cancel_paste(term_p);
 
   if (len) {
     //printf("[%ld] win_key_down %02X\n", mtime(), key); kb_trace = key;
     while (count--)
-      child_send(term->child, buf, len);
+      child_send(term.child, buf, len);
     compose_clear();
     // set token to enforce immediate display of keyboard echo;
     // we cannot win_update_now here; need to wait for the echo (child_proc)
@@ -3027,10 +3057,10 @@ void
 win_csi_seq(struct child* child, char * pre, char * suf)
 {
   mod_keys mods = get_mods();
-  inline bool is_key_down(uchar vk) { return GetKeyState(vk) & 0x80; }
+  auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
   bool super = super_key && is_key_down(super_key);
   bool _hyper = hyper_key && is_key_down(hyper_key);
-  mods |= super * MDK_SUPER | _hyper * MDK_HYPER;
+  mods |= (mod_keys)(super * MDK_SUPER | _hyper * MDK_HYPER);
 
   if (mods)
     child_printf(child, "\e[%s;%u%s", pre, mods + 1, suf);
@@ -3046,7 +3076,8 @@ win_key_up(WPARAM wp, LPARAM lp)
   printf("  win_key_up %04X %s\n", key, vk_name(key));
 #endif
 
-  struct term* active_term = win_active_terminal();
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
 
   if (key == VK_CANCEL) {
     // in combination with Control, this may be the KEYUP event 
@@ -3126,8 +3157,8 @@ win_key_up(WPARAM wp, LPARAM lp)
       win_update_transparency(true);
   }
 
-  if (key == VK_CONTROL && active_term->hovering) {
-    active_term->hovering = false;
+  if (key == VK_CONTROL && term.hovering) {
+    term.hovering = false;
     win_update(false);
   }
 
@@ -3141,20 +3172,22 @@ win_key_up(WPARAM wp, LPARAM lp)
       do
         buf[--pos] = alt_code;
       while (alt_code >>= 8);
-      child_send(active_term->child, buf + pos, sizeof buf - pos);
+      child_send(term.child, buf + pos, sizeof buf - pos);
       compose_clear();
     }
     else if (alt_code < 0x10000) {
       wchar wc = alt_code;
+      wchar wc_tmp[] = {wc};
       if (wc < 0x20)
         MultiByteToWideChar(CP_OEMCP, MB_USEGLYPHCHARS,
-                            (char[]){wc}, 1, &wc, 1);
-      child_sendw(active_term->child, &wc, 1);
+                            (char *)wc_tmp, 1, &wc, 1);
+      child_sendw(term.child, &wc, 1);
       compose_clear();
     }
     else {
       xchar xc = alt_code;
-      child_sendw(active_term->child, (wchar[]){high_surrogate(xc), low_surrogate(xc)}, 2);
+      wchar tmp_wchar[] = {high_surrogate(xc), low_surrogate(xc)};
+      child_sendw(term.child, tmp_wchar, 2);
       compose_clear();
     }
   }
@@ -3228,3 +3261,4 @@ win_led(int led, bool set)
     win_key_toggle(led_keys[led - 1], set);
 }
 
+}

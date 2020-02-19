@@ -1,3 +1,5 @@
+extern "C" {
+  
 #include "print.h"
 
 #include <winbase.h>
@@ -10,9 +12,9 @@
 static HANDLE printer;
 
 static const DOC_INFO_1 doc_info = {
-  .pDocName = "Mintty ANSI printer output",
-  .pOutputFile = null,
-  .pDatatype = "TEXT"
+  pDocName : (char *)"Mintty ANSI printer output",
+  pOutputFile : null,
+  pDatatype : (char *)"TEXT"
 };
 
 void
@@ -60,4 +62,6 @@ printer_finish_job(void)
     ClosePrinter(printer);
     printer = 0;
   }
+}
+
 }

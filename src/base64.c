@@ -2,6 +2,8 @@
 // Copyright 2016 Jianbin Kang
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "std.h"
 
 #include <errno.h>
@@ -276,3 +278,5 @@ int main(int argc, char *argv[])
   return 0;
 }
 #endif
+
+}

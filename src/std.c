@@ -2,20 +2,22 @@
 // Copyright 2010-11 Andy Koppe
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "std.h"
 
 void
 strset(string *sp, string s)
 {
   uint size = strlen(s) + 1;
-  *sp = memcpy(renewn((char *)*sp, size), s, size);
+  *sp = (string)memcpy(renewn((char *)*sp, size), s, size);
 }
 
 void
 wstrset(wstring *sp, wstring s)
 {
   uint size = wcslen(s) + 1;
-  *sp = memcpy(renewn((wchar *)*sp, size), s, size * sizeof(wchar));
+  *sp = (wstring)memcpy(renewn((wchar *)*sp, size), s, size * sizeof(wchar));
 }
 
 
@@ -33,12 +35,12 @@ tmpdir()
       tmpdir = asform("%s/Temp", tmpdir);
   }
   if (!tmpdir || access(tmpdir, W_OK) < 0)
-    tmpdir = "/usr/tmp";
+    tmpdir = (char*)"/usr/tmp";
   return tmpdir;
 }
 
 
-#if CYGWIN_VERSION_API_MINOR < 70
+//#if CYGWIN_VERSION_API_MINOR < 70
 
 int
 vasprintf(char **buf, const char *fmt, va_list va)
@@ -48,7 +50,7 @@ vasprintf(char **buf, const char *fmt, va_list va)
   int len = vsnprintf(0, 0, fmt, va2);
   va_end(va2);
   if (len > 0) {
-    *buf = malloc(len + 1);
+    *buf = (char *)malloc(len + 1);
     if (*buf)
       vsnprintf(*buf, len + 1, fmt, va);
   }
@@ -67,7 +69,7 @@ asprintf(char **buf, const char *fmt, ...)
   return len;
 }
 
-#endif
+//#endif
 
 char *
 asform(const char *fmt, ...)
@@ -269,3 +271,5 @@ forkpty(int *amaster, char *name,
 }
 
 #endif
+
+}

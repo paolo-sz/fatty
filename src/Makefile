@@ -151,7 +151,7 @@ CXXFLAGS += $(COMMONFLAGS)
 #	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) $< -o $(BINDIR)/term$*.o
 
 $(BINDIR)/%.o: %.c
-	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
+	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
 
 $(BINDIR)/%.o: %.cc
 	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/$*.o

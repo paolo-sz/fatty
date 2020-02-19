@@ -3,6 +3,8 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+extern "C" {
+  
 #include "winpriv.h"
 
 static HWND tip_wnd = 0;
@@ -127,4 +129,6 @@ win_destroy_tip(void)
     DestroyWindow(tip_wnd);
     tip_wnd = null;
   }
+}
+
 }

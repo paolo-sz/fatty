@@ -4,6 +4,10 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define CINTERFACE
+
+extern "C" {
+  
 #include "winpriv.h"
 #include "termpriv.h"  // term_get_html
 #include "charset.h"
@@ -23,7 +27,7 @@
 static DWORD WINAPI
 shell_exec_thread(void *data)
 {
-  wchar *wpath = data;
+  wchar *wpath = (wchar *)data;
 
 #ifdef __CYGWIN__
   /* Need to sync the Windows environment */
@@ -448,7 +452,7 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
     return;
 
   memcpy(lock, data, len * sizeof(wchar));
-  WideCharToMultiByte(CP_ACP, 0, data, len, lock2, len2, null, null);
+  WideCharToMultiByte(CP_ACP, 0, data, len, (LPSTR)lock2, len2, null, null);
 
   if (cattrs && ((cfg.copy_as_rtf && !what) || what == 'r')) {
     wchar unitab[256];
@@ -469,9 +473,11 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
     int palette[COLOUR_NUM];
     int numcolours;
 
-    for (int i = 0; i < 256; i++)
+    for (int i = 0; i < 256; i++) {
+      char tmp_c[1] = {(char)i};
       MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS,
-                          (char[]){i}, 1, unitab + i, 1);
+                          tmp_c, 1, unitab + i, 1);
+    }
 
     wstring cfgfont = *cfg.copy_as_rtf_font ? cfg.copy_as_rtf_font : cfg.font.name;
     int cfgsize = cfg.copy_as_rtf_font_size ? cfg.copy_as_rtf_font_size : cfg.font.size;
@@ -727,8 +733,8 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
     UINT CF_HTML = level ? RegisterClipboardFormatA("HTML Format") : 0;
     if (CF_HTML) {
       char * html = term_get_html(level);
-      char * htmlpre = "<html><!--StartFragment-->";
-      char * htmlpost = "<!--EndFragment--></html>";
+      char * htmlpre = (char *)"<html><!--StartFragment-->";
+      char * htmlpost = (char *)"<!--EndFragment--></html>";
       int htmldescrlen = 92;
       char * htmlcb = asform(
              "Version:0.9\n"
@@ -746,7 +752,7 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
       int len = strlen(htmlcb);
       //printf("clipboard HTML Format:\n%s\n", htmlcb);
       HGLOBAL clipdatahtml = GlobalAlloc(GMEM_DDESHARE | GMEM_MOVEABLE, len);
-      char * cliphtml = GlobalLock(clipdatahtml);
+      char * cliphtml = (char *)GlobalLock(clipdatahtml);
       if (cliphtml) {
         memcpy(cliphtml, htmlcb, len);
         free(htmlcb);
@@ -880,7 +886,7 @@ buf_path(wchar * wfn)
           free(wappd);
         }
 
-        char * mount_point(char * path, char * appd) {
+        auto mount_point = [&](char * path, char * appd) -> char * {
           if (!appd)
             return null;
           int lapp = strlen(appd);
@@ -907,10 +913,10 @@ buf_path(wchar * wfn)
             if (*path)
               return path;
             else
-              return "/";
+              return (char *)"/";
           }
           return null;
-        }
+        };
 
         char * mp = mount_point(p, appd);
         if (mp)
@@ -996,25 +1002,27 @@ paste_hdrop(HDROP drop)
 }
 
 static void
-paste_path(struct term* term, HANDLE data)
+paste_path(struct term* term_p, HANDLE data)
 {
-  wchar *s = GlobalLock(data);
+  struct term& term = *term_p;
+  
+  wchar *s = (wchar *)GlobalLock(data);
   buf_init();
   buf_path(s);
   GlobalUnlock(data);
 
-  if (term->bracketed_paste)
-    child_write(term->child, "\e[200~", 6);
-  child_send(term->child, buf, buf_pos);
+  if (term.bracketed_paste)
+    child_write(term.child, "\e[200~", 6);
+  child_send(term.child, buf, buf_pos);
   free(buf);
-  if (term->bracketed_paste)
-    child_write(term->child, "\e[201~", 6);
+  if (term.bracketed_paste)
+    child_write(term.child, "\e[201~", 6);
 }
 
 static void
 paste_unicode_text(HANDLE data)
 {
-  wchar *s = GlobalLock(data);
+  wchar *s = (wchar *)GlobalLock(data);
   uint l = wcslen(s);
   term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
   GlobalUnlock(data);
@@ -1023,7 +1031,7 @@ paste_unicode_text(HANDLE data)
 static void
 paste_text(HANDLE data)
 {
-  char *cs = GlobalLock(data);
+  char *cs = (char *)GlobalLock(data);
   uint l = MultiByteToWideChar(CP_ACP, 0, cs, -1, 0, 0) - 1;
   wchar s[l];
   MultiByteToWideChar(CP_ACP, 0, cs, -1, s, l);
@@ -1043,7 +1051,7 @@ do_win_paste(bool do_path)
   HGLOBAL data;
   if ((data = GetClipboardData(CF_HDROP))) {
     //printf("pasting CF_HDROP\n");
-    paste_hdrop(data);
+    paste_hdrop((HDROP)data);
   }
   else if ((data = GetClipboardData(CF_UNICODETEXT))) {
     //printf("pasting CF_UNICODETEXT\n");
@@ -1084,17 +1092,17 @@ paste_dialog(HANDLE data, CLIPFORMAT cf)
     //cf. paste_unicode_text(data);
     // used for URLs
     // used for data:... schemes (http://ciembor.github.io/4bit/#)
-    wchar * s = wcsdup(GlobalLock(data));
+    wchar * s = wcsdup((const wchar *)GlobalLock(data));
     GlobalUnlock(data);
     return s;
   }
   else if (cf == CF_HDROP) {
     //cf. paste_hdrop(data);
     // used for filenames
-    if (1 == DragQueryFileW(data, -1, 0, 0)) {
-      uint wbuflen = DragQueryFileW(data, 0, 0, 0) + 1;
+    if (1 == DragQueryFileW((HDROP)data, -1, 0, 0)) {
+      uint wbuflen = DragQueryFileW((HDROP)data, 0, 0, 0) + 1;
       wchar * wc = newn(wchar, wbuflen);
-      DragQueryFileW(data, 0, wc, wbuflen);
+      DragQueryFileW((HDROP)data, 0, wc, wbuflen);
       return wc;
     }
   }
@@ -1106,11 +1114,11 @@ static volatile LONG dt_ref_count;
 static FORMATETC dt_format = { 0, null, DVASPECT_CONTENT, -1, TYMED_HGLOBAL };
 
 static __stdcall HRESULT
-dt_query_interface(IDropTarget *this, REFIID iid, void **p)
+dt_query_interface(IDropTarget *this_, REFIID iid, void **p)
 {
-  if (IsEqualIID(iid, &IID_IUnknown) || IsEqualIID(iid, &IID_IDropTarget)) {
+  if (IsEqualIID(iid, IID_IUnknown) || IsEqualIID(iid, IID_IDropTarget)) {
     InterlockedIncrement(&dt_ref_count);
-    *p = this;
+    *p = this_;
     return S_OK;
   }
   else {
@@ -1138,7 +1146,8 @@ dt_drag_over(IDropTarget *unused(this),
         ?: *effect_p & (DROPEFFECT_COPY | DROPEFFECT_MOVE);
     when CF_HDROP:
       *effect_p &= DROPEFFECT_LINK;
-    otherwise:
+      break;
+    default:
       *effect_p = DROPEFFECT_NONE;
   }
   return S_OK;
@@ -1152,22 +1161,22 @@ try_format(IDataObject *obj, CLIPFORMAT format)
 }
 
 static __stdcall HRESULT
-dt_drag_enter(IDropTarget *this, IDataObject *obj,
+dt_drag_enter(IDropTarget *this_, IDataObject *obj,
              DWORD keys, POINTL pos, DWORD *effect_p)
 {
   try_format(obj, CF_HDROP) ||
   try_format(obj, CF_UNICODETEXT) ||
   try_format(obj, CF_TEXT) ||
   (dt_format.cfFormat = 0);
-  return dt_drag_over(this, keys, pos, effect_p);
+  return dt_drag_over(this_, keys, pos, effect_p);
 }
 
 static __stdcall HRESULT
-dt_drag_leave(IDropTarget *unused(this))
+dt_drag_leave(IDropTarget *unused(this_))
 { return S_OK; }
 
 static __stdcall HRESULT
-dt_drop(IDropTarget *this, IDataObject *obj,
+dt_drop(IDropTarget *this_, IDataObject *obj,
         DWORD keys, POINTL pos, DWORD *effect_p)
 {
   // check whether drag-and-drop target is the terminal window
@@ -1175,7 +1184,7 @@ dt_drop(IDropTarget *this, IDataObject *obj,
   POINT p = {.x = pos.x, .y = pos.y};
   HWND h = WindowFromPoint(p);
   if (h == wnd) {
-    dt_drag_enter(this, obj, keys, pos, effect_p);
+    dt_drag_enter(this_, obj, keys, pos, effect_p);
     if (!effect_p)
       return 0;
     STGMEDIUM stgmed;
@@ -1187,7 +1196,7 @@ dt_drop(IDropTarget *this, IDataObject *obj,
     switch (dt_format.cfFormat) {
       when CF_TEXT: paste_text(data);
       when CF_UNICODETEXT: paste_unicode_text(data);
-      when CF_HDROP: paste_hdrop(data);
+      when CF_HDROP: paste_hdrop((HDROP)data);
     }
   }
   else {
@@ -1210,7 +1219,7 @@ dt_drop(IDropTarget *this, IDataObject *obj,
     if (!h)
       return 0;
 
-    dt_drag_enter(this, obj, keys, pos, effect_p);
+    dt_drag_enter(this_, obj, keys, pos, effect_p);
     if (!effect_p)
       return 0;
     STGMEDIUM stgmed;
@@ -1243,4 +1252,6 @@ win_init_drop_target(void)
 {
   OleInitialize(null);
   RegisterDragDrop(wnd, &dt);
+}
+
 }

@@ -20,7 +20,7 @@ extern void report_pos(void);
 extern void win_reconfig(void);
 
 extern void win_update(bool update_sel_tip);
-extern void win_update_term(struct term* term, bool update_sel_tip);
+extern void win_update_term(struct term* term_p, bool update_sel_tip);
 extern void win_schedule_update(void);
 extern void do_update(void);
 
@@ -30,7 +30,7 @@ extern void win_update_mouse(void);
 extern void win_capture_mouse(void);
 extern void win_get_locator_info(int *x, int *y, int *buttons, bool by_pixels);
 
-extern void win_bell(struct term* term, config *);
+extern void win_bell(struct term* term_p, config *);
 
 extern void win_set_title(wchar *wtitle);
 extern void win_copy_title(void);

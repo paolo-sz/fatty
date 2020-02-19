@@ -142,14 +142,15 @@ extern "C" {
       active->info.attention = false;
       SetFocus(wnd);
       
-      struct term *term = active->terminal.get();
-      term->results.update_type = DISABLE_UPDATE;
-      if (IsWindowVisible(win_get_search_wnd()) != term->search_window_visible) {
-        ShowWindow(win_get_search_wnd(), term->search_window_visible ? SW_SHOW : SW_HIDE);
+      struct term* term_p = active->terminal.get();
+      struct term& term = *term_p;
+      term.results.update_type = DISABLE_UPDATE;
+      if (IsWindowVisible(win_get_search_wnd()) != term.search_window_visible) {
+        ShowWindow(win_get_search_wnd(), term.search_window_visible ? SW_SHOW : SW_HIDE);
       }
-      if (term->search_window_visible) {
-        if (term->results.query) {
-          SetWindowTextW(win_get_search_edit_wnd(), term->results.query);
+      if (term.search_window_visible) {
+        if (term.results.query) {
+          SetWindowTextW(win_get_search_edit_wnd(), term.results.query);
         }
         else {
           SetWindowTextW(win_get_search_edit_wnd(), L"");
@@ -158,25 +159,25 @@ extern "C" {
   
       update_window_state();
       win_invalidate_all(false);
-      term->results.update_type = NO_UPDATE;
+      term.results.update_type = NO_UPDATE;
   }
   
-  int tab_idx_by_term(struct term* term) {
+  int tab_idx_by_term(struct term* term_p) {
       std::vector<Tab>::iterator match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
-              return tab.terminal.get() == term; });
+              return tab.terminal.get() == term_p; });
       return (match == tabs.end()) ? -1 : (match - tabs.begin());
   }
   
-  void win_tab_change(struct term* term, int change) {
-      int tab_idx = tab_idx_by_term(term);
+  void win_tab_change(struct term* term_p, int change) {
+      int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       int dst_idx = tab_idx + change;
       if ((dst_idx < 0) || (dst_idx >= (int)tabs.size())) return;
       set_active_tab(dst_idx);
   }
 
-  void win_tab_move(struct term* term, int amount) {
-      int tab_idx = tab_idx_by_term(term);
+  void win_tab_move(struct term* term_p, int amount) {
+      int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       int dst_idx = tab_idx + amount;
       if ((dst_idx < 0) || (dst_idx >= (int)tabs.size())) return;
@@ -241,31 +242,33 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
-  void win_tab_create(struct term* term) {
+  void win_tab_create(struct term* term_p) {
+      struct term& term = *term_p;
+  
       std::stringstream cwd_path;
-      cwd_path << "/proc/" << term->child->pid << "/cwd";
+      cwd_path << "/proc/" << term.child->pid << "/cwd";
       char* cwd = realpath(cwd_path.str().c_str(), 0);
-      newtab(term->rows, term->cols, term->cols * cell_width, term->rows * cell_height, cwd, nullptr);
+      newtab(term.rows, term.cols, term.cols * cell_width, term.rows * cell_height, cwd, nullptr);
       free(cwd);
       set_active_tab(tabs.size() - 1);
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
-  void remove_callbacks(struct term *term) {
+  void remove_callbacks(struct term* term_p) {
       for (;;) {
-        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [term](Callback x) {
-          return ((struct term *)(get<1>(x)) == term); });
+        auto cb = std::find_if(callbacks.begin(), callbacks.end(), [term_p](Callback x) {
+          return ((struct term *)(get<1>(x)) == term_p); });
         if (cb == callbacks.end()) break;
         KillTimer(wnd, reinterpret_cast<UINT_PTR>(&*cb));
         callbacks.erase(cb);
       }
   }
 
-  void win_tab_delete(struct term* term) {
-      int tab_idx = tab_idx_by_term(term);
+  void win_tab_delete(struct term* term_p) {
+      int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
-      struct term *terminal = tab.terminal.get();
+      struct term* terminal = tab.terminal.get();
       if (!terminal) return;
       struct child *child = tab.chld.get();
       if (!child) return;
@@ -306,16 +309,16 @@ extern "C" {
       }
   }
   
-  void win_tab_attention(struct term* term) {
-      int tab_idx = tab_idx_by_term(term);
+  void win_tab_attention(struct term* term_p) {
+      int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
       tab.info.attention = true;
       invalidate_tabs();
   }
   
-  void win_tab_set_title(struct term* term, wchar_t* title) {
-      int tab_idx = tab_idx_by_term(term);
+  void win_tab_set_title(struct term* term_p, wchar_t* title) {
+      int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
       if (tab.info.titles[tab.info.titles_i] != title) {
@@ -326,7 +329,7 @@ extern "C" {
       tie.mask = TCIF_TEXT; 
       tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
       SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
-      if (term == win_active_terminal()) {
+      if (term_p == win_active_terminal()) {
         win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
       }
   }
@@ -335,8 +338,8 @@ extern "C" {
       return (wchar_t *)tabs[idx].info.titles[tabs[idx].info.titles_i].c_str();
   }
   
-  void win_tab_title_push(struct term* term) {
-    int tab_idx = tab_idx_by_term(term);
+  void win_tab_title_push(struct term* term_p) {
+    int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return;
     Tab& tab = tabs[tab_idx];
     std::wstring from_title = tab.info.titles[tab.info.titles_i];
@@ -347,8 +350,8 @@ extern "C" {
     tab.info.titles[tab.info.titles_i] = from_title;
   }
     
-  wchar_t* win_tab_title_pop(struct term* term) {
-    int tab_idx = tab_idx_by_term(term);
+  wchar_t* win_tab_title_pop(struct term* term_p) {
+    int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return null_wstring;
     Tab& tab = tabs[tab_idx];
     if (!tab.info.titles_i)
@@ -362,15 +365,15 @@ extern "C" {
    * Title stack (implemented as fixed-size circular buffer)
    */
   void
-  win_tab_save_title(struct term* term)
+  win_tab_save_title(struct term* term_p)
   {
-    win_tab_title_push(term);
+    win_tab_title_push(term_p);
   }
   
   void
-  win_tab_restore_title(struct term* term)
+  win_tab_restore_title(struct term* term_p)
   {
-    win_tab_set_title(term, win_tab_title_pop(term));
+    win_tab_set_title(term_p, win_tab_title_pop(term_p));
   }
   
   bool win_should_die() {
@@ -505,12 +508,12 @@ extern "C" {
       DeleteDC(bufdc);
   }
   
-  void win_for_each_term(void (*cb)(struct term* term)) {
+  void win_for_each_term(void (*cb)(struct term* term_p)) {
       for (Tab& tab : tabs)
           cb(tab.terminal.get());
   }
   
-  void win_for_each_term_bool(void (*cb)(struct term* term, bool param), bool param) {
+  void win_for_each_term_bool(void (*cb)(struct term* term_p, bool param), bool param) {
       for (Tab& tab : tabs)
           cb(tab.terminal.get(), param);
   }

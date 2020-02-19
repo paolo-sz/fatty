@@ -6,7 +6,13 @@
 
 #include <windows.h>
 #include <CommCtrl.h>
+#include <algorithm>
 
+using std::min;
+using std::max;
+    
+extern "C" {
+  
 #include "termpriv.h"
 
 #include "winpriv.h"
@@ -24,17 +30,17 @@
 
 
 const cattr CATTR_DEFAULT =
-            {.attr = ATTR_DEFAULT,
-             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1,
-             .link = -1
+            {attr : ATTR_DEFAULT,
+             truebg : 0, truefg : 0, ulcolr : (colour)-1,
+             link : -1, imgi : 0
             };
 
 termchar basic_erase_char =
-   {.cc_next = 0, .chr = ' ',
+   {cc_next : 0, chr : ' ',
             /* CATTR_DEFAULT */
-    .attr = {.attr = ATTR_DEFAULT | TATTR_CLEAR,
-             .truefg = 0, .truebg = 0, .ulcolr = (colour)-1,
-             .link = -1
+    attr : {attr : ATTR_DEFAULT | TATTR_CLEAR,
+             truebg : 0, truefg : 0, ulcolr : (colour)-1,
+             link : -1, imgi : 0
             }
    };
 
@@ -117,103 +123,125 @@ vt220(string term)
  * Call when the terminal's blinking-text settings change, or when
  * a text blink has just occurred.
  */
-static void term_schedule_tblink(struct term* term);
-static void term_schedule_tblink2(struct term* term);
+static void term_schedule_tblink(struct term* term_p);
+static void term_schedule_tblink2(struct term* term_p);
 
 static void
 tblink_cb(void* data)
 {
-  struct term* term = (struct term*)data;
-  term->tblinker = !term->tblinker;
-  term_schedule_tblink(term);
-  win_update_term(term, false);
+  struct term* term_p = (struct term*)data;
+  struct term& term = *term_p;
+  
+  term.tblinker = !term.tblinker;
+  term_schedule_tblink(term_p);
+  win_update_term(term_p, false);
 }
 
 static void
-term_schedule_tblink(struct term* term)
+term_schedule_tblink(struct term* term_p)
 {
-  if (term->blink_is_real)
-    win_set_timer(tblink_cb, term, 500);
+  struct term& term = *term_p;
+  
+  if (term.blink_is_real)
+    win_set_timer(tblink_cb, term_p, 500);
   else
-    term->tblinker = 1;  /* reset when not in use */
+    term.tblinker = 1;  /* reset when not in use */
 }
 
 static void
 tblink2_cb(void* data)
 {
-  struct term* term = (struct term*)data;
-  term->tblinker2 = !term->tblinker2;
-  term_schedule_tblink2(term);
-  win_update_term(term, false);
+  struct term* term_p = (struct term*)data;
+  struct term& term = *term_p;
+  
+  term.tblinker2 = !term.tblinker2;
+  term_schedule_tblink2(term_p);
+  win_update_term(term_p, false);
 }
 
 static void
-term_schedule_tblink2(struct term* term)
+term_schedule_tblink2(struct term* term_p)
 {
-  if (term->blink_is_real)
-    win_set_timer(tblink2_cb, term, 300);
+  struct term& term = *term_p;
+  
+  if (term.blink_is_real)
+    win_set_timer(tblink2_cb, term_p, 300);
   else
-    term->tblinker2 = 1;  /* reset when not in use */
+    term.tblinker2 = 1;  /* reset when not in use */
 }
 
 /*
  * Likewise with cursor blinks.
  */
 int
-term_cursor_type(struct term* term)
+term_cursor_type(struct term* term_p)
 {
-  return term->cursor_type == -1 ? cfg.cursor_type : term->cursor_type;
+  struct term& term = *term_p;
+  
+  return term.cursor_type == -1 ? cfg.cursor_type : term.cursor_type;
 }
 
 static bool
-term_cursor_blinks(struct term* term)
+term_cursor_blinks(struct term* term_p)
 {
-  return term->cursor_blinkmode
-      || (term->cursor_blinks == -1 ? cfg.cursor_blinks : term->cursor_blinks);
+  struct term& term = *term_p;
+  
+  return term.cursor_blinkmode
+      || (term.cursor_blinks == -1 ? cfg.cursor_blinks : term.cursor_blinks);
 }
 
 void
-term_hide_cursor(struct term* term)
+term_hide_cursor(struct term* term_p)
 {
-  if (term->cursor_on) {
-    term->cursor_on = false;
-    win_update_term(term, false);
+  struct term& term = *term_p;
+  
+  if (term.cursor_on) {
+    term.cursor_on = false;
+    win_update_term(term_p, false);
   }
 }
 
 static void
 cblink_cb(void* data)
 {
-  struct term* term = (struct term*)data;
-  term->cblinker = !term->cblinker;
-  term_schedule_cblink(term);
-  win_update_term(term, false);
+  struct term* term_p = (struct term*)data;
+  struct term& term = *term_p;
+  
+  term.cblinker = !term.cblinker;
+  term_schedule_cblink(term_p);
+  win_update_term(term_p, false);
 }
 
 void
-term_schedule_cblink(struct term* term)
+term_schedule_cblink(struct term* term_p)
 {
-  if (term_cursor_blinks(term) && term->has_focus)
-    win_set_timer(cblink_cb, term, term->cursor_blink_interval ?: cursor_blink_ticks());
+  struct term& term = *term_p;
+  
+  if (term_cursor_blinks(term_p) && term.has_focus)
+    win_set_timer(cblink_cb, term_p, term.cursor_blink_interval ?: cursor_blink_ticks());
   else
-    term->cblinker = 1;  /* reset when not in use */
+    term.cblinker = 1;  /* reset when not in use */
 }
 
 static void
 vbell_cb(void* data)
 {
-  struct term* term = (struct term*)data;
-  term->in_vbell = false;
-  win_update_term(term, false);
+  struct term* term_p = (struct term*)data;
+  struct term& term = *term_p;
+  
+  term.in_vbell = false;
+  win_update_term(term_p, false);
 }
 
 void
-term_schedule_vbell(struct term* term, int already_started, int startpoint)
+term_schedule_vbell(struct term* term_p, int already_started, int startpoint)
 {
+  struct term& term = *term_p;
+  
   int ticks_gone = already_started ? get_tick_count() - startpoint : 0;
   int ticks = 141 - ticks_gone;
-  if ((term->in_vbell = ticks > 0))
-    win_set_timer(vbell_cb, term, ticks);
+  if ((term.in_vbell = ticks > 0))
+    win_set_timer(vbell_cb, term_p, ticks);
 }
 
 /* Find the bottom line on the screen that has any content.
@@ -221,13 +249,15 @@ term_schedule_vbell(struct term* term, int already_started, int startpoint)
  * If no lines have content, return -1.
  */
 int
-term_last_nonempty_line(struct term* term)
+term_last_nonempty_line(struct term* term_p)
 {
-  for (int i = term->rows - 1; i >= 0; i--) {
-    termline *line = term->lines[i];
+  struct term& term = *term_p;
+  
+  for (int i = term.rows - 1; i >= 0; i--) {
+    termline *line = term.lines[i];
     if (line) {
       for (int j = 0; j < line->cols; j++)
-        if (!termchars_equal(&line->chars[j], &term->erase_char))
+        if (!termchars_equal(&line->chars[j], &term.erase_char))
           return i;
     }
   }
@@ -253,133 +283,135 @@ term_cursor_reset(term_cursor *curs)
 }
 
 void
-term_reset(struct term* term, bool full)
+term_reset(struct term* term_p, bool full)
 {
-  if (term->cmd_buf == NULL) {
-    term->cmd_buf = newn(char, 128);
-    term->cmd_buf_cap = 128;
+  struct term& term = *term_p;
+  
+  if (term.cmd_buf == NULL) {
+    term.cmd_buf = newn(char, 128);
+    term.cmd_buf_cap = 128;
   }
 
-  term->state = NORMAL;
-  term->vt52_mode = 0;
+  term.state = NORMAL;
+  term.vt52_mode = 0;
 
   // DECSTR attributes and cursor states to be reset
-  term_cursor_reset(&term->curs);
-  term_cursor_reset(&term->saved_cursors[0]);
-  term_cursor_reset(&term->saved_cursors[1]);
-  term_update_cs(term);
-  term->erase_char = basic_erase_char;
+  term_cursor_reset(&term.curs);
+  term_cursor_reset(&term.saved_cursors[0]);
+  term_cursor_reset(&term.saved_cursors[1]);
+  term_update_cs(term_p);
+  term.erase_char = basic_erase_char;
   // these used to be in term_cursor, thus affected by cursor restore
-  term->decnrc_enabled = false;
-  term->autowrap = true;
-  term->rev_wrap = cfg.old_wrapmodes;
+  term.decnrc_enabled = false;
+  term.autowrap = true;
+  term.rev_wrap = cfg.old_wrapmodes;
 
   // DECSTR states to be reset (in addition to cursor states)
   // https://www.vt100.net/docs/vt220-rm/table4-10.html
-  term->cursor_on = true;
-  term->insert = false;
-  term->marg_top = 0;
-  term->marg_bot = term->rows - 1;
-  term->marg_left = 0;
-  term->marg_right = term->cols - 1;
-  term->app_cursor_keys = false;
-  term->app_scrollbar = false;
+  term.cursor_on = true;
+  term.insert = false;
+  term.marg_top = 0;
+  term.marg_bot = term.rows - 1;
+  term.marg_left = 0;
+  term.marg_right = term.cols - 1;
+  term.app_cursor_keys = false;
+  term.app_scrollbar = false;
 
   if (full) {
-    term->lrmargmode = false;
-    term->deccolm_allowed = cfg.enable_deccolm_init;  // not reset by xterm
-    term->vt220_keys = vt220(cfg.term);  // not reset by xterm
-    term->app_keypad = false;  // xterm only with RIS
-    term->app_control = 0;
-    term->auto_repeat = cfg.auto_repeat;  // not supported by xterm
-    term->attr_rect = false;
-    term->deccolm_noclear = false;
+    term.lrmargmode = false;
+    term.deccolm_allowed = cfg.enable_deccolm_init;  // not reset by xterm
+    term.vt220_keys = vt220(cfg.term);  // not reset by xterm
+    term.app_keypad = false;  // xterm only with RIS
+    term.app_control = 0;
+    term.auto_repeat = cfg.auto_repeat;  // not supported by xterm
+    term.attr_rect = false;
+    term.deccolm_noclear = false;
   }
-  term->modify_other_keys = 0;  // xterm resets this
+  term.modify_other_keys = 0;  // xterm resets this
 
-  term->backspace_sends_bs = cfg.backspace_sends_bs;  // xterm only with RIS
-  term->delete_sends_del = cfg.delete_sends_del;  // not reset by xterm
-  if (full && term->tabs) {
-    for (int i = 0; i < term->cols; i++)
-      term->tabs[i] = (i % 8 == 0);
+  term.backspace_sends_bs = cfg.backspace_sends_bs;  // xterm only with RIS
+  term.delete_sends_del = cfg.delete_sends_del;  // not reset by xterm
+  if (full && term.tabs) {
+    for (int i = 0; i < term.cols; i++)
+      term.tabs[i] = (i % 8 == 0);
   }
   if (full) {
-    term->newtab = 1;  // set default tabs on resize
-    term->rvideo = 0;  // not reset by xterm
-    term->bell_taskbar = cfg.bell_taskbar;  // not reset by xterm
-    term->bell_popup = cfg.bell_popup;  // not reset by xterm
-    term->mouse_mode = MM_NONE;
-    term->mouse_enc = ME_X10;
-    term->locator_by_pixels = false;
-    term->locator_1_enabled = false;
-    term->locator_report_up = false;
-    term->locator_report_dn = false;
-    term->locator_rectangle = false;
-    term->report_focus = 0;  // xterm only with RIS
-    term->report_font_changed = 0;
-    term->report_ambig_width = 0;
-    term->shortcut_override = term->escape_sends_fs = term->app_escape_key = false;
-    term->wheel_reporting_xterm = false;
-    term->wheel_reporting = true;
-    term->app_wheel = false;
-    term->echoing = false;
-    term->bracketed_paste = false;
-    term->wide_indic = false;
-    term->wide_extra = false;
-    term->disable_bidi = false;
-    term->enable_bold_colour = cfg.bold_as_colour;
+    term.newtab = 1;  // set default tabs on resize
+    term.rvideo = 0;  // not reset by xterm
+    term.bell_taskbar = cfg.bell_taskbar;  // not reset by xterm
+    term.bell_popup = cfg.bell_popup;  // not reset by xterm
+    term.mouse_mode = MM_NONE;
+    term.mouse_enc = ME_X10;
+    term.locator_by_pixels = false;
+    term.locator_1_enabled = false;
+    term.locator_report_up = false;
+    term.locator_report_dn = false;
+    term.locator_rectangle = false;
+    term.report_focus = 0;  // xterm only with RIS
+    term.report_font_changed = 0;
+    term.report_ambig_width = 0;
+    term.shortcut_override = term.escape_sends_fs = term.app_escape_key = false;
+    term.wheel_reporting_xterm = false;
+    term.wheel_reporting = true;
+    term.app_wheel = false;
+    term.echoing = false;
+    term.bracketed_paste = false;
+    term.wide_indic = false;
+    term.wide_extra = false;
+    term.disable_bidi = false;
+    term.enable_bold_colour = cfg.bold_as_colour;
   }
 
-  term->virtuallines = 0;
-  term->altvirtuallines = 0;
-  term->imgs.parser_state = NULL;
-  term->imgs.first = NULL;
-  term->imgs.last = NULL;
-  term->imgs.altfirst = NULL;
-  term->imgs.altlast = NULL;
-  term->sixel_display = 0;
-  term->sixel_scrolls_right = 0;
-  term->sixel_scrolls_left = 0;
+  term.virtuallines = 0;
+  term.altvirtuallines = 0;
+  term.imgs.parser_state = NULL;
+  term.imgs.first = NULL;
+  term.imgs.last = NULL;
+  term.imgs.altfirst = NULL;
+  term.imgs.altlast = NULL;
+  term.sixel_display = 0;
+  term.sixel_scrolls_right = 0;
+  term.sixel_scrolls_left = 0;
 
-  term->cursor_type = -1;
-  term->cursor_size = 0;
-  term->cursor_blinks = -1;
-  term->cursor_blink_interval = 0;
+  term.cursor_type = -1;
+  term.cursor_size = 0;
+  term.cursor_blinks = -1;
+  term.cursor_blink_interval = 0;
   if (full) {
-    term->blink_is_real = cfg.allow_blinking;
-    term->hide_mouse = cfg.hide_mouse;
+    term.blink_is_real = cfg.allow_blinking;
+    term.hide_mouse = cfg.hide_mouse;
   }
 
   if (full) {
-    term->selected = false;
-    term->hovering = false;
-    term->hoverlink = -1;
-    term->on_alt_screen = false;
-    term_print_finish(term);
-    if (term->lines) {
-      term_switch_screen(term, 1, false);
-      term_erase(term, false, false, true, true);
-      term_switch_screen(term, 0, false);
-      term_erase(term, false, false, true, true);
-      term->curs.y = term_last_nonempty_line(term) + 1;
-      if (term->curs.y == term->rows) {
-        term->curs.y--;
-        term_do_scroll(term, 0, term->rows - 1, 1, true);
+    term.selected = false;
+    term.hovering = false;
+    term.hoverlink = -1;
+    term.on_alt_screen = false;
+    term_print_finish(term_p);
+    if (term.lines) {
+      term_switch_screen(term_p, 1, false);
+      term_erase(term_p, false, false, true, true);
+      term_switch_screen(term_p, 0, false);
+      term_erase(term_p, false, false, true, true);
+      term.curs.y = term_last_nonempty_line(term_p) + 1;
+      if (term.curs.y == term.rows) {
+        term.curs.y--;
+        term_do_scroll(term_p, 0, term.rows - 1, 1, true);
       }
     }
-    term->curs.x = 0;
-    term->curs.y = 0;
+    term.curs.x = 0;
+    term.curs.y = 0;
   }
 
-  term->in_vbell = false;
-  term_schedule_tblink(term);
-  term_schedule_tblink2(term);
-  term_schedule_cblink(term);
-  term_clear_scrollback(term);
+  term.in_vbell = false;
+  term_schedule_tblink(term_p);
+  term_schedule_tblink2(term_p);
+  term_schedule_cblink(term_p);
+  term_clear_scrollback(term_p);
 
   win_reset_colours();
   
-  term->search_window_visible = false;
+  term.search_window_visible = false;
 }
 
 static void freelines(termlines* lines, int rows) {
@@ -391,167 +423,188 @@ static void freelines(termlines* lines, int rows) {
 }
 
 void
-term_free(struct term* term)
+term_free(struct term* term_p)
 {
-  freelines(term->displines, term->rows);
-  freelines(term->lines, term->rows);
-  freelines(term->other_lines, term->rows);
+  struct term& term = *term_p;
+  
+  freelines(term.displines, term.rows);
+  freelines(term.lines, term.rows);
+  freelines(term.other_lines, term.rows);
 
-  term_clear_scrollback(term);
+  term_clear_scrollback(term_p);
 
-  free(term->suspbuf);
+  free(term.suspbuf);
 
-  free(term->printbuf);
+  free(term.printbuf);
 
-  free(term->tabs);
+  free(term.tabs);
 
-  free(term->paste_buffer);
+  free(term.paste_buffer);
 
-  free(term->ltemp);
-  free(term->wcFrom);
-  free(term->wcTo);
-  for (int i = 0; i < term->bidi_cache_size; i++) {
-    free(term->pre_bidi_cache[i].chars);
-    free(term->pre_bidi_cache[i].forward);
-    free(term->pre_bidi_cache[i].backward);
-    free(term->post_bidi_cache[i].chars);
-    free(term->post_bidi_cache[i].forward);
-    free(term->post_bidi_cache[i].backward);
+  free(term.ltemp);
+  free(term.wcFrom);
+  free(term.wcTo);
+  for (int i = 0; i < term.bidi_cache_size; i++) {
+    free(term.pre_bidi_cache[i].chars);
+    free(term.pre_bidi_cache[i].forward);
+    free(term.pre_bidi_cache[i].backward);
+    free(term.post_bidi_cache[i].chars);
+    free(term.post_bidi_cache[i].forward);
+    free(term.post_bidi_cache[i].backward);
   }
-  free(term->pre_bidi_cache);
-  free(term->post_bidi_cache);
-  free(term->mode_stack);
-  memset(term, 0, sizeof(*term));
+  free(term.pre_bidi_cache);
+  free(term.post_bidi_cache);
+  free(term.mode_stack);
+  memset(term_p, 0, sizeof(struct term));
 }
 
 static void
-show_screen(struct term* term, bool other_screen, bool flip)
+show_screen(struct term* term_p, bool other_screen, bool flip)
 {
-  term->show_other_screen = other_screen;
-  term->disptop = 0;
+  struct term& term = *term_p;
+  
+  term.show_other_screen = other_screen;
+  term.disptop = 0;
   if (flip || cfg.input_clears_selection)
-    term->selected = false;
+    term.selected = false;
 
   // Reset cursor blinking.
   if (!other_screen) {
-    term->cblinker = 1;
-    term_schedule_cblink(term);
+    term.cblinker = 1;
+    term_schedule_cblink(term_p);
   }
 
-  win_update_term(term, false);
+  win_update_term(term_p, false);
 }
 
 /* Return to active screen and reset scrollback */
 void
-term_reset_screen(struct term* term)
+term_reset_screen(struct term* term_p)
 {
-  show_screen(term, false, false);
+  show_screen(term_p, false, false);
 }
 
 /* Switch display to other screen and reset scrollback */
 void
-term_flip_screen(struct term* term)
+term_flip_screen(struct term* term_p)
 {
-  show_screen(term, !term->show_other_screen, true);
+  struct term& term = *term_p;
+  
+  show_screen(term_p, !term.show_other_screen, true);
 }
 
 /* Apply changed settings */
 void
-term_reconfig(struct term* term)
+term_reconfig(struct term* term_p)
 {
+  struct term& term = *term_p;
+  
   if (!*new_cfg.printer)
-    term_print_finish(term);
+    term_print_finish(term_p);
   if (new_cfg.allow_blinking != cfg.allow_blinking)
-    term->blink_is_real = new_cfg.allow_blinking;
+    term.blink_is_real = new_cfg.allow_blinking;
   cfg.cursor_blinks = new_cfg.cursor_blinks;
-  term_schedule_tblink(term);
-  term_schedule_tblink2(term);
-  term_schedule_cblink(term);
+  term_schedule_tblink(term_p);
+  term_schedule_tblink2(term_p);
+  term_schedule_cblink(term_p);
   if (new_cfg.backspace_sends_bs != cfg.backspace_sends_bs)
-    term->backspace_sends_bs = new_cfg.backspace_sends_bs;
+    term.backspace_sends_bs = new_cfg.backspace_sends_bs;
   if (new_cfg.delete_sends_del != cfg.delete_sends_del)
-    term->delete_sends_del = new_cfg.delete_sends_del;
+    term.delete_sends_del = new_cfg.delete_sends_del;
   if (new_cfg.bell_taskbar != cfg.bell_taskbar)
-    term->bell_taskbar = new_cfg.bell_taskbar;
+    term.bell_taskbar = new_cfg.bell_taskbar;
   if (new_cfg.bell_popup != cfg.bell_popup)
-    term->bell_popup = new_cfg.bell_popup;
+    term.bell_popup = new_cfg.bell_popup;
   if (strcmp(new_cfg.term, cfg.term))
-    term->vt220_keys = vt220(new_cfg.term);
+    term.vt220_keys = vt220(new_cfg.term);
 }
 
 static bool
-in_result(struct term* term, pos abspos, result run)
+in_result(struct term* term_p, pos abspos, result run)
 {
+  struct term& term = *term_p;
+  
   return
-    (abspos.x + abspos.y * term->cols >= run.x + run.y * term->cols) &&
-    (abspos.x + abspos.y * term->cols <  run.x + run.y * term->cols + run.len);
+    (abspos.x + abspos.y * term.cols >= run.x + run.y * term.cols) &&
+    (abspos.x + abspos.y * term.cols <  run.x + run.y * term.cols + run.len);
 }
 
 static bool
-in_results_recurse(struct term* term, pos abspos, int lo, int hi)
+in_results_recurse(struct term* term_p, pos abspos, int lo, int hi)
 {
+  struct term& term = *term_p;
+  
   if (hi - lo == 0) {
     return false;
   }
   int mid = (lo + hi) / 2;
-  result run = term->results.results[mid];
-  if (run.x + run.y * term->cols > abspos.x + abspos.y * term->cols) {
-    return in_results_recurse(term, abspos, lo, mid);
-  } else if (run.x + run.y * term->cols + run.len <= abspos.x + abspos.y * term->cols) {
-    return in_results_recurse(term, abspos, mid + 1, hi);
+  result run = term.results.results[mid];
+  if (run.x + run.y * term.cols > abspos.x + abspos.y * term.cols) {
+    return in_results_recurse(term_p, abspos, lo, mid);
+  } else if (run.x + run.y * term.cols + run.len <= abspos.x + abspos.y * term.cols) {
+    return in_results_recurse(term_p, abspos, mid + 1, hi);
   }
   return true;
 }
 
 static int
-in_results(struct term* term, pos scrpos)
+in_results(struct term* term_p, pos scrpos)
 {
-  if (term->results.length == 0) {
+  struct term& term = *term_p;
+  
+  if (term.results.length == 0) {
     return 0;
   }
 
   pos abspos = {
-    .x = scrpos.x,
-    .y = scrpos.y + term->sblines
+    y : scrpos.y + term.sblines,
+    x : scrpos.x,
+    r : false
   };
 
-  int match = in_results_recurse(term, abspos, 0, term->results.length);
-  match += in_result(term, abspos, term->results.results[term->results.current]);
+  int match = in_results_recurse(term_p, abspos, 0, term.results.length);
+  match += in_result(term_p, abspos, term.results.results[term.results.current]);
   return match;
 }
 
 static void
-results_add(struct term* term, result abspos)
+results_add(struct term* term_p, result abspos)
 {
-  assert(term->results.capacity > 0);
-  if (term->results.length == term->results.capacity) {
-    term->results.capacity *= 2;
-    term->results.results = renewn(term->results.results, term->results.capacity);
+  struct term& term = *term_p;
+  
+  assert(term.results.capacity > 0);
+  if (term.results.length == term.results.capacity) {
+    term.results.capacity *= 2;
+    term.results.results = renewn(term.results.results, term.results.capacity);
   }
 
-  term->results.results[term->results.length] = abspos;
-  ++term->results.length;
+  term.results.results[term.results.length] = abspos;
+  ++term.results.length;
 }
 
 static void
-results_partial_clear(struct term* term, int pos)
+results_partial_clear(struct term* term_p, int pos)
 {
-  int i = term->results.length;
-  while (i > 0 && term->results.results[i - 1].y >= pos) {
+  struct term& term = *term_p;
+  
+  int i = term.results.length;
+  while (i > 0 && term.results.results[i - 1].y >= pos) {
     --i;
   }
-  term->results.length = i;
+  term.results.length = i;
 }
 
 void
-term_set_search(struct term* term, wchar * needle)
+term_set_search(struct term* term_p, wchar * needle)
 {
-  free(term->results.query);
-  term->results.query = needle;
+  struct term& term = *term_p;
+  
+  free(term.results.query);
+  term.results.query = needle;
 
   // transform UTF-16 to UCS for matching
   int wlen = wcslen(needle);
-  xchar * xquery = malloc(sizeof(xchar) * (wlen + 1));
+  xchar * xquery = (xchar *)malloc(sizeof(xchar) * (wlen + 1));
   wchar prev = 0;
   int xlen = -1;
   for (int i = 0; i < wlen; i++) {
@@ -563,10 +616,10 @@ term_set_search(struct term* term, wchar * needle)
   }
   xquery[++xlen] = 0;
 
-  free(term->results.xquery);
-  term->results.xquery = xquery;
-  term->results.xquery_length = xlen;
-  term->results.update_type = FULL_UPDATE;
+  free(term.results.xquery);
+  term.results.xquery = xquery;
+  term.results.xquery_length = xlen;
+  term.results.update_type = FULL_UPDATE;
 }
 
 static void
@@ -689,20 +742,22 @@ case_fold(uint ch)
 }
 
 void
-term_update_search(struct term* term)
+term_update_search(struct term* term_p)
 {
+  struct term& term = *term_p;
+  
   init_case_folding();
 
-  if (term->results.update_type == DISABLE_UPDATE)
+  if (term.results.update_type == DISABLE_UPDATE)
     return;
 
-  int update_type = term->results.update_type;
-  if (term->results.update_type == NO_UPDATE)
+  int update_type = term.results.update_type;
+  if (term.results.update_type == NO_UPDATE)
     return;
-  term->results.update_type = NO_UPDATE;
+  term.results.update_type = NO_UPDATE;
 
-  if (term->results.xquery_length == 0) {
-    term_clear_search(term);
+  if (term.results.xquery_length == 0) {
+    term_clear_search(term_p);
     return;
   }
 
@@ -713,45 +768,45 @@ term_update_search(struct term* term)
     // How much of the backscroll we need to update on a partial update?
     // Do a ceil: (x + y - 1) / y
     // On xquery_length - 1
-    int pstart = -((term->results.xquery_length + term->cols - 2) / term->cols) + term->sblines;
+    int pstart = -((term.results.xquery_length + term.cols - 2) / term.cols) + term.sblines;
     lcurr = lcurr > pstart ? lcurr:pstart;
-    results_partial_clear(term, lcurr);
+    results_partial_clear(term_p, lcurr);
   } else {
-    term_clear_results(term);
+    term_clear_results(term_p);
   }
-  int llen = term->results.xquery_length / term->cols + 1;
+  int llen = term.results.xquery_length / term.cols + 1;
   if (llen < 2)
     llen = 2;
 
   circbuf_init(&cb, llen);
 
   // Fill in our starting set of termlines.
-  for (int i = lcurr; i < term->rows + term->sblines && cb.length < cb.capacity; ++i) {
-    circbuf_push(&cb, fetch_line(term, i - term->sblines));
+  for (int i = lcurr; i < term.rows + term.sblines && cb.length < cb.capacity; ++i) {
+    circbuf_push(&cb, fetch_line(term_p, i - term.sblines));
   }
 
-  int cpos = term->cols * lcurr;
+  int cpos = term.cols * lcurr;
   /* the number of matched chars in the current run */
   int npos = 0;
   /* the number of matched cells in the current run (anpos >= npos) */
   int anpos = 0;
-  int end = term->cols * (term->rows + term->sblines);
+  int end = term.cols * (term.rows + term.sblines);
 
   // Loop over every character and search for query.
   while (cpos < end) {
     // Determine the current position.
-    int x = (cpos % term->cols);
-    int y = (cpos / term->cols);
+    int x = (cpos % term.cols);
+    int y = (cpos / term.cols);
 
     // If our current position isn't in the buffer, add it in.
     if (y - lcurr >= llen) {
-      circbuf_push(&cb, fetch_line(term, lcurr + llen - term->sblines));
+      circbuf_push(&cb, fetch_line(term_p, lcurr + llen - term.sblines));
       ++lcurr;
     }
     termline * lll = circbuf_get(&cb, y - lcurr);
     termchar * chr = lll->chars + x;
 
-    if (npos == 0 && cpos + term->results.xquery_length >= end)
+    if (npos == 0 && cpos + term.results.xquery_length >= end)
       break;
 
     xchar ch = chr->chr;
@@ -761,7 +816,7 @@ term_update_search(struct term* term)
         ch = ((xchar) (ch - 0xD7C0) << 10) | (cc->chr & 0x03FF);
       }
     }
-    xchar pat = term->results.xquery[npos];
+    xchar pat = term.results.xquery[npos];
     bool match = case_fold(ch) == case_fold(pat);
     if (!match) {
       // Skip the second cell of any wide characters
@@ -779,17 +834,17 @@ term_update_search(struct term* term)
     ++anpos;
     ++npos;
 
-    if (npos >= term->results.xquery_length) {
+    if (npos >= term.results.xquery_length) {
       int start = cpos - anpos + 1;
       result run = {
-        .x = start % term->cols,
-        .y = start / term->cols,
+        .x = start % term.cols,
+        .y = start / term.cols,
         .len = anpos
       };
 #ifdef debug_search
       printf("%d, %d, %d\n", run.x, run.y, run.len);
 #endif
-      results_add(term, run);
+      results_add(term_p, run);
       npos = 0;
       anpos = 0;
     }
@@ -801,118 +856,134 @@ term_update_search(struct term* term)
 }
 
 void
-term_schedule_search_update(struct term* term)
+term_schedule_search_update(struct term* term_p)
 {
-  if (term->results.update_type != DISABLE_UPDATE)
-    term->results.update_type = FULL_UPDATE;
+  struct term& term = *term_p;
+  
+  if (term.results.update_type != DISABLE_UPDATE)
+    term.results.update_type = FULL_UPDATE;
 }
 
 void
-term_schedule_search_partial_update(struct term* term)
+term_schedule_search_partial_update(struct term* term_p)
 {
-  if (term->results.update_type != DISABLE_UPDATE) {
-    if (term->results.update_type == NO_UPDATE) {
-      term->results.update_type = PARTIAL_UPDATE;
+  struct term& term = *term_p;
+  
+  if (term.results.update_type != DISABLE_UPDATE) {
+    if (term.results.update_type == NO_UPDATE) {
+      term.results.update_type = PARTIAL_UPDATE;
     }
   }
 }
 
 void
-term_clear_results(struct term* term)
+term_clear_results(struct term* term_p)
 {
-  term->results.results = renewn(term->results.results, 16);
-  term->results.current = 0;
-  term->results.length = 0;
-  term->results.capacity = 16;
+  struct term& term = *term_p;
+  
+  term.results.results = renewn(term.results.results, 16);
+  term.results.current = 0;
+  term.results.length = 0;
+  term.results.capacity = 16;
 }
 
 void
-term_clear_search(struct term* term)
+term_clear_search(struct term* term_p)
 {
-  term_clear_results(term);
-  term->results.update_type = NO_UPDATE;
-  free(term->results.query);
-  free(term->results.xquery);
-  term->results.query = NULL;
-  term->results.xquery = NULL;
-  term->results.xquery_length = 0;
+  struct term& term = *term_p;
+  
+  term_clear_results(term_p);
+  term.results.update_type = NO_UPDATE;
+  free(term.results.query);
+  free(term.results.xquery);
+  term.results.query = NULL;
+  term.results.xquery = NULL;
+  term.results.xquery_length = 0;
 }
 
 static void
-scrollback_push(struct term* term, uchar *line)
+scrollback_push(struct term* term_p, uchar *line)
 {
-  if (term->sblines == term->sblen) {
+  struct term& term = *term_p;
+  
+  if (term.sblines == term.sblen) {
     // Need to make space for the new line.
-    if (term->sblen < cfg.scrollback_lines) {
+    if (term.sblen < cfg.scrollback_lines) {
       // Expand buffer
-      assert(term->sbpos == 0);
-      int new_sblen = min(cfg.scrollback_lines, term->sblen * 3 + 1024);
-      term->scrollback = renewn(term->scrollback, new_sblen);
-      term->sbpos = term->sblen;
-      term->sblen = new_sblen;
+      assert(term.sbpos == 0);
+      int new_sblen = min(cfg.scrollback_lines, term.sblen * 3 + 1024);
+      term.scrollback = renewn(term.scrollback, new_sblen);
+      term.sbpos = term.sblen;
+      term.sblen = new_sblen;
     }
-    else if (term->sblines) {
+    else if (term.sblines) {
       // Throw away the oldest line
-      free(term->scrollback[term->sbpos]);
-      term->sblines--;
+      free(term.scrollback[term.sbpos]);
+      term.sblines--;
     }
     else
       return;
   }
-  assert(term->sblines < term->sblen);
-  assert(term->sbpos < term->sblen);
-  term->scrollback[term->sbpos++] = line;
-  if (term->sbpos == term->sblen)
-    term->sbpos = 0;
-  term->sblines++;
-  if (term->tempsblines < term->sblines)
-    term->tempsblines++;
+  assert(term.sblines < term.sblen);
+  assert(term.sbpos < term.sblen);
+  term.scrollback[term.sbpos++] = line;
+  if (term.sbpos == term.sblen)
+    term.sbpos = 0;
+  term.sblines++;
+  if (term.tempsblines < term.sblines)
+    term.tempsblines++;
 }
 
 static uchar *
-scrollback_pop(struct term* term)
+scrollback_pop(struct term* term_p)
 {
-  assert(term->sblines > 0);
-  assert(term->sbpos < term->sblen);
-  term->sblines--;
-  if (term->tempsblines)
-    term->tempsblines--;
-  if (term->sbpos == 0)
-    term->sbpos = term->sblen;
-  return term->scrollback[--term->sbpos];
+  struct term& term = *term_p;
+  
+  assert(term.sblines > 0);
+  assert(term.sbpos < term.sblen);
+  term.sblines--;
+  if (term.tempsblines)
+    term.tempsblines--;
+  if (term.sbpos == 0)
+    term.sbpos = term.sblen;
+  return term.scrollback[--term.sbpos];
 }
 
 /*
  * Clear the scrollback.
  */
 void
-term_clear_scrollback(struct term* term)
+term_clear_scrollback(struct term* term_p)
 {
-  while (term->sblines)
-    free(scrollback_pop(term));
-  free(term->scrollback);
-  term->scrollback = 0;
-  term->sblen = term->sblines = term->sbpos = 0;
-  term->tempsblines = 0;
-  term->disptop = 0;
+  struct term& term = *term_p;
+  
+  while (term.sblines)
+    free(scrollback_pop(term_p));
+  free(term.scrollback);
+  term.scrollback = 0;
+  term.sblen = term.sblines = term.sbpos = 0;
+  term.tempsblines = 0;
+  term.disptop = 0;
 }
 
 /*
  * Set up the terminal for a given size.
  */
 void
-term_resize(struct term* term, int newrows, int newcols)
+term_resize(struct term* term_p, int newrows, int newcols)
 {
+  struct term& term = *term_p;
+  
   trace_resize(("--- term_resize %d %d\n", newrows, newcols));
-  bool on_alt_screen = term->on_alt_screen;
-  term_switch_screen(term, 0, false);
+  bool on_alt_screen = term.on_alt_screen;
+  term_switch_screen(term_p, 0, false);
 
-  term->selected = false;
+  term.selected = false;
 
-  term->marg_top = 0;
-  term->marg_bot = newrows - 1;
-  term->marg_left = 0;
-  term->marg_right = newcols - 1;
+  term.marg_top = 0;
+  term.marg_bot = newrows - 1;
+  term.marg_left = 0;
+  term.marg_right = newcols - 1;
 
  /*
   * Resize the screen and scrollback. We only need to shift
@@ -934,21 +1005,21 @@ term_resize(struct term* term, int newrows, int newcols)
   *    away.
   */
 
-  termlines *lines = term->lines;
-  term_cursor *curs = &term->curs;
-  term_cursor *saved_curs = &term->saved_cursors[term->on_alt_screen];
+  termlines *lines = term.lines;
+  term_cursor *curs = &term.curs;
+  term_cursor *saved_curs = &term.saved_cursors[term.on_alt_screen];
 
   // Shrink the screen if newrows < rows
-  if (newrows < term->rows) {
-    int removed = term->rows - newrows;
-    int destroy = min(removed, term->rows - (curs->y + 1));
+  if (newrows < term.rows) {
+    int removed = term.rows - newrows;
+    int destroy = min(removed, term.rows - (curs->y + 1));
     int store = removed - destroy;
 
     // Push removed lines into scrollback
     for (int i = 0; i < store; i++) {
       termline *line = lines[i];
-      scrollback_push(term, compressline(line));
-      term->virtuallines++;
+      scrollback_push(term_p, compressline(line));
+      term.virtuallines++;
       freeline(line);
     }
 
@@ -956,7 +1027,7 @@ term_resize(struct term* term, int newrows, int newcols)
     memmove(lines, lines + store, newrows * sizeof(termline *));
 
     // Destroy removed lines below the cursor
-    for (int i = term->rows - destroy; i < term->rows; i++)
+    for (int i = term.rows - destroy; i < term.rows; i++)
       freeline(lines[i]);
 
     // Adjust cursor position
@@ -964,15 +1035,15 @@ term_resize(struct term* term, int newrows, int newcols)
     saved_curs->y = max(0, saved_curs->y - store);
 
     // Adjust image position
-    term->virtuallines += min(0, store);
+    term.virtuallines += min(0, store);
   }
 
-  term->lines = lines = renewn(lines, newrows);
+  term.lines = lines = renewn(lines, newrows);
 
   // Expand the screen if newrows > rows
-  if (newrows > term->rows) {
-    int added = newrows - term->rows;
-    int restore = min(added, term->tempsblines);
+  if (newrows > term.rows) {
+    int added = newrows - term.rows;
+    int restore = min(added, term.tempsblines);
     int create = added - restore;
 
     // Fill bottom of screen with blank lines
@@ -980,11 +1051,11 @@ term_resize(struct term* term, int newrows, int newcols)
       lines[i] = newline(newcols, basic_erase_char);
 
     // Move existing lines down
-    memmove(lines + restore, lines, term->rows * sizeof(termline *));
+    memmove(lines + restore, lines, term.rows * sizeof(termline *));
 
     // Restore lines from scrollback
     for (int i = restore; i--;) {
-      uchar *cline = scrollback_pop(term);
+      uchar *cline = scrollback_pop(term_p);
       termline *line = decompressline(cline, null);
       free(cline);
       line->temporary = false;  /* reconstituted line is now real */
@@ -996,7 +1067,7 @@ term_resize(struct term* term, int newrows, int newcols)
     saved_curs->y += restore;
 
     // Adjust image position
-    term->virtuallines -= restore;
+    term.virtuallines -= restore;
   }
 
   // Resize lines
@@ -1004,14 +1075,14 @@ term_resize(struct term* term, int newrows, int newcols)
     resizeline(lines[i], newcols);
 
   // Make a new displayed text buffer.
-  if (term->displines) {
-    for (int i = 0; i < term->rows; i++)
-      freeline(term->displines[i]);
+  if (term.displines) {
+    for (int i = 0; i < term.rows; i++)
+      freeline(term.displines[i]);
   }
-  term->displines = renewn(term->displines, newrows);
+  term.displines = renewn(term.displines, newrows);
   for (int i = 0; i < newrows; i++) {
     termline *line = newline(newcols, basic_erase_char);
-    term->displines[i] = line;
+    term.displines[i] = line;
     for (int j = 0; j < newcols; j++) {
       line->chars[j].attr = CATTR_DEFAULT;
       line->chars[j].attr.attr = ATTR_INVALID;
@@ -1019,35 +1090,35 @@ term_resize(struct term* term, int newrows, int newcols)
   }
 
   // Make a new alternate screen.
-  lines = term->other_lines;
+  lines = term.other_lines;
   if (lines) {
-    for (int i = 0; i < term->rows; i++)
+    for (int i = 0; i < term.rows; i++)
       freeline(lines[i]);
   }
-  term->other_lines = lines = renewn(lines, newrows);
+  term.other_lines = lines = renewn(lines, newrows);
   for (int i = 0; i < newrows; i++)
-    lines[i] = newline(newcols, term->erase_char);
+    lines[i] = newline(newcols, term.erase_char);
 
   // Reset tab stops
-  term->tabs = renewn(term->tabs, newcols);
-  for (int i = (term->cols > 0 ? term->cols : 0); i < newcols; i++)
-    term->tabs[i] = term->newtab && (i % 8 == 0);
+  term.tabs = renewn(term.tabs, newcols);
+  for (int i = (term.cols > 0 ? term.cols : 0); i < newcols; i++)
+    term.tabs[i] = term.newtab && (i % 8 == 0);
 
   // Check that the cursor positions are still valid.
   assert(0 <= curs->y && curs->y < newrows);
   assert(0 <= saved_curs->y && saved_curs->y < newrows);
-  curs->x = min(curs->x, newcols - 1);
+  curs->x = min((int)(curs->x), newcols - 1);
 
   curs->wrapnext = false;
 
-  term->disptop = 0;
+  term.disptop = 0;
 
-  term->rows = newrows;
-  term->cols = newcols;
-  term->rows0 = newrows;
-  term->cols0 = newcols;
+  term.rows = newrows;
+  term.cols = newcols;
+  term.rows0 = newrows;
+  term.cols0 = newcols;
 
-  term_switch_screen(term, on_alt_screen, false);
+  term_switch_screen(term_p, on_alt_screen, false);
 }
 
 /*
@@ -1057,30 +1128,32 @@ term_resize(struct term* term, int newrows, int newcols)
  * alternate screen completely.
  */
 void
-term_switch_screen(struct term* term, bool to_alt, bool reset)
+term_switch_screen(struct term* term_p, bool to_alt, bool reset)
 {
-  if (to_alt == term->on_alt_screen)
+  struct term& term = *term_p;
+  
+  if (to_alt == term.on_alt_screen)
     return;
 
-  term->on_alt_screen = to_alt;
+  term.on_alt_screen = to_alt;
 
-  termlines *oldlines = term->lines;
-  term->lines = term->other_lines;
-  term->other_lines = oldlines;
+  termlines *oldlines = term.lines;
+  term.lines = term.other_lines;
+  term.other_lines = oldlines;
 
   /* swap image list */
-  imglist * first = term->imgs.first;
-  imglist * last = term->imgs.last;
-  long long int offset = term->virtuallines;
-  term->imgs.first = term->imgs.altfirst;
-  term->imgs.last = term->imgs.altlast;
-  term->virtuallines = term->altvirtuallines;
-  term->imgs.altfirst = first;
-  term->imgs.altlast = last;
-  term->altvirtuallines = offset;
+  imglist * first = term.imgs.first;
+  imglist * last = term.imgs.last;
+  long long int offset = term.virtuallines;
+  term.imgs.first = term.imgs.altfirst;
+  term.imgs.last = term.imgs.altlast;
+  term.virtuallines = term.altvirtuallines;
+  term.imgs.altfirst = first;
+  term.imgs.altlast = last;
+  term.altvirtuallines = offset;
 
   if (to_alt && reset)
-    term_erase(term, false, false, true, true);
+    term_erase(term_p, false, false, true, true);
 }
 
 /*
@@ -1103,17 +1176,19 @@ term_switch_screen(struct term* term, bool to_alt, bool reset)
  * character of the pair.
  */
 void
-term_check_boundary(struct term* term, int x, int y)
+term_check_boundary(struct term* term_p, int x, int y)
 {
+  struct term& term = *term_p;
+  
  /* Validate input coordinates, just in case. */
-  if (x <= 0 || x > term->cols)
+  if (x <= 0 || x > term.cols)
     return;
 
-  termline *line = term->lines[y];
-  if (x == term->cols)
+  termline *line = term.lines[y];
+  if (x == term.cols)
     line->lattr &= ~LATTR_WRAPPED2;
   else if (line->chars[x].chr == UCSWIDE) {
-    if (x == term->marg_right + 1)
+    if (x == term.marg_right + 1)
       line->lattr &= ~LATTR_WRAPPED2;
     clear_cc(line, x - 1);
     clear_cc(line, x);
@@ -1197,15 +1272,17 @@ disp_do_scroll(int topscroll, int botscroll, int scrolllines)
  * affect the scrollback buffer.
  */
 void
-term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
+term_do_scroll(struct term* term_p, int topline, int botline, int lines, bool sb)
 {
-  if (term->hovering) {
-    term->hovering = false;
-    win_update_term(term, true);
+  struct term& term = *term_p;
+  
+  if (term.hovering) {
+    term.hovering = false;
+    win_update_term(term_p, true);
   }
 
-  if (term->lrmargmode && (term->marg_left || term->marg_right != term->cols - 1)) {
-    scroll_rect(term, topline, botline, lines);
+  if (term.lrmargmode && (term.marg_left || term.marg_right != term.cols - 1)) {
+    scroll_rect(term_p, topline, botline, lines);
     return;
   }
 
@@ -1213,7 +1290,7 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   int scrolllines = lines;
 #endif
 
-  term->markpos_valid = false;
+  term.markpos_valid = false;
   assert(botline >= topline && lines != 0);
 
   bool down = lines < 0; // Scrolling downwards?
@@ -1232,8 +1309,8 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   int moved_lines = lines_in_region - lines;
 
   // Useful pointers to the top and (one below the) bottom lines.
-  termline **top = term->lines + topline;
-  termline **bot = term->lines + botline;
+  termline **top = term.lines + topline;
+  termline **bot = term.lines + botline;
 
 #ifdef use_display_scrolling
   // Screen scrolling
@@ -1250,11 +1327,11 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   // Reuse lines that are being scrolled out of the scroll region,
   // clearing their content.
   termline *recycled[abs(lines)];
-  void recycle(termline **src) {
+  auto recycle = [&](termline **src) {
     memcpy(recycled, src, sizeof recycled);
     for (int i = 0; i < lines; i++)
-      clearline(recycled[i], term->erase_char);
-  }
+      clearline(recycled[i], term.erase_char);
+  };
 
   if (down) {
     // Move down remaining lines and push in the recycled lines
@@ -1263,19 +1340,19 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
     memcpy(top, recycled, sizeof recycled);
 
     // Move selection markers if they're within the scroll region
-    void scroll_pos(pos *p) {
-      if (!term->show_other_screen && p->y >= topline && p->y < botline) {
+    auto scroll_pos = [&](pos *p) {
+      if (!term.show_other_screen && p->y >= topline && p->y < botline) {
         if ((p->y += lines) >= botline)
-          *p = (pos){.y = botline, .x = 0};
+          *p = (pos){y : botline, x : 0, r : false};
       }
-    }
-    scroll_pos(&term->sel_start);
-    scroll_pos(&term->sel_anchor);
-    scroll_pos(&term->sel_end);
+    };
+    scroll_pos(&term.sel_start);
+    scroll_pos(&term.sel_anchor);
+    scroll_pos(&term.sel_end);
 
     // Move graphics if within the scroll region
-    for (imglist * cur = term->imgs.first; cur; cur = cur->next) {
-      if (cur->top - term->virtuallines >= topline) {
+    for (imglist * cur = term.imgs.first; cur; cur = cur->next) {
+      if (cur->top - term.virtuallines >= topline) {
         cur->top += lines;
       }
     }
@@ -1283,19 +1360,19 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
   else {
     int seltop = topline;
 
-    term->virtuallines += lines;
+    term.virtuallines += lines;
 
     // Only push lines into the scrollback when scrolling off the top of the
     // normal screen and scrollback is actually enabled.
-    if (sb && topline == 0 && !term->on_alt_screen && cfg.scrollback_lines) {
+    if (sb && topline == 0 && !term.on_alt_screen && cfg.scrollback_lines) {
       for (int i = 0; i < lines; i++)
-        scrollback_push(term, compressline(term->lines[i]));
+        scrollback_push(term_p, compressline(term.lines[i]));
 
       // Shift viewpoint accordingly if user is looking at scrollback
-      if (term->disptop < 0)
-        term->disptop = max(term->disptop - lines, -term->sblines);
+      if (term.disptop < 0)
+        term.disptop = max(term.disptop - lines, -term.sblines);
 
-      seltop = -term->sblines;
+      seltop = -term.sblines;
     }
 
     // Move up remaining lines and push in the recycled lines
@@ -1304,15 +1381,15 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
     memcpy(bot - lines, recycled, sizeof recycled);
 
     // Move selection markers if they're within the scroll region
-    void scroll_pos(pos *p) {
-      if (!term->show_other_screen && p->y >= seltop && p->y < botline) {
+    auto scroll_pos = [&](pos *p) {
+      if (!term.show_other_screen && p->y >= seltop && p->y < botline) {
         if ((p->y -= lines) < seltop)
-          *p = (pos){.y = seltop, .x = 0};
+          *p = (pos){y : seltop, x : 0, r : false};
       }
-    }
-    scroll_pos(&term->sel_start);
-    scroll_pos(&term->sel_anchor);
-    scroll_pos(&term->sel_end);
+    };
+    scroll_pos(&term.sel_start);
+    scroll_pos(&term.sel_anchor);
+    scroll_pos(&term.sel_end);
   }
 }
 
@@ -1320,10 +1397,12 @@ term_do_scroll(struct term* term, int topline, int botline, int lines, bool sb)
 #define inclpos(p, size) ((p).x == size ? ((p).x = 0, (p).y++, 1) : ((p).x++, 0))
 
 void
-clear_wrapcontd(struct term* term, termline * line, int y)
+clear_wrapcontd(struct term* term_p, termline * line, int y)
 {
-  if (y < term->rows - 1 && (line->lattr & LATTR_WRAPPED)) {
-    line = term->lines[y + 1];
+  struct term& term = *term_p;
+  
+  if (y < term.rows - 1 && (line->lattr & LATTR_WRAPPED)) {
+    line = term.lines[y + 1];
     line->lattr &= ~(LATTR_WRAPCONTD | LATTR_AUTOSEL);
   }
 }
@@ -1333,9 +1412,11 @@ clear_wrapcontd(struct term* term, termline * line, int y)
  * whole line, or parts thereof.
  */
 void
-term_erase(struct term* term, bool selective, bool line_only, bool from_begin, bool to_end)
+term_erase(struct term* term_p, bool selective, bool line_only, bool from_begin, bool to_end)
 {
-  term_cursor *curs = &term->curs;
+  struct term& term = *term_p;
+  
+  term_cursor *curs = &term.curs;
   pos start, end;
 
   // avoid clearing a "pending wrap" position, where the cursor is 
@@ -1346,24 +1427,24 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
       return;  // simple approach
 #else
     static term_cursor c;
-    c = term->curs;
+    c = term.curs;
     incpos(c);
     curs = &c;
 #endif
   }
 
   if (from_begin)
-    start = (pos){.y = line_only ? curs->y : 0, .x = 0};
+    start = (pos){y : line_only ? curs->y : 0, x : 0, r : false};
   else
-    start = (pos){.y = curs->y, .x = curs->x};
+    start = (pos){y : curs->y, x : curs->x, r : false};
 
   if (to_end)
-    end = (pos){.y = line_only ? curs->y + 1 : term->rows, .x = 0};
+    end = (pos){y : line_only ? curs->y + 1 : term.rows, x : 0, r : false};
   else
-    end = (pos){.y = curs->y, .x = curs->x}, incpos(end);
+    end = (pos){y : curs->y, x : curs->x, r : false}, incpos(end);
 
   if (!from_begin || !to_end)
-    term_check_boundary(term, curs->x, curs->y);
+    term_check_boundary(term_p, curs->x, curs->y);
 
 #ifdef scrollback_erase_lines
 #warning this behaviour is not compatible with xterm
@@ -1372,14 +1453,14 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
     start.y == 0 && start.x == 0 && end.x == 0 && !line_only && !selective;
 
   if (erasing_lines_from_top && 
-      !(term->lrmargmode && (term->marg_left || term->marg_right != term->cols - 1))
+      !(term.lrmargmode && (term.marg_left || term.marg_right != term.cols - 1))
      )
   {
    /* If it's a whole number of lines, starting at the top, and
     * we're fully erasing them, erase by scrolling and keep the
     * lines in the scrollback. */
     int scrolllines = end.y;
-    if (end.y == term->rows) {
+    if (end.y == term.rows) {
      /* Shrink until we find a non-empty row. */
       scrolllines = term_last_nonempty_line(term) + 1;
     }
@@ -1389,17 +1470,17 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
    /* After an erase of lines from the top of the screen, we shouldn't
     * bring the lines back again if the terminal enlarges (since the user or
     * application has explictly thrown them away). */
-    if (!term->on_alt_screen)
-      term->tempsblines = 0;
+    if (!term.on_alt_screen)
+      term.tempsblines = 0;
   }
   else
 #endif
   {
-    termline *line = term->lines[start.y];
+    termline *line = term.lines[start.y];
     while (poslt(start, end)) {
       int cols = min(line->cols, line->size);
       if (start.x == cols) {
-        clear_wrapcontd(term, line, start.y);
+        clear_wrapcontd(term_p, line, start.y);
         if (line_only)
           line->lattr &= ~(LATTR_WRAPPED | LATTR_WRAPPED2);
         else
@@ -1409,13 +1490,13 @@ term_erase(struct term* term, bool selective, bool line_only, bool from_begin, b
                !(line->chars[start.x].attr.attr & ATTR_PROTECTED)
               )
       {
-        line->chars[start.x] = term->erase_char;
+        line->chars[start.x] = term.erase_char;
         line->chars[start.x].attr.attr |= TATTR_CLEAR;
         if (!start.x)
           clear_cc(line, -1);
       }
-      if (inclpos(start, cols) && start.y < term->rows)
-        line = term->lines[start.y];
+      if (inclpos(start, cols) && start.y < term.rows)
+        line = term.lines[start.y];
     }
   }
 }
@@ -1484,11 +1565,11 @@ emoji_tags(int i)
 #endif
 
 struct emoji_seq {
-  wchar * efn;  // image filename
+  const wchar * efn;  // image filename
   void * buf;   // cached image
   int buflen;   // cached image
   echar chs[8]; // code points
-  char * name;  // short name in emoji-sequences.txt, emoji-zwj-sequences.txt
+  const char * name;  // short name in emoji-sequences.txt, emoji-zwj-sequences.txt
 };
 
 struct emoji_seq emoji_seqs[] = {
@@ -1509,8 +1590,8 @@ clear_emoji_data()
 {
   for (uint i = 0; i < lengthof(emoji_bases); i++) {
     if (emoji_bases[i].efn) {
-      free(emoji_bases[i].efn);
-      emoji_bases[i].efn = 0;
+//      free(emoji_bases[i].efn);
+//      emoji_bases[i].efn = 0;
     }
     if (emoji_bases[i].buf) {
       free(emoji_bases[i].buf);
@@ -1520,8 +1601,8 @@ clear_emoji_data()
   }
   for (uint i = 0; i < lengthof(emoji_seqs); i++) {
     if (emoji_seqs[i].efn) {
-      free(emoji_seqs[i].efn);
-      emoji_seqs[i].efn = 0;
+//      free(emoji_seqs[i].efn);
+//      emoji_seqs[i].efn = 0;
     }
     if (emoji_seqs[i].buf) {
       free(emoji_seqs[i].buf);
@@ -1538,7 +1619,7 @@ char *
 get_emoji_description(termchar * cpoi)
 {
   //struct emoji e = (struct emoji) cpoi->attr.truefg;
-  struct emoji * ee = (void *)&cpoi->attr.truefg;
+  struct emoji * ee = (struct emoji *)&cpoi->attr.truefg;
 
   if (ee->seq) {
     char * en = strdup("");
@@ -1547,10 +1628,10 @@ get_emoji_description(termchar * cpoi)
       char ec[8];
       sprintf(ec, "U+%04X", xc);
       strappend(en, ec);
-      strappend(en, " ");
+      strappend(en, (char *)" ");
     }
-    strappend(en, "| Emoji sequence: ");
-    strappend(en, emoji_seqs[ee->idx].name);
+    strappend(en, (char *)"| Emoji sequence: ");
+    strappend(en, (char *)emoji_seqs[ee->idx].name);
     return en;
   }
   else
@@ -1583,37 +1664,38 @@ fallback:;
     Noto Emoji: emoji_u0023_20e3.png
   */
   char * pre;
-  char * fmt = "%04x";
-  char * sep = "-";
-  char * suf = ".png";
+  char * fmt = (char *)"%04x";
+  char * sep = (char *)"-";
+  char * suf = (char *)".png";
   bool zwj = true;
   bool sel = true;
   switch (style) {
     when EMOJIS_NOTO:
-      pre = "noto/emoji_u";
-      sep = "_";
+      pre = (char *)"noto/emoji_u";
+      sep = (char *)"_";
       zwj = true;
       sel = false;
     when EMOJIS_ONE:
-      pre = "emojione/";
-      sep = "-";
+      pre = (char *)"emojione/";
+      sep = (char *)"-";
       zwj = false;
       sel = false;
     when EMOJIS_APPLE:
-      pre = "apple/";
+      pre = (char *)"apple/";
     when EMOJIS_GOOGLE:
-      pre = "google/";
+      pre = (char *)"google/";
     when EMOJIS_TWITTER:
-      pre = "twitter/";
+      pre = (char *)"twitter/";
     when EMOJIS_FB:
-      pre = "facebook/";
+      pre = (char *)"facebook/";
     when EMOJIS_SAMSUNG:
-      pre = "samsung/";
+      pre = (char *)"samsung/";
     when EMOJIS_WINDOWS:
-      pre = "windows/";
+      pre = (char *)"windows/";
     when EMOJIS_NONE:
-      pre = "common/";
-    otherwise:
+      pre = (char *)"common/";
+      break;
+    default:
       return false;
   }
   char * en = strdup(pre);
@@ -1862,7 +1944,7 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
   void * * bufpoi;
   int * buflen;
   if (e.seq) {
-    efn = emoji_seqs[e.idx].efn;
+    efn = (wchar *)emoji_seqs[e.idx].efn;
     bufpoi = &emoji_seqs[e.idx].buf;
     buflen = &emoji_seqs[e.idx].buflen;
   }
@@ -1899,8 +1981,10 @@ _win_text(int line, int tx, int ty, wchar *text, int len, cattr attr, cattr *tex
 #endif
 
 void
-term_paint(struct term* term)
+term_paint(struct term* term_p)
 {
+  struct term& term = *term_p;
+  
   //if (kb_trace) printf("[%ld] term_paint\n", mtime());
 
 #ifdef use_display_scrolling
@@ -1912,24 +1996,24 @@ term_paint(struct term* term)
 
  /* The display line that the cursor is on, or -1 if the cursor is invisible. */
   int curs_y =
-    term->cursor_on && !term->show_other_screen
-    ? term->curs.y - term->disptop : -1;
+    term.cursor_on && !term.show_other_screen
+    ? term.curs.y - term.disptop : -1;
 
-  for (int i = 0; i < term->rows; i++) {
+  for (int i = 0; i < term.rows; i++) {
     pos scrpos;
-    scrpos.y = i + term->disptop;
-    termline *line = fetch_line(term, scrpos.y);
+    scrpos.y = i + term.disptop;
+    termline *line = fetch_line(term_p, scrpos.y);
 
    /*
     * Pre-loop: identify emojis and emoji sequences.
     */
     // Prevent nested emoji sequence matching from matching partial subseqs
     int emoji_col = 0;  // column from which to match for emoji sequences
-    for (int j = 0; j < term->cols; j++) {
+    for (int j = 0; j < term.cols; j++) {
       termchar *d = line->chars + j;
       cattr tattr = d->attr;
 
-      if (j < term->cols - 1 && d[1].chr == UCSWIDE)
+      if (j < term.cols - 1 && d[1].chr == UCSWIDE)
         tattr.attr |= ATTR_WIDE;
 
      /* Match emoji sequences
@@ -1942,7 +2026,7 @@ term_paint(struct term* term)
           e.len = 0;
         }
         else
-          e = match_emoji(d, term->cols - j);
+          e = match_emoji(d, term.cols - j);
         if (e.len) {  // we have matched an emoji (sequence)
           // avoid subsequent matching of a partial emoji subsequence
           emoji_col = j + e.len;
@@ -1995,20 +2079,20 @@ term_paint(struct term* term)
     }
 
    /* Do Arabic shaping and bidi. */
-    termchar *chars = term_bidi_line(term, line, i);
-    int *backward = chars ? term->post_bidi_cache[i].backward : 0;
-    int *forward = chars ? term->post_bidi_cache[i].forward : 0;
+    termchar *chars = term_bidi_line(term_p, line, i);
+    int *backward = chars ? term.post_bidi_cache[i].backward : 0;
+    int *forward = chars ? term.post_bidi_cache[i].forward : 0;
     chars = chars ?: line->chars;
 
-    termline *displine = term->displines[i];
+    termline *displine = term.displines[i];
     termchar *dispchars = displine->chars;
-    termchar newchars[term->cols];
+    termchar newchars[term.cols];
 
    /*
     * First loop: work along the line deciding what we want
     * each character cell to look like.
     */
-    for (int j = 0; j < term->cols; j++) {
+    for (int j = 0; j < term.cols; j++) {
       termchar *d = chars + j;
       scrpos.x = backward ? backward[j] : j;
       wchar tchar = d->chr;
@@ -2020,15 +2104,15 @@ term_paint(struct term* term)
       if (tchar == 0x2010)
         tchar = '-';
 
-      if (j < term->cols - 1 && d[1].chr == UCSWIDE)
+      if (j < term.cols - 1 && d[1].chr == UCSWIDE)
         tattr.attr |= ATTR_WIDE;
 
      /* Video reversing things */
       bool selected =
-        term->selected &&
-        ( term->sel_rect
-          ? posPle(term->sel_start, scrpos) && posPlt(scrpos, term->sel_end)
-          : posle(term->sel_start, scrpos) && poslt(scrpos, term->sel_end)
+        term.selected &&
+        ( term.sel_rect
+          ? posPle(term.sel_start, scrpos) && posPlt(scrpos, term.sel_end)
+          : posle(term.sel_start, scrpos) && poslt(scrpos, term.sel_end)
         );
 
       if (selected) {
@@ -2053,10 +2137,10 @@ term_paint(struct term* term)
           tattr.attr ^= ATTR_REVERSE;
       }
 
-      if (term->hovering &&
-          (term->hoverlink >= 0
-           ? term->hoverlink == tattr.link
-           : posle(term->hover_start, scrpos) && poslt(scrpos, term->hover_end)
+      if (term.hovering &&
+          (term.hoverlink >= 0
+           ? term.hoverlink == tattr.link
+           : posle(term.hover_start, scrpos) && poslt(scrpos, term.hover_end)
           )
          )
       {
@@ -2068,12 +2152,12 @@ term_paint(struct term* term)
         }
       }
 
-      bool flashchar = term->in_vbell &&
+      bool flashchar = term.in_vbell &&
                        ((cfg.bell_flash_style & FLASH_FULL)
                         ||
                         ((cfg.bell_flash_style & FLASH_BORDER)
                          && (i == 0 || j == 0 ||
-                             i == term->rows - 1 || j == term->cols - 1
+                             i == term.rows - 1 || j == term.cols - 1
                             )
                         )
                        );
@@ -2087,7 +2171,7 @@ term_paint(struct term* term)
         }
       }
 
-      int match = in_results(term, scrpos);
+      int match = in_results(term_p, scrpos);
       if (match > 0) {
         tattr.attr |= TATTR_RESULT;
         if (match > 1) {
@@ -2096,22 +2180,22 @@ term_paint(struct term* term)
       } else {
         tattr.attr &= ~TATTR_RESULT;
       }
-      if (term->markpos_valid && (displine->lattr & (LATTR_MARKED | LATTR_UNMARKED))) {
+      if (term.markpos_valid && (displine->lattr & (LATTR_MARKED | LATTR_UNMARKED))) {
         tattr.attr |= TATTR_MARKED;
-        if (scrpos.y == term->markpos)
+        if (scrpos.y == term.markpos)
           tattr.attr |= TATTR_CURMARKED;
       } else {
         tattr.attr &= ~TATTR_MARKED;
       }
 
      /* 'Real' blinking ? */
-      if (term->blink_is_real && (tattr.attr & ATTR_BLINK)) {
-        if (term->has_focus && term->tblinker)
+      if (term.blink_is_real && (tattr.attr & ATTR_BLINK)) {
+        if (term.has_focus && term.tblinker)
           tchar = ' ';
         tattr.attr &= ~ATTR_BLINK;
       }
-      if (term->blink_is_real && (tattr.attr & ATTR_BLINK2)) {
-        if (term->has_focus && term->tblinker2)
+      if (term.blink_is_real && (tattr.attr & ATTR_BLINK2)) {
+        if (term.has_focus && term.tblinker2)
           tchar = ' ';
         tattr.attr &= ~ATTR_BLINK2;
       }
@@ -2210,7 +2294,7 @@ term_paint(struct term* term)
       * moving it one column to the left when it's on the right half of a
       * wide character.
       */
-      int curs_x = term->curs.x;
+      int curs_x = term.curs.x;
       if (forward)
         curs_x = forward[curs_x];
       if (curs_x > 0 && chars[curs_x].chr == UCSWIDE)
@@ -2218,11 +2302,11 @@ term_paint(struct term* term)
 
      /* Determine cursor cell attributes. */
       newchars[curs_x].attr.attr |=
-        (!term->has_focus ? TATTR_PASCURS :
-         term->cblinker || !term_cursor_blinks(term) ? TATTR_ACTCURS : 0) |
-        (term->curs.wrapnext ? TATTR_RIGHTCURS : 0);
+        (!term.has_focus ? TATTR_PASCURS :
+         term.cblinker || !term_cursor_blinks(term_p) ? TATTR_ACTCURS : ATTR_FGSHIFT) |
+        (term.curs.wrapnext ? TATTR_RIGHTCURS : ATTR_FGSHIFT);
 
-      if (term->cursor_invalid)
+      if (term.cursor_invalid)
         dispchars[curs_x].attr.attr |= ATTR_INVALID;
 
       // try to fix #612 "cursor isn’t hidden right away"
@@ -2257,7 +2341,7 @@ term_paint(struct term* term)
     bool prevdirtyitalic = false;
     bool firstdirtyitalic = false;
     bool dirtyrect = false;
-    for (int j = 0; j < term->cols; j++) {
+    for (int j = 0; j < term.cols; j++) {
       if (dispchars[j].attr.attr & DATTR_STARTRUN) {
         laststart = j;
         dirtyrect = false;
@@ -2293,11 +2377,11 @@ term_paint(struct term* term)
     }
     if (prevdirtyitalic) {
       // clear overhang into right padding border
-      win_text(term->cols, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
+      win_text(term.cols, i, (wchar *)(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
     }
     if (firstdirtyitalic) {
       // clear overhang into left padding border
-      win_text(-1, i, W(" "), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
+      win_text(-1, i, (wchar *)(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
     }
 
 #define dont_debug_bidi_paragraphs
@@ -2336,7 +2420,7 @@ term_paint(struct term* term)
     overlay:;
     bool do_overlay = false;
 
-    int maxtextlen = max(term->cols, 16);
+    int maxtextlen = max(term.cols, 16);
     wchar text[maxtextlen];
     cattr textattr[maxtextlen];
     int textlen = 0;
@@ -2362,13 +2446,13 @@ term_paint(struct term* term)
     ushort ovl_lattr;
     bool ovl_has_rtl;
 
-    void flush_text()
+    auto flush_text = [&]()
     {
       if (ovl_len) {
         win_text(ovl_x, ovl_y, ovl_text, ovl_len, ovl_attr, ovl_textattr, ovl_lattr, ovl_has_rtl, false, 2);
         ovl_len = 0;
       }
-    }
+    };
 
 #define dont_debug_run
 
@@ -2378,7 +2462,7 @@ term_paint(struct term* term)
 # define debug_out_text
 #endif
 
-    void out_text(int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
+    auto out_text = [&](int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
     {
 #ifdef debug_out_text
       wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
@@ -2433,7 +2517,7 @@ term_paint(struct term* term)
             do_overlay = true;  // display in overlaying loop
           else {
             //struct emoji e = (struct emoji) eattr.truefg;
-            struct emoji * ee = (void *)&eattr.truefg;
+            struct emoji * ee = (struct emoji *)&eattr.truefg;
             emoji_show(x, y, *ee, elen, eattr, lattr);
           }
         }
@@ -2465,12 +2549,12 @@ term_paint(struct term* term)
         win_text(x, y, text, len, attr, textattr, lattr, has_rtl, false, 0);
         flush_text();
       }
-    }
+    };
 
    /*
     * Third loop, for actual drawing.
     */
-    for (int j = 0; j < term->cols; j++) {
+    for (int j = 0; j < term.cols; j++) {
       termchar *d = chars + j;
       cattr tattr = newchars[j].attr;
       wchar tchar = newchars[j].chr;
@@ -2509,15 +2593,15 @@ term_paint(struct term* term)
       if (tattr.attr & TATTR_EMOJI)
         trace_run("emoji"), break_run = true;
 
-      inline bool has_comb(termchar * tc)
+      auto has_comb = [&](termchar * tc)
       {
         if (!tc->cc_next)
           return false;
         if (!is_high_surrogate(tc->chr))
           return true;
         tc += tc->cc_next;
-        return tc->cc_next;
-      }
+        return tc->cc_next ? true : false;
+      };
 
      /*
       * Break on both sides of any combined-character cell.
@@ -2652,7 +2736,7 @@ term_paint(struct term* term)
       }
 
      /* If it's a wide char step along to the next one. */
-      if ((tattr.attr & ATTR_WIDE) && ++j < term->cols) {
+      if ((tattr.attr & ATTR_WIDE) && ++j < term.cols) {
         d++;
        /*
         * By construction above, the cursor should not
@@ -2683,28 +2767,30 @@ term_paint(struct term* term)
     release_line(line);
   }
 
-  term->cursor_invalid = false;
+  term.cursor_invalid = false;
 }
 
 void
-term_invalidate(struct term* term, int left, int top, int right, int bottom)
+term_invalidate(struct term* term_p, int left, int top, int right, int bottom)
 {
+  struct term& term = *term_p;
+  
   if (left < 0)
     left = 0;
   if (top < 0)
     top = 0;
-  if (right >= term->cols)
-    right = term->cols - 1;
-  if (bottom >= term->rows)
-    bottom = term->rows - 1;
+  if (right >= term.cols)
+    right = term.cols - 1;
+  if (bottom >= term.rows)
+    bottom = term.rows - 1;
 
-  for (int i = top; i <= bottom && i < term->rows; i++) {
-    if ((term->displines[i]->lattr & LATTR_MODE) == LATTR_NORM)
-      for (int j = left; j <= right && j < term->cols; j++)
-        term->displines[i]->chars[j].attr.attr |= ATTR_INVALID;
+  for (int i = top; i <= bottom && i < term.rows; i++) {
+    if ((term.displines[i]->lattr & LATTR_MODE) == LATTR_NORM)
+      for (int j = left; j <= right && j < term.cols; j++)
+        term.displines[i]->chars[j].attr.attr |= ATTR_INVALID;
     else
-      for (int j = left / 2; j <= right / 2 + 1 && j < term->cols; j++)
-        term->displines[i]->chars[j].attr.attr |= ATTR_INVALID;
+      for (int j = left / 2; j <= right / 2 + 1 && j < term.cols; j++)
+        term.displines[i]->chars[j].attr.attr |= ATTR_INVALID;
   }
 }
 
@@ -2718,43 +2804,45 @@ term_invalidate(struct term* term, int left, int top, int right, int bottom)
  * the prior or next distinguished/marked position (to be searched).
  */
 void
-term_scroll(struct term* term, int rel, int where)
+term_scroll(struct term* term_p, int rel, int where)
 {
-  if (term->hovering) {
-    term->hovering = false;
-    win_update_term(term, true);
+  struct term& term = *term_p;
+  
+  if (term.hovering) {
+    term.hovering = false;
+    win_update_term(term_p, true);
   }
 
-  int sbtop = -sblines(term);
-  int sbbot = term_last_nonempty_line(term);
+  int sbtop = -sblines(term_p);
+  int sbbot = term_last_nonempty_line(term_p);
   bool do_schedule_update = false;
 
   if (rel == SB_PRIOR || rel == SB_NEXT) {
-    if (!term->markpos_valid) {
-      term->markpos = sbbot;
-      term->markpos_valid = true;
+    if (!term.markpos_valid) {
+      term.markpos = sbbot;
+      term.markpos_valid = true;
     }
-    int y = term->markpos;
+    int y = term.markpos;
     while ((rel == SB_PRIOR) ? y-- > sbtop : y++ < sbbot) {
-      termline * line = fetch_line(term, y);
+      termline * line = fetch_line(term_p, y);
       ushort lattr = line->lattr;
       release_line(line);
       if (lattr & LATTR_MARKED) {
-        term->markpos = y;
-        term->disptop = y;
+        term.markpos = y;
+        term.disptop = y;
         break;
       }
     }
     do_schedule_update = true;
   }
   else
-    term->disptop = (rel < 0 ? 0 : rel > 0 ? sbtop : term->disptop) + where;
+    term.disptop = (rel < 0 ? 0 : rel > 0 ? sbtop : term.disptop) + where;
 
-  if (term->disptop < sbtop)
-    term->disptop = sbtop;
-  if (term->disptop > 0)
-    term->disptop = 0;
-  win_update_term(term, false);
+  if (term.disptop < sbtop)
+    term.disptop = sbtop;
+  if (term.disptop > 0)
+    term.disptop = 0;
+  win_update_term(term_p, false);
 
   if (do_schedule_update) {
     win_schedule_update();
@@ -2763,27 +2851,31 @@ term_scroll(struct term* term, int rel, int where)
 }
 
 void
-term_set_focus(struct term* term, bool has_focus, bool may_report)
+term_set_focus(struct term* term_p, bool has_focus, bool may_report)
 {
+  struct term& term = *term_p;
+  
   if (!has_focus)
-    term->hovering = false;
+    term.hovering = false;
 
-  if (has_focus != term->has_focus) {
-    term->has_focus = has_focus;
-    term_schedule_cblink(term);
+  if (has_focus != term.has_focus) {
+    term.has_focus = has_focus;
+    term_schedule_cblink(term_p);
   }
 
-  if (has_focus != term->focus_reported && may_report) {
-    term->focus_reported = has_focus;
-    if (term->report_focus)
-      child_write(term->child, has_focus ? "\e[I" : "\e[O", 3);
+  if (has_focus != term.focus_reported && may_report) {
+    term.focus_reported = has_focus;
+    if (term.report_focus)
+      child_write(term.child, has_focus ? "\e[I" : "\e[O", 3);
   }
 }
 
 void
-term_update_cs(struct term* term)
+term_update_cs(struct term* term_p)
 {
-  term_cursor *curs = &term->curs;
+  struct term& term = *term_p;
+  
+  term_cursor *curs = &term.curs;
   cs_set_mode(
     curs->oem_acs ? CSM_OEM :
     curs->utf ? CSM_UTF8 :
@@ -2791,3 +2883,4 @@ term_update_cs(struct term* term)
   );
 }
 
+}

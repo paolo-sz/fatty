@@ -71,6 +71,7 @@ typedef enum {
   // is resistant to previous |= 1 or ^= 2 (win_text)
   TRUE_COLOUR = 0x180
 } colour_i;
+DEFINE_ENUM_FLAG_OPERATORS(colour_i);
 
 // colour classes
 #define CCL_ANSI8(i) ((i) >= ANSI0 && (i) < ANSI0 + 8)
@@ -101,7 +102,7 @@ enum { UCSWIDE = 0,
  *
  * ATTR_INVALID is an illegal colour combination.
  */
-enum {
+enum char_attr_t {
   ATTR_FGSHIFT    = 0,
   ATTR_BGSHIFT    = 9,
   ATTR_FGMASK     = 0x000001FFu,
@@ -261,8 +262,8 @@ extern void freeline(termline *);
 extern void clearline(termline *, termchar erase_char);
 extern void resizeline(termline *, int);
 
-extern int sblines(struct term* term);
-extern termline *fetch_line(struct term* term, int y);
+extern int sblines(struct term* term_p);
+extern termline *fetch_line(struct term* term_p, int y);
 extern void release_line(termline *);
 
 
@@ -433,6 +434,46 @@ typedef struct {
   ushort bidimode;
 } term_cursor;
 
+  typedef enum {
+    // The state can be zero, one of the mouse buttons or one of the cases here.
+    MS_SEL_CHAR = -1, MS_SEL_WORD = -2, MS_SEL_LINE = -3,
+    MS_COPYING = -4, MS_PASTING = -5, MS_OPENING = -6
+  } mouse_state_t;
+
+  typedef enum {
+    NORMAL, ESCAPE, CSI_ARGS,
+    IGNORE_STRING, CMD_STRING, CMD_ESCAPE,
+    OSC_START,
+    OSC_NUM,
+    OSC_PALETTE,
+    DCS_START,
+    DCS_PARAM,
+    DCS_INTERMEDIATE,
+    DCS_PASSTHROUGH,
+    DCS_IGNORE,
+    DCS_ESCAPE,
+    VT52_Y, VT52_X,
+    VT52_FG, VT52_BG
+  } state_t;
+
+  // Mouse mode
+  typedef enum {
+    MM_NONE,
+    MM_X10,       // just clicks
+    MM_VT200,     // click and release
+    MM_BTN_EVENT, // click, release, and drag with button down
+    MM_ANY_EVENT, // click, release, and any movement
+    MM_LOCATOR,   // DEC locator events
+  } mouse_mode_t;
+
+  // Mouse encoding
+  typedef enum {
+    ME_X10,        // CSI M followed by one byte each for event, X and Y
+    ME_UTF8,       // Same as X10, but with UTF-8 encoded X and Y (ugly!)
+    ME_URXVT_CSI,  // CSI event ; x ; y M
+    ME_XTERM_CSI   // CSI > event ; x ; y M/m
+  } mouse_enc_t;
+
 struct term {
   // these used to be in term_cursor, thus affected by cursor restore
   bool decnrc_enabled;  /* DECNRCM: enable NRC */
@@ -548,45 +589,15 @@ struct term {
   uchar *tabs;
   bool newtab;
 
-  enum {
-    NORMAL, ESCAPE, CSI_ARGS,
-    IGNORE_STRING, CMD_STRING, CMD_ESCAPE,
-    OSC_START,
-    OSC_NUM,
-    OSC_PALETTE,
-    DCS_START,
-    DCS_PARAM,
-    DCS_INTERMEDIATE,
-    DCS_PASSTHROUGH,
-    DCS_IGNORE,
-    DCS_ESCAPE,
-    VT52_Y, VT52_X,
-    VT52_FG, VT52_BG
-  } state;
+  state_t state;
 
   // Mouse mode
-  enum {
-    MM_NONE,
-    MM_X10,       // just clicks
-    MM_VT200,     // click and release
-    MM_BTN_EVENT, // click, release, and drag with button down
-    MM_ANY_EVENT, // click, release, and any movement
-    MM_LOCATOR,   // DEC locator events
-  } mouse_mode;
+  mouse_mode_t mouse_mode;
 
   // Mouse encoding
-  enum {
-    ME_X10,        // CSI M followed by one byte each for event, X and Y
-    ME_UTF8,       // Same as X10, but with UTF-8 encoded X and Y (ugly!)
-    ME_URXVT_CSI,  // CSI event ; x ; y M
-    ME_XTERM_CSI   // CSI > event ; x ; y M/m
-  } mouse_enc;
+  mouse_enc_t mouse_enc;
 
-  enum {
-    // The state can be zero, one of the mouse buttons or one of the cases here.
-    MS_SEL_CHAR = -1, MS_SEL_WORD = -2, MS_SEL_LINE = -3,
-    MS_COPYING = -4, MS_PASTING = -5, MS_OPENING = -6
-  } mouse_state;
+  mouse_state_t mouse_state;
 
   bool locator_1_enabled;
   bool locator_by_pixels;
@@ -640,42 +651,42 @@ struct term {
   int mode_stack_len;
 };
 
-extern void scroll_rect(struct term* term, int topline, int botline, int lines);
+extern void scroll_rect(struct term* term_p, int topline, int botline, int lines);
 
-extern void term_resize(struct term* term, int, int);
-extern void term_scroll(struct term* term, int, int);
-extern void term_reset(struct term* term, bool full);
-extern void term_free(struct term* term);
-extern void term_clear_scrollback(struct term* term);
-extern void term_mouse_click(struct term* term, mouse_button, mod_keys, pos, int count);
-extern void term_mouse_release(struct term* term, mouse_button, mod_keys, pos);
-extern void term_mouse_move(struct term* term, mod_keys, pos);
-extern void term_mouse_wheel(struct term* term, bool horizontal, int delta, int lines_per_notch, mod_keys, pos);
-extern void term_select_all(struct term* term);
-extern void term_paint(struct term* term);
-extern void term_invalidate(struct term* term, int left, int top, int right, int bottom);
-extern void term_open(struct term* term);
-extern void term_copy(struct term* term);
-extern void term_copy_as(struct term* term, char what);
-extern void term_paste(struct term* term, wchar *, uint len, bool all);
-extern void term_send_paste(struct term* term);
-extern void term_cancel_paste(struct term* term);
-extern void term_cmd(struct term* term, char * cmdpat);
-extern void term_reconfig(struct term* term);
-extern void term_flip_screen(struct term* term);
-extern void term_reset_screen(struct term* term);
-extern void term_write(struct term* term, const char *, uint len);
-extern void term_flush(struct term* term);
-extern void term_set_focus(struct term* term, bool has_focus, bool may_report);
-extern int  term_cursor_type(struct term* term);
-extern void term_hide_cursor(struct term* term);
+extern void term_resize(struct term* term_p, int, int);
+extern void term_scroll(struct term* term_p, int, int);
+extern void term_reset(struct term* term_p, bool full);
+extern void term_free(struct term* term_p);
+extern void term_clear_scrollback(struct term* term_p);
+extern void term_mouse_click(struct term* term_p, mouse_button, mod_keys, pos, int count);
+extern void term_mouse_release(struct term* term_p, mouse_button, mod_keys, pos);
+extern void term_mouse_move(struct term* term_p, mod_keys, pos);
+extern void term_mouse_wheel(struct term* term_p, bool horizontal, int delta, int lines_per_notch, mod_keys, pos);
+extern void term_select_all(struct term* term_p);
+extern void term_paint(struct term* term_p);
+extern void term_invalidate(struct term* term_p, int left, int top, int right, int bottom);
+extern void term_open(struct term* term_p);
+extern void term_copy(struct term* term_p);
+extern void term_copy_as(struct term* term_p, char what);
+extern void term_paste(struct term* term_p, wchar *, uint len, bool all);
+extern void term_send_paste(struct term* term_p);
+extern void term_cancel_paste(struct term* term_p);
+extern void term_cmd(struct term* term_p, char * cmdpat);
+extern void term_reconfig(struct term* term_p);
+extern void term_flip_screen(struct term* term_p);
+extern void term_reset_screen(struct term* term_p);
+extern void term_write(struct term* term_p, const char *, uint len);
+extern void term_flush(struct term* term_p);
+extern void term_set_focus(struct term* term_p, bool has_focus, bool may_report);
+extern int  term_cursor_type(struct term* term_p);
+extern void term_hide_cursor(struct term* term_p);
 
-extern void term_set_search(struct term* term, wchar * needle);
-extern void term_schedule_search_partial_update(struct term* term);
-extern void term_schedule_search_update(struct term* term);
-extern void term_update_search(struct term* term);
-extern void term_clear_results(struct term* term);
-extern void term_clear_search(struct term* term);
+extern void term_set_search(struct term* term_p, wchar * needle);
+extern void term_schedule_search_partial_update(struct term* term_p);
+extern void term_schedule_search_update(struct term* term_p);
+extern void term_update_search(struct term* term_p);
+extern void term_clear_results(struct term* term_p);
+extern void term_clear_search(struct term* term_p);
 
 extern uchar scriptfont(ucschar ch);
 
