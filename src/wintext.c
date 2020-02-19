@@ -37,10 +37,11 @@ enum {
   FONT_HIGH      = 0x10,
   FONT_ZOOMFULL  = 0x20,
   FONT_ZOOMSMALL = 0x40,
-  FONT_WIDE      = 0x80,
+  FONT_ZOOMDOWN  = 0x80,
+  FONT_WIDE      = 0x100,
 #ifdef narrow_via_font
 #warning narrowing via font is deprecated
-  FONT_NARROW    = 0x100,
+  FONT_NARROW    = 0x200,
   FONT_MAXNO     = FONT_WIDE + FONT_NARROW
 #else
   FONT_NARROW    = 0,	// disabled narrowing via font
@@ -1446,6 +1447,10 @@ another_font(struct fontfam * ff, int fontno)
     y = y * 12 / 20;
     x = x * 12 / 20;
   }
+  if (fontno & FONT_ZOOMDOWN) {
+    y = y / 2;
+    x = x / 2;
+  }
 
 #ifdef debug_create_font
   printf("font [%02X]: %d (size %d%s%s%s%s) %d w%4d i%d u%d s%d\n", 
@@ -2326,12 +2331,37 @@ text_out_start(HDC hdc, LPCWSTR psz, int cch, int *dxs)
   if (!use_uniscribe)
     return;
 
+#if CYGWIN_VERSION_API_MINOR >= 74
+  static
+#endif
+SCRIPT_CONTROL sctrl_lig = (SCRIPT_CONTROL){
+  uDefaultLanguage : 0,
+  fContextDigits : 0,
+  fInvertPreBoundDir : 0,
+  fInvertPostBoundDir : 0,
+  fLinkStringBefore : 0,
+  fLinkStringAfter : 0,
+  fNeutralOverride : 0,
+  fNumericOverride : 0,
+  fLegacyBidiClass : 0,
+#if CYGWIN_VERSION_API_MINOR >= 74
+  fMergeNeutralItems : 1,
+#else
+  fMergeNeutralItems : 0,
+#endif
+  fUseStandardBidi : 0,
+#if CYGWIN_VERSION_API_MINOR >= 74
+  fReserved : 0};
+#else
+  fReserved : 1};
+#endif
   HRESULT hr = ScriptStringAnalyse(hdc, psz, cch, 0, -1, 
     // could | SSA_FIT and use `width` (from win_text) instead of MAXLONG
     // to justify to monospace cell widths;
     // SSA_LINK is needed for Hangul and default-size CJK
     SSA_GLYPHS | SSA_FALLBACK | SSA_LINK, MAXLONG, 
-    NULL, NULL, dxs, NULL, NULL, &ssa);
+    cfg.ligatures > 1 ? &sctrl_lig : NULL, 
+    NULL, dxs, NULL, NULL, &ssa);
   if (!SUCCEEDED(hr) && hr != USP_E_SCRIPT_NOT_IN_FONT)
     use_uniscribe = false;
 }
@@ -2841,6 +2871,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     nfont |= FONT_ZOOMFULL;
   if (attr.attr & (ATTR_SUBSCR | ATTR_SUPERSCR))
     nfont |= FONT_ZOOMSMALL;
+  if (attr.attr & TATTR_SINGLE)
+    nfont |= FONT_ZOOMDOWN;
   another_font(ff, nfont);
 
   bool force_manual_underline = false;
@@ -3157,6 +3189,8 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     else
       yt += cell_height * 1 / 8;
   }
+  if (attr.attr & TATTR_SINGLE)
+    yt += cell_height / 4;
 
  /* Shadow */
   int layer = 0;

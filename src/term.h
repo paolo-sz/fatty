@@ -148,6 +148,7 @@ enum char_attr_t {
   TATTR_COMBINING = 0x0000000200000000u, /* combining characters */
   TATTR_COMBDOUBL = 0x0000000400000000u, /* combining double characters */
   TATTR_ZOOMFULL  = 0x0000001000000000u, /* to be zoomed to full cell size */
+  TATTR_SINGLE    = 0x0040000000000000u, /* zoom down to single cell width */
 
   TATTR_RIGHTCURS = 0x0000002000000000u, /* cursor-on-RHS */
   TATTR_PASCURS   = 0x0000004000000000u, /* passive cursor (box) */
@@ -165,7 +166,6 @@ enum char_attr_t {
   DATTR_MASK      = TATTR_RIGHTCURS | TATTR_PASCURS | TATTR_ACTCURS
                     | DATTR_STARTRUN
   // unassigned bits:
-  //                0x0040000000000000u
   //                0x0080000000000000u
 };
 

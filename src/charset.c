@@ -33,6 +33,7 @@ static string env_locale;      // Locale determined by the environment.
 static bool valid_default_locale, use_locale;
 bool cs_ambig_wide;
 #endif
+bool cs_single_forced = false;
 
 static uint codepage, default_codepage;
 
@@ -338,7 +339,11 @@ update_locale(void)
   if (valid_default_locale) {
     default_codepage = cs_codepage(nl_langinfo(CODESET));
     default_locale = strdup(set_locale);
-    cs_ambig_wide = wcwidth(0x3B1) == 2;
+    cs_ambig_wide = cfg.charwidth < 10 && wcwidth(0x3B1) == 2;
+    if (cfg.charwidth <= 1 && wcwidth(0x4E00) == 1) {
+      //cfg.charwidth += 10;  // better flag explicitly:
+      cs_single_forced = true;
+    }
   }
   else {
 #endif
@@ -347,7 +352,20 @@ update_locale(void)
 #if HAS_LOCALES
     cs_ambig_wide = font_ambig_wide;
   }
-  if (cfg.charwidth == 2 && !cs_ambig_wide) {
+
+  if (cfg.charwidth >= 10 && wcwidth(0x4E00) == 2 && !strchr(default_locale, '@')) {
+    if (!support_wsl) {  // do not modify for WSL
+      // Attach "@cjksingle" to locale if enforcing single-width mode
+      string l = default_locale;
+      default_locale = asform("%s@cjksingle", l);
+      delete(l);
+      // indicate @cjksingle to locale lib
+      setlocale(LC_CTYPE, default_locale);
+      // in case it's not accepted, yet indicate @cjksingle to shell
+      setenv("LC_CTYPE", default_locale, true);
+    }
+  }
+  else if (cfg.charwidth == 2 && !cs_ambig_wide) {
     if (!support_wsl) {  // do not modify for WSL
       // Attach "@cjkwide" to locale if running in ambiguous-wide mode
       // with an ambig-narrow locale setting
@@ -390,7 +408,13 @@ cs_reconfig(void)
 #if HAS_LOCALES
     if (setlocale(LC_CTYPE, config_locale) &&
         !support_wsl) {  // set locale anyway, but do not modify for WSL
-      if (cfg.charwidth < 2 && wcwidth(0x3B1) == 2 && !font_ambig_wide) {
+      if (cfg.charwidth >= 10) {
+        // Attach "@cjksingle" to locale if enforcing single-width mode
+        string l = config_locale;
+        config_locale = asform("%s@cjksingle", l);
+        delete(l);
+      }
+      else if (cfg.charwidth < 2 && wcwidth(0x3B1) == 2 && !font_ambig_wide) {
         // Attach "@cjknarrow" to locale if running in ambiguous-narrow mode
         // with an ambig-wide locale setting
         string l = config_locale;

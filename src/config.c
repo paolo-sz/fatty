@@ -210,6 +210,7 @@ const config default_cfg = {
   col_spacing : 0,
   row_spacing : 0,
   padding : 1,
+  ligatures : 1,
   ligatures_support : 0,
   handle_dpichanged : 2,
   check_version_update : 900,
@@ -470,6 +471,7 @@ options[] = {
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"Padding", OPT_INT, offcfg(padding)},
+  {"Ligatures", OPT_INT, offcfg(ligatures)},
   {"LigaturesSupport", OPT_INT, offcfg(ligatures_support)},
   {"HandleDPI", OPT_INT, offcfg(handle_dpichanged)},
   {"CheckVersionUpdate", OPT_INT, offcfg(check_version_update)},
@@ -613,6 +615,8 @@ static opt_val
     {"locale", 0},
     {"unicode", 1},
     {"ambig-wide", 2},
+    {"single", 10},
+    {"single-unicode", 11},
     {0, 0}
   },
   [OPT_EMOJIS] = (opt_val[]) {
