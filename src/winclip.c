@@ -311,6 +311,9 @@ void
 win_open(wstring wpath, bool adjust_dir)
 // frees wpath
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   // unescape
   int wl = wcslen(wpath);
   if ((*wpath == '"' || *wpath == '\'') && wpath[wl - 1] == *wpath) {
@@ -349,8 +352,8 @@ win_open(wstring wpath, bool adjust_dir)
       // current directory, so we can only consider the working directory 
       // explicitly communicated via the OSC 7 escape sequence here.
       if (*wpath != '/' && wcsncmp(wpath, W("~/"), 2) != 0) {
-        if (win_active_terminal()->child->dir && *win_active_terminal()->child->dir) {
-          wchar * cd = cs__mbstowcs(win_active_terminal()->child->dir);
+        if (term.child->dir && *term.child->dir) {
+          wchar * cd = cs__mbstowcs(term.child->dir);
           cd = renewn(cd, wcslen(cd) + wcslen(wpath) + 2);
           cd[wcslen(cd)] = '/';
           wcscpy(&cd[wcslen(cd) + 1], wpath);
@@ -361,7 +364,7 @@ win_open(wstring wpath, bool adjust_dir)
 
       wpath = dewsl((wchar *)wpath);
     }
-    wstring conv_wpath = child_conv_path(win_active_terminal()->child, wpath, adjust_dir);
+    wstring conv_wpath = child_conv_path(term.child, wpath, adjust_dir);
 #ifdef debug_wsl
     printf("open <%ls> <%ls>\n", wpath, conv_wpath);
 #endif
@@ -950,6 +953,9 @@ buf_path(wchar * wfn)
 static void
 paste_hdrop(HDROP drop)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
 #if CYGWIN_VERSION_API_MINOR >= 222
   // Update Cygwin locale to terminal locale.
   cygwin_internal(CW_INT_SETLOCALE);
@@ -971,7 +977,7 @@ paste_hdrop(HDROP drop)
 
   if (!support_wsl && *cfg.drop_commands) {
     // try to determine foreground program
-    char * fg_prog = foreground_prog(win_active_terminal()->child);
+    char * fg_prog = foreground_prog(term.child);
     if (fg_prog) {
       // match program base name
       char * drops = cs__wcstombs(cfg.drop_commands);
@@ -980,7 +986,7 @@ paste_hdrop(HDROP drop)
         buf[buf_pos] = 0;
         char * pastebuf = newn(char, strlen(paste) + strlen(buf) + 1);
         sprintf(pastebuf, paste, buf);
-        child_send(win_active_terminal()->child, pastebuf, strlen(pastebuf));
+        child_send(term.child, pastebuf, strlen(pastebuf));
         free(pastebuf);
         free(drops);
         free(fg_prog);
@@ -992,13 +998,13 @@ paste_hdrop(HDROP drop)
     }
   }
 
-  if (win_active_terminal()->bracketed_paste)
-    child_write(win_active_terminal()->child, "\e[200~", 6);
-  child_send(win_active_terminal()->child, buf, buf_pos);
+  if (term.bracketed_paste)
+    child_write(term.child, "\e[200~", 6);
+  child_send(term.child, buf, buf_pos);
 
   free(buf);
-  if (win_active_terminal()->bracketed_paste)
-    child_write(win_active_terminal()->child, "\e[201~", 6);
+  if (term.bracketed_paste)
+    child_write(term.child, "\e[201~", 6);
 }
 
 static void
@@ -1042,11 +1048,14 @@ paste_text(HANDLE data)
 static void
 do_win_paste(bool do_path)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   if (!OpenClipboard(null))
     return;
 
   if (cfg.input_clears_selection)
-    win_active_terminal()->selected = false;
+   term.selected = false;
 
   HGLOBAL data;
   if ((data = GetClipboardData(CF_HDROP))) {
@@ -1056,7 +1065,7 @@ do_win_paste(bool do_path)
   else if ((data = GetClipboardData(CF_UNICODETEXT))) {
     //printf("pasting CF_UNICODETEXT\n");
     if (do_path)
-      paste_path(win_active_terminal(), data);
+      paste_path(term_p, data);
     else
       paste_unicode_text(data);
   }

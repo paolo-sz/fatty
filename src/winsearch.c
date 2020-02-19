@@ -230,6 +230,9 @@ place_field(int * curpoi, int width, int * pospoi)
 static void
 win_toggle_search(bool show, bool focus)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   RECT cr;
   GetClientRect(wnd, &cr);
   int width = cr.right - cr.left;
@@ -356,8 +359,8 @@ win_toggle_search(bool show, bool focus)
 
     default_edit_proc = (WNDPROC)SetWindowLongPtrW(search_edit_wnd, GWLP_WNDPROC, (long)edit_proc);
 
-    if (win_active_terminal()->results.query)
-      SetWindowTextW(search_edit_wnd, win_active_terminal()->results.query);
+    if (term.results.query)
+      SetWindowTextW(search_edit_wnd, term.results.query);
 
     search_initialised = true;
     prev_height = height;

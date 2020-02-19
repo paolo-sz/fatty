@@ -993,10 +993,13 @@ win_synctabs(int level)
 static void
 win_launch(int n)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
   int x, y;
   int moni = search_monitors(&x, &y, mon, true, 0);
-  child_launch(win_active_terminal()->child, n, main_argc, main_argv, moni);
+  child_launch(term.child, n, main_argc, main_argv, moni);
 }
 
 
@@ -1375,12 +1378,15 @@ win_is_glass_available(void)
 static void
 win_update_blur(bool opaque)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
 // This feature is disabled in config.c as it does not seem to work,
 // see https://github.com/mintty/mintty/issues/501
   if (pDwmEnableBlurBehindWindow) {
     bool blur =
       cfg.transparency && cfg.blurred && !win_is_fullscreen &&
-      !(opaque && win_active_terminal()->has_focus);
+      !(opaque && term.has_focus);
 #define dont_use_dwmapi_h
 #ifdef use_dwmapi_h
 #warning dwmapi_include_shown_for_documentation
@@ -1407,9 +1413,12 @@ win_update_blur(bool opaque)
 static void
 win_update_glass(bool opaque)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   bool enabled =
     cfg.transparency == TR_GLASS && !win_is_fullscreen &&
-    !(opaque && win_active_terminal()->has_focus);
+    !(opaque && term.has_focus);
 
   if (pDwmExtendFrameIntoClientArea) {
     MARGINS tmp_m = {enabled ? -1 : 0, 0, 0, 0};
@@ -1758,6 +1767,9 @@ print_system_metrics(int dpi, string tag)
 static void
 win_adjust_borders(int t_width, int t_height)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   term_width = t_width;
   term_height = t_height;
  
@@ -1793,7 +1805,7 @@ win_adjust_borders(int t_width, int t_height)
   printf("win_adjust_borders w/h %d %d\n", width, height);
 #endif
 
-  if ((win_active_terminal() && win_active_terminal()->app_scrollbar) || cfg.scrollbar)
+  if ((term_p && term.app_scrollbar) || cfg.scrollbar)
     width += GetSystemMetrics(SM_CXVSCROLL);
 
   extra_width = width - (cr.right - cr.left);
@@ -1983,6 +1995,9 @@ default_size(void)
 void
 win_update_transparency(bool opaque)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   int trans = cfg.transparency;
   if (trans == TR_GLASS)
     trans = 0;
@@ -1990,7 +2005,7 @@ win_update_transparency(bool opaque)
   style = trans ? style | WS_EX_LAYERED : style & ~WS_EX_LAYERED;
   SetWindowLong(wnd, GWL_EXSTYLE, style);
   if (trans) {
-    if (opaque && win_active_terminal()->has_focus)
+    if (opaque && term.has_focus)
       trans = 0;
     SetLayeredWindowAttributes(wnd, 0, 255 - (uchar)trans, LWA_ALPHA);
   }
@@ -2002,12 +2017,15 @@ win_update_transparency(bool opaque)
 void
 win_update_scrollbar(bool inner)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   // enforce outer scrollbar if switched on
-  int scrollbar = win_active_terminal()->show_scrollbar ? (cfg.scrollbar ?: !inner) : 0;
+  int scrollbar = term.show_scrollbar ? (cfg.scrollbar ?: !inner) : 0;
   // keep config consistent with enforced scrollbar
   if (scrollbar && !cfg.scrollbar)
     cfg.scrollbar = 1;
-  if (win_active_terminal()->app_scrollbar && !scrollbar) {
+  if (term.app_scrollbar && !scrollbar) {
     //printf("enforce application scrollbar %d->%d->%d\n", scrollbar, cfg.scrollbar, cfg.scrollbar ?: 1);
     scrollbar = cfg.scrollbar ?: 1;
   }
@@ -2132,7 +2150,10 @@ confirm_exit(void)
 static bool
 confirm_tab_exit(void)
 {
-  if (!child_is_parent(win_active_terminal()->child))
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  if (!child_is_parent(term.child))
     return true;
 
   int ret =
@@ -3209,7 +3230,10 @@ win_set_ime(bool open)
 void
 report_pos(void)
 {
-  if (report_geom && !wnd && !win_active_terminal()) {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  if (report_geom && !wnd && !term_p) {
     int x, y;
     //win_get_pos(&x, &y);  // would not consider maximised/minimised
     WINDOWPLACEMENT placement;
@@ -3217,8 +3241,8 @@ report_pos(void)
     GetWindowPlacement(wnd, &placement);
     x = placement.rcNormalPosition.left;
     y = placement.rcNormalPosition.top;
-    int cols = win_active_terminal()->cols;
-    int rows = win_active_terminal()->rows;
+    int cols = term.cols;
+    int rows = term.rows;
     cols = (placement.rcNormalPosition.right - placement.rcNormalPosition.left - norm_extra_width - 2 * PADDING) / cell_width;
     rows = (placement.rcNormalPosition.bottom - placement.rcNormalPosition.top - norm_extra_height - 2 * PADDING) / cell_height;
 

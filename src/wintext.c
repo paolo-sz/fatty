@@ -149,7 +149,10 @@ int line_scale;
 wchar
 win_linedraw_char(int i)
 {
-  int findex = (win_active_terminal()->curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  int findex = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   if (findex > 10)
     findex = 0;
   struct fontfam * ff = &fontfamilies[findex];
@@ -1472,9 +1475,12 @@ another_font(struct fontfam * ff, int fontno)
 void
 win_set_ime_open(bool open)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   if (open != ime_open) {
     ime_open = open;
-    win_active_terminal()->cursor_invalid = true;
+    term.cursor_invalid = true;
     win_update(false);
   }
 }
@@ -1938,6 +1944,9 @@ win_flush_background(bool clearbg)
 static wchar *
 get_bg_filename(void)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   tiled = false;
   ratio = false;
   wallp = false;
@@ -2022,7 +2031,7 @@ get_bg_filename(void)
       bf = bfexp;
     }
     else if (*bf != '/' && !(*bf && bf[1] == ':')) {
-      char * fgd = foreground_cwd(win_active_terminal()->child);
+      char * fgd = foreground_cwd(term.child);
       if (fgd) {
         char * bfexp = asform("%s/%s", fgd, bf);
         free(bf);
@@ -2533,6 +2542,9 @@ old_apply_attr_colour(cattr a, attr_colour_mode mode)
 static bool
 apply_bold_colour(colour_i *pfgi)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   // We use two bits to control colouring and thickening for three classes of
   // colours: ANSI (0-7), default, and other (8-256, true). We also reserve one
   // combination for xterm's default (thicken everything, ANSI is also coloured).
@@ -2550,7 +2562,7 @@ apply_bold_colour(colour_i *pfgi)
     return true;  // both thickened
   }
   // switchable bold_colour
-  if (win_active_terminal()->enable_bold_colour && CCL_DEFAULT(*pfgi)
+  if (term.enable_bold_colour && CCL_DEFAULT(*pfgi)
       && colours[BOLD_COLOUR_I] != (colour)-1
      )
     *pfgi = BOLD_COLOUR_I;
@@ -2689,6 +2701,9 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
 void
 win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
 #ifdef debug_wscale
   if (attr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE))
     for (int i = 0; i < len; i++)
@@ -2749,7 +2764,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
 
  /* Only want the left half of double width lines */
   // check this before scaling up x to pixels!
-  if (lattr != LATTR_NORM && tx * 2 >= win_active_terminal()->cols)
+  if (lattr != LATTR_NORM && tx * 2 >= term.cols)
     return;
 
  /* Convert to window coordinates */
@@ -2789,7 +2804,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   }
 
   if (has_cursor) {
-    if (term_cursor_type(win_active_terminal()) == CUR_BLOCK && (attr.attr & TATTR_ACTCURS))
+    if (term_cursor_type(term_p) == CUR_BLOCK && (attr.attr & TATTR_ACTCURS))
       default_bg = false;
 
     cursor_colour = colours[ime_open ? IME_CURSOR_COLOUR_I : CURSOR_COLOUR_I];
@@ -2811,7 +2826,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
         cursor_colour = ccfg;
     }
 
-    if ((attr.attr & TATTR_ACTCURS) && term_cursor_type(win_active_terminal()) == CUR_BLOCK) {
+    if ((attr.attr & TATTR_ACTCURS) && term_cursor_type(term_p) == CUR_BLOCK) {
       fg = colours[CURSOR_TEXT_COLOUR_I];
       if (too_close && colour_dist(cursor_colour, fg) < mindist)
         fg = bg;
@@ -3007,7 +3022,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   int width = char_width * (combining ? 1 : ulen);
   RECT box = {
     left : x, top : y,
-    right : min(x + width, cell_width * win_active_terminal()->cols + PADDING), bottom : y + cell_height
+    right : min(x + width, cell_width * term.cols + PADDING), bottom : y + cell_height
   };
   RECT box0 = box;
   if (ldisp2) {  // e.g. attr.attr & ATTR_ITALIC
@@ -3113,11 +3128,11 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
     RECT bgbox = box0;
     if (!tx)
       bgbox.left = 0;
-    if (bgbox.right >= PADDING + cell_width * win_active_terminal()->cols)
+    if (bgbox.right >= PADDING + cell_width * term.cols)
       bgbox.right += PADDING;
     if (!ty)
       bgbox.top = 0;
-    if (ty == win_active_terminal()->rows - 1) {
+    if (ty == term.rows - 1) {
       RECT cr;
       GetClientRect(wnd, &cr);
       if (win_search_visible())
@@ -3135,7 +3150,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   if (lpresrtl) {
     coord_transformed = SetGraphicsMode(dc, GM_ADVANCED);
     if (coord_transformed && GetWorldTransform(dc, &old_xform)) {
-      XFORM xform = (XFORM){-1.0, 0.0, 0.0, 1.0, (float)(win_active_terminal()->cols * cell_width + 2 * PADDING), 0.0};
+      XFORM xform = (XFORM){-1.0, 0.0, 0.0, 1.0, (float)(term.cols * cell_width + 2 * PADDING), 0.0};
       coord_transformed = SetWorldTransform(dc, &xform);
     }
   }
@@ -4005,7 +4020,7 @@ draw:;
 		6   full block
           */
           int up = 0;
-          switch (win_active_terminal()->cursor_size) {
+          switch (term.cursor_size) {
             when 1: up = -2;
             when 2: up = line_width - 1;
             when 3: up = cell_height / 3 - 1;
@@ -4529,7 +4544,10 @@ win_set_colour(colour_i i, colour c)
 colour
 win_get_colour(colour_i i)
 {
-  if (win_active_terminal()->rvideo && CCL_DEFAULT(i))
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  if (term.rvideo && CCL_DEFAULT(i))
     return colours[i ^ 2];  // [BOLD]_FG_COLOUR_I  <-->  [BOLD]_BG_COLOUR_I
   return i < COLOUR_NUM ? colours[i] : 0;
 }

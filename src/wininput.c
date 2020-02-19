@@ -937,8 +937,11 @@ win_show_mouse(void)
 static void
 hide_mouse(void)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   POINT p;
-  if (win_active_terminal()->hide_mouse && mouse_showing && GetCursorPos(&p) && WindowFromPoint(p) == wnd) {
+  if (term.hide_mouse && mouse_showing && GetCursorPos(&p) && WindowFromPoint(p) == wnd) {
     ShowCursor(false);
     mouse_showing = false;
   }
@@ -947,10 +950,13 @@ hide_mouse(void)
 static pos
 translate_pos(int x, int y)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   return (pos){
     y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
-    r : (cfg.elastic_mouse && !win_active_terminal()->mouse_mode)
+    r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (x - PADDING) % cell_width > cell_width / 2
          : 0
   };
@@ -979,6 +985,9 @@ get_mouse_pos(LPARAM lp)
 void
 win_mouse_click(mouse_button b, LPARAM lp)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   mouse_state = true;
   bool click_focus = click_focus_token;
   click_focus_token = false;
@@ -1004,7 +1013,7 @@ win_mouse_click(mouse_button b, LPARAM lp)
 
   if (click_focus && b == MBT_LEFT && count == 1
       && // not in application mouse mode
-         !(win_active_terminal()->mouse_mode && win_active_terminal()->report_focus &&
+         !(term.mouse_mode && term.report_focus &&
            cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)
           )
      ) {
@@ -1017,9 +1026,9 @@ win_mouse_click(mouse_button b, LPARAM lp)
   else {
     if (last_skipped && dblclick) {
       // recognize double click also in application mouse modes
-      term_mouse_click(win_active_terminal(), b, mods, p, 1);
+      term_mouse_click(term_p, b, mods, p, 1);
     }
-    term_mouse_click(win_active_terminal(), b, mods, p, count);
+    term_mouse_click(term_p, b, mods, p, count);
     last_skipped = false;
   }
   last_pos = (pos){INT_MIN, INT_MIN, false};
@@ -1135,8 +1144,11 @@ win_get_locator_info(int *x, int *y, int *buttons, bool by_pixels)
 static void
 toggle_scrollbar(void)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   if (cfg.scrollbar) {
-  win_active_terminal()->show_scrollbar = !win_active_terminal()->show_scrollbar;
+    term.show_scrollbar = !term.show_scrollbar;
     win_update_scrollbar(true);
   }
 }
@@ -1167,9 +1179,12 @@ set_transparency(int t)
 static void
 cycle_pointer_style()
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   cfg.cursor_type = (cfg.cursor_type + 1) % 3;
-  win_active_terminal()->cursor_invalid = true;
-  term_schedule_cblink(win_active_terminal());
+  term.cursor_invalid = true;
+  term_schedule_cblink(term_p);
   win_update(false);
 }
 
@@ -1277,7 +1292,10 @@ toggle_auto_repeat()
 void
 toggle_bidi()
 {
-  win_active_terminal()->disable_bidi = !win_active_terminal()->disable_bidi;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  term.disable_bidi = !term.disable_bidi;
 }
 
 static void scroll_HOME()
@@ -1314,7 +1332,10 @@ nop()
 static uint
 mflags_copy()
 {
-  return win_active_terminal()->selected ? MF_ENABLED : MF_GRAYED;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  return term.selected ? MF_ENABLED : MF_GRAYED;
 }
 
 static uint
@@ -1356,8 +1377,11 @@ mflags_lock_title()
 static uint
 mflags_defsize()
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   return
-    IsZoomed(wnd) || win_active_terminal()->cols != cfg.cols || win_active_terminal()->rows != cfg.rows
+    IsZoomed(wnd) || term.cols != cfg.cols || term.rows != cfg.rows
     ? MF_ENABLED : MF_GRAYED;
 }
 
@@ -1376,13 +1400,19 @@ mflags_zoomed()
 //static uint
 //mflags_flipscreen()
 //{
-//  return win_active_terminal()->show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+//  struct term* term_p = win_active_terminal();
+//  struct term& term = *term_p;
+//    
+//  returnterm.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
 //}
 
 static uint
 mflags_scrollbar_outer()
 {
-  return win_active_terminal()->show_scrollbar ? MF_CHECKED : MF_UNCHECKED
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED
 #ifdef allow_disabling_scrollbar
          | cfg.scrollbar ? 0 : MF_GRAYED
 #endif
@@ -1392,8 +1422,11 @@ mflags_scrollbar_outer()
 static uint
 mflags_scrollbar_inner()
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   if (cfg.scrollbar)
-    return win_active_terminal()->show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
+    return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
   else
     return MF_GRAYED;
 }
@@ -1401,7 +1434,10 @@ mflags_scrollbar_inner()
 static uint
 mflags_open()
 {
-  return win_active_terminal()->selected ? MF_ENABLED : MF_GRAYED;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  return term.selected ? MF_ENABLED : MF_GRAYED;
 }
 
 static uint
@@ -1421,7 +1457,10 @@ mflags_char_info()
 static uint
 mflags_vt220()
 {
-  return win_active_terminal()->vt220_keys ? MF_CHECKED : MF_UNCHECKED;
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
+  return term.vt220_keys ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
@@ -2777,7 +2816,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     auto try_appctrl = [&](wchar wc) -> bool {
       switch (wc) {
         when '@' case_or '[' ... '_' case_or 'a' ... 'z':
-          if (win_active_terminal()->app_control & (1 << (wc & 0x1F))) {
+          if (term.app_control & (1 << (wc & 0x1F))) {
             mods = (mod_keys)(ctrl * MDK_CTRL);
             other_code((wc & 0x1F) + '@');
             return true;

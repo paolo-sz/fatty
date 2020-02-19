@@ -1858,9 +1858,12 @@ add_file_resources(control *ctrl, wstring pattern, bool dirs)
 static void
 current_size_handler(control *unused(ctrl), int event)
 {
+  struct term* term_p = win_active_terminal();
+  struct term& term = *term_p;
+    
   if (event == EVENT_ACTION) {
-    new_cfg.cols = win_active_terminal()->cols;
-    new_cfg.rows = win_active_terminal()->rows;
+    new_cfg.cols = term.cols;
+    new_cfg.rows = term.rows;
     dlg_refresh(cols_box);
     dlg_refresh(rows_box);
   }
