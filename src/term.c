@@ -2262,11 +2262,16 @@ term_paint(struct term* term_p)
                  // considering that Windows may report width 1 
                  // for double-width characters 
                  // (if double-width by font substitution)
-                 && cs_ambig_wide && !font_ambig_wide
+                 && cs_ambig_wide
+                 // the following restriction would be good for
+                 // MS PGothic (but bad non-CJK range anyway)
+                 // but bad for
+                 // MS Mincho: wide Greek/Cyrillic but narrow æ, œ, ...
+                 // SimSun, NSimSun, Yu Gothic
+                 //&& !font_ambig_wide
                  && win_char_width(tchar, tattr.attr) == 1
-                    //? && !is_wide(tchar)
                  // and reassure to apply this only to ambiguous width chars
-                 && is_ambigwide(tchar)
+                 && is_ambigwide(tchar) // is_ambig(tchar) && !is_wide(tchar)
                  // do not widen Geometric Shapes
                  // (Geometric Shapes Extended are not ambiguous)
                  && !(0x25A0 <= tchar && tchar <= 0x25FF)

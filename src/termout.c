@@ -780,7 +780,7 @@ write_char(struct term* term_p, wchar c, int width)
       single_width = true;
       width = 1;
     }
-    else if (is_wide(c) || (font_ambig_wide && is_ambig(c))) {
+    else if (is_wide(c) || (cs_ambig_wide && is_ambig(c))) {
       single_width = true;
     }
   }
@@ -996,6 +996,13 @@ write_ucschar(struct term* term_p, wchar hwc, wchar wc, int width)
     term.curs.attr.attr = attr | ((cattrflags)cf << ATTR_FONTFAM_SHIFT);
 
   if (hwc) {
+    if (width == 1
+        && (cfg.charwidth == 10 || cs_single_forced)
+        && (is_wide(c) || (cs_ambig_wide && is_ambig(c)))
+       )
+    { // ensure indication of cjksingle width handling to trigger down-zooming
+      width = 2;
+    }
     write_char(term_p, hwc, width);
     write_char(term_p, wc, -1);  // -1 indicates low surrogate
   }

@@ -9,7 +9,7 @@ extern "C" {
 
 #include "config.h"
 #include "child.h"    // child_update_charset
-#include "winpriv.h"  // support_wsl
+#include "winpriv.h"  // support_wsl, font_ambig_wide
 
 #if HAS_LOCALES
 #include <locale.h>
@@ -31,8 +31,8 @@ static string config_locale;   // Locale configured in the options.
 static string env_locale;      // Locale determined by the environment.
 #if HAS_LOCALES
 static bool valid_default_locale, use_locale;
-bool cs_ambig_wide;
 #endif
+bool cs_ambig_wide;
 bool cs_single_forced = false;
 
 static uint codepage, default_codepage;
@@ -379,6 +379,8 @@ update_locale(void)
     }
     cs_ambig_wide = true;
   }
+#else
+  cs_ambig_wide = cfg.charwidth == 2 || font_ambig_wide;
 #endif
 
   update_mode();
@@ -416,7 +418,9 @@ cs_reconfig(void)
       }
       else if (cfg.charwidth < 2 && wcwidth(0x3B1) == 2 && !font_ambig_wide) {
         // Attach "@cjknarrow" to locale if running in ambiguous-narrow mode
-        // with an ambig-wide locale setting
+        // with an ambig-wide locale setting.
+        // ISSUE: instead of font_ambig_wide, probably cs_ambig_wide 
+        // should be checked, which is however only set afer update_locale()!
         string l = config_locale;
         config_locale = asform("%s@cjknarrow", l);
         std_delete(l);
