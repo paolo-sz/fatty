@@ -93,7 +93,7 @@ gdiplus_init(void)
     gpcheck("startup", s);
 
     HMODULE shc = GetModuleHandleA("shlwapi");
-    pSHCreateMemStream = (IStream* (*)(void*, UINT))GetProcAddress(shc, "SHCreateMemStream");
+    pSHCreateMemStream = (IStream* (*)(void*, UINT))((void (*)(void))GetProcAddress(shc, "SHCreateMemStream"));
   }
 }
 

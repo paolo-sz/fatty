@@ -243,32 +243,32 @@ load_dwm_funcs(void)
 
   if (dwm) {
     pDwmIsCompositionEnabled =
-      (HRESULT (*)(BOOL*))GetProcAddress(dwm, "DwmIsCompositionEnabled");
+      (HRESULT (*)(BOOL*))((void (*)(void))GetProcAddress(dwm, "DwmIsCompositionEnabled"));
     pDwmExtendFrameIntoClientArea =
-      (HRESULT (*)(HWND, const MARGINS*))GetProcAddress(dwm, "DwmExtendFrameIntoClientArea");
+      (HRESULT (*)(HWND, const MARGINS*))((void (*)(void))GetProcAddress(dwm, "DwmExtendFrameIntoClientArea"));
     pDwmEnableBlurBehindWindow =
-      (HRESULT (*)(HWND, void*))GetProcAddress(dwm, "DwmEnableBlurBehindWindow");
+      (HRESULT (*)(HWND, void*))((void (*)(void))GetProcAddress(dwm, "DwmEnableBlurBehindWindow"));
     pDwmSetWindowAttribute = 
-      (HRESULT (*)(HWND, DWORD, LPCVOID, DWORD))GetProcAddress(dwm, "DwmSetWindowAttribute");
+      (HRESULT (*)(HWND, DWORD, LPCVOID, DWORD))((void (*)(void))GetProcAddress(dwm, "DwmSetWindowAttribute"));
   }
   if (user32) {
     pSetWindowCompositionAttribute =
-      (HRESULT (*)(HWND, void*))GetProcAddress(user32, "SetWindowCompositionAttribute");
+      (HRESULT (*)(HWND, void*))((void (*)(void))GetProcAddress(user32, "SetWindowCompositionAttribute"));
     pSystemParametersInfo =
-      (BOOL (*)(UINT, UINT, PVOID, UINT))GetProcAddress(user32, "SystemParametersInfoW");
+      (BOOL (*)(UINT, UINT, PVOID, UINT))((void (*)(void))GetProcAddress(user32, "SystemParametersInfoW"));
   }
   if (uxtheme) {
     pShouldAppsUseDarkMode = 
-      (BOOLEAN (*)())GetProcAddress(uxtheme, MAKEINTRESOURCEA(132)); /* ordinal */
+      (BOOLEAN (*)())((void (*)(void))GetProcAddress(uxtheme, MAKEINTRESOURCEA(132))); /* ordinal */
     pSetWindowTheme = 
-      (HRESULT (*)(HWND, const wchar_t*, const wchar_t*))GetProcAddress(uxtheme, "SetWindowTheme");
+      (HRESULT (*)(HWND, const wchar_t*, const wchar_t*))((void (*)(void))GetProcAddress(uxtheme, "SetWindowTheme"));
     pOpenThemeData =
-      (void* (*)(HWND, LPCWSTR))GetProcAddress(uxtheme, "OpenThemeData");
+      (void* (*)(HWND, LPCWSTR))((void (*)(void))GetProcAddress(uxtheme, "OpenThemeData"));
     pCloseThemeData =
-      (HRESULT (*)(HANDLE))GetProcAddress(uxtheme, "CloseThemeData");
+      (HRESULT (*)(HANDLE))((void (*)(void))GetProcAddress(uxtheme, "CloseThemeData"));
     if (pOpenThemeData && pCloseThemeData)
       pGetThemeSysColor =
-        (COLORREF (*)(HANDLE, int))GetProcAddress(uxtheme, "GetThemeSysColor");
+        (COLORREF (*)(HANDLE, int))((void (*)(void))GetProcAddress(uxtheme, "GetThemeSysColor"));
   }
 }
 
@@ -324,21 +324,21 @@ load_dpi_funcs(void)
 #endif
   if (shc) {
     pGetProcessDpiAwareness =
-      (HRESULT (*)(HANDLE, int*))GetProcAddress(shc, "GetProcessDpiAwareness");
+      (HRESULT (*)(HANDLE, int*))((void (*)(void))GetProcAddress(shc, "GetProcessDpiAwareness"));
     pSetProcessDpiAwareness =
-      (HRESULT (*)(int))GetProcAddress(shc, "SetProcessDpiAwareness");
+      (HRESULT (*)(int))((void (*)(void))GetProcAddress(shc, "SetProcessDpiAwareness"));
     pGetDpiForMonitor =
-      (HRESULT (*)(HMONITOR, int, uint*, uint*))GetProcAddress(shc, "GetDpiForMonitor");
+      (HRESULT (*)(HMONITOR, int, uint*, uint*))((void (*)(void))GetProcAddress(shc, "GetDpiForMonitor"));
   }
   if (user) {
     pSetThreadDpiAwarenessContext =
-      (DPI_AWARENESS_CONTEXT__* (*)(DPI_AWARENESS_CONTEXT))GetProcAddress(user, "SetThreadDpiAwarenessContext");
+      (DPI_AWARENESS_CONTEXT__* (*)(DPI_AWARENESS_CONTEXT))((void (*)(void))GetProcAddress(user, "SetThreadDpiAwarenessContext"));
     pEnableNonClientDpiScaling =
-      (HRESULT (*)(HWND))GetProcAddress(user, "EnableNonClientDpiScaling");
+      (HRESULT (*)(HWND))((void (*)(void))GetProcAddress(user, "EnableNonClientDpiScaling"));
     pAdjustWindowRectExForDpi =
-      (BOOL (*)(LPRECT, DWORD, BOOL, DWORD, UINT))GetProcAddress(user, "AdjustWindowRectExForDpi");
+      (BOOL (*)(LPRECT, DWORD, BOOL, DWORD, UINT))((void (*)(void))GetProcAddress(user, "AdjustWindowRectExForDpi"));
     pGetSystemMetricsForDpi =
-      (INT (*)(INT, UINT))GetProcAddress(user, "GetSystemMetricsForDpi");
+      (INT (*)(INT, UINT))((void (*)(void))GetProcAddress(user, "GetSystemMetricsForDpi"));
   }
 #ifdef debug_dpi
   printf("SetProcessDpiAwareness %d GetProcessDpiAwareness %d GetDpiForMonitor %d SetThreadDpiAwarenessContext %d EnableNonClientDpiScaling %d AdjustWindowRectExForDpi %d GetSystemMetricsForDpi %d\n", !!pSetProcessDpiAwareness, !!pGetProcessDpiAwareness, !!pGetDpiForMonitor, !!pSetThreadDpiAwarenessContext, !!pEnableNonClientDpiScaling, !!pAdjustWindowRectExForDpi, !!pGetSystemMetricsForDpi);
@@ -3852,7 +3852,7 @@ configure_taskbar(wchar * app_id)
   if (prevent_pinning || (app_id && *app_id)) {
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pGetPropertyStore)(HWND hwnd, REFIID riid, void **ppv) =
-      (HRESULT (*)(HWND, const IID&, void**))GetProcAddress(shell, "SHGetPropertyStoreForWindow");
+      (HRESULT (*)(HWND, const IID&, void**))((void (*)(void))GetProcAddress(shell, "SHGetPropertyStoreForWindow"));
 #ifdef debug_properties
       printf("SHGetPropertyStoreForWindow linked %d\n", !!pGetPropertyStore);
 #endif
@@ -4159,7 +4159,7 @@ main(int argc, char *argv[])
 #endif
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pSHGetKnownFolderPath)(const GUID*, DWORD, HANDLE, wchar**) =
-      (HRESULT (*)(const GUID*, DWORD, HANDLE, wchar**))GetProcAddress(shell, "SHGetKnownFolderPath");
+      (HRESULT (*)(const GUID*, DWORD, HANDLE, wchar**))((void (*)(void))GetProcAddress(shell, "SHGetKnownFolderPath"));
     if (!pSHGetKnownFolderPath)
       return 0;
     wchar * wlappdata;
@@ -4824,7 +4824,7 @@ main(int argc, char *argv[])
   if (*app_id && wcscmp(app_id, W("@")) != 0) {
     HMODULE shell = load_sys_library("shell32.dll");
     HRESULT (WINAPI *pSetAppID)(PCWSTR) =
-      (HRESULT (*)(PCWSTR))GetProcAddress(shell, "SetCurrentProcessExplicitAppUserModelID");
+      (HRESULT (*)(PCWSTR))((void (*)(void))GetProcAddress(shell, "SetCurrentProcessExplicitAppUserModelID"));
 
     if (pSetAppID)
       pSetAppID(app_id);

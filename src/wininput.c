@@ -957,8 +957,8 @@ translate_pos(int x, int y)
     y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
     r : (cfg.elastic_mouse && !term.mouse_mode)
-         ? (x - PADDING) % cell_width > cell_width / 2
-         : 0
+         ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)
+         : false
   };
 }
 

@@ -1327,8 +1327,9 @@ term_do_scroll(struct term* term_p, int topline, int botline, int lines, bool sb
   // Reuse lines that are being scrolled out of the scroll region,
   // clearing their content.
   termline *recycled[abs(lines)];
+  size_t rec_size = sizeof recycled;
   auto recycle = [&](termline **src) {
-    memcpy(recycled, src, sizeof recycled);
+    memcpy(recycled, src, rec_size);
     for (int i = 0; i < lines; i++)
       clearline(recycled[i], term.erase_char);
   };
