@@ -2718,7 +2718,7 @@ do_csi(struct term* term_p, uchar c)
     when CPAIR('\'', '|'): {  /* DECRQLP: request locator position */
       if (term.mouse_mode == MM_LOCATOR || term.locator_1_enabled) {
         int x, y, buttons;
-        win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
+        win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
         child_printf(term.child, "\e[1;%d;%d;%d;0&w", buttons, y, x);
         term.locator_1_enabled = false;
       }
@@ -2729,7 +2729,7 @@ do_csi(struct term* term_p, uchar c)
     when CPAIR('\'', 'w'): {  /* DECEFR: enable filter rectangle */
       int arg2 = term.csi_argv[2], arg3 = term.csi_argv[3];
       int x, y, buttons;
-      win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
+      win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
       term.locator_top = arg0 ?: y;
       term.locator_left = arg1 ?: x;
       term.locator_bottom = arg2 ?: y;

@@ -299,7 +299,7 @@ send_mouse_event(struct term* term_p, mouse_action a, mouse_button b, mod_keys m
       }
       if (pe) {
         int x, y, buttons;
-        win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
+        win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
         child_printf(term.child, "\e[%d;%d;%d;%d;0&w", pe, buttons, y, x);
         term.locator_rectangle = false;
       }
@@ -311,7 +311,7 @@ send_mouse_event(struct term* term_p, mouse_action a, mouse_button b, mod_keys m
          rectangle is disabled.
       */
       int x, y, buttons;
-      win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
+      win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
       if (x < term.locator_left || x > term.locator_right
           || y < term.locator_top || y > term.locator_bottom) {
         child_printf(term.child, "\e[10;%d;%d;%d;0&w", buttons, y, x);
@@ -750,7 +750,7 @@ term_mouse_wheel(struct term* term_p, bool horizontal, int delta, int lines_per_
         b = (mouse_button)(5 - b);
       notches = abs(notches);
       do
-        send_mouse_event(term_p, MA_WHEEL, b, mods, p);
+        send_mouse_event(term_p, MA_WHEEL, b, mods, box_pos(term_p, p));
       while (--notches);
     }
   }
