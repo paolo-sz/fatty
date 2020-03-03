@@ -711,7 +711,7 @@ win_open_config(void)
       hCursor : LoadCursor(null, IDC_ARROW),
       hbrBackground : (HBRUSH)(COLOR_BACKGROUND + 1),
       lpszMenuName : null,
-      lpszClassName : (wchar *)DIALOG_CLASS
+      lpszClassName : W(DIALOG_CLASS)
     };
     RegisterClassW(&pippo);
     initialised = true;
