@@ -80,8 +80,6 @@ Tab& Tab::operator=(Tab&& t) {
 
 extern "C" {
   
-  wchar_t null_wstring[4] = L"";
-
   void win_set_timer(CallbackFn cb, void* data, uint ticks) {
       auto result = callbacks.insert(std::make_tuple(cb, data));
       CallbackSet::iterator iter = result.first;
@@ -352,7 +350,7 @@ extern "C" {
     
   wchar_t* win_tab_title_pop(struct term* term_p) {
     int tab_idx = tab_idx_by_term(term_p);
-    if (tab_idx == -1) return null_wstring;
+    if (tab_idx == -1) return const_cast<wchar *>(L"");
     Tab& tab = tabs[tab_idx];
     if (!tab.info.titles_i)
       tab.info.titles_i = lengthof(tab.info.titles);

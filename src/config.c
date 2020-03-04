@@ -762,9 +762,9 @@ check_legacy_options(void (*remember_option)(char * tag, uint))
 
     // Make sure they're written to the config file.
     // This assumes that the colour options are the first three in options[].
-    remember_option((char *)"legacy", 0);
-    remember_option((char *)"legacy", 1);
-    remember_option((char *)"legacy", 2);
+    remember_option(const_cast<char *>("legacy"), 0);
+    remember_option(const_cast<char *>("legacy"), 1);
+    remember_option(const_cast<char *>("legacy"), 2);
   }
 }
 
@@ -914,7 +914,7 @@ static void
 check_arg_option(int i)
 {
   if (i >= 0) {
-    remember_arg_option((char *)"chk_arg", i);
+    remember_arg_option(const_cast<char *>("chk_arg"), i);
     check_legacy_options(remember_arg_option);
   }
 }
@@ -1299,7 +1299,7 @@ load_theme(wstring theme)
 void
 load_scheme(string cs)
 {
-  copy_config((char *)"scheme", &cfg, &file_cfg);
+  copy_config(const_cast<char *>("scheme"), &cfg, &file_cfg);
 
   // analyse scheme description
   char * scheme = strdup(cs);
@@ -1336,7 +1336,7 @@ load_config(string filename, int to_save)
   trace_theme(("load_config <%s> %d\n", filename, to_save));
   if (!to_save) {
     // restore base configuration, without theme mix-ins
-    copy_config((char *)"load", &cfg, &file_cfg);
+    copy_config(const_cast<char *>("load"), &cfg, &file_cfg);
   }
 
   bool free_filename = false;
@@ -1397,7 +1397,7 @@ load_config(string filename, int to_save)
         // remember config options for saving
         if (to_save) {
           if (i >= 0)
-            remember_file_option((char *)"load", i);
+            remember_file_option(const_cast<char *>("load"), i);
           else
             // preserve unknown options as comment lines
             remember_file_comment(lbuf);
@@ -1412,7 +1412,7 @@ load_config(string filename, int to_save)
   check_legacy_options(remember_file_option);
 
   if (to_save) {
-    copy_config((char *)"after load", &file_cfg, &cfg);
+    copy_config(const_cast<char *>("after load"), &file_cfg, &cfg);
   }
   //printf("load_config %s %d bd %d\n", filename, to_save, cfg.bold_as_font);
 }
@@ -1422,7 +1422,7 @@ copy_config(char * tag, config * dst_p, const config * src_p)
 {
 #ifdef debug_theme
   auto cfg_det = [](config * p) -> char * {
-    return p == &new_cfg ? (char *)"new" : p == &file_cfg ? (char *)"file" : p == &cfg ? (char *)"cfg" : (char *)"?";
+    return p == &new_cfg ? const_cast<char *>("new") : p == &file_cfg ? const_cast<char *>("file") : p == &cfg ? const_cast<char *>("cfg") : const_cast<char *>("?");
   };
   printf("[%s] copy_config %s <- %s\n", tag, cfg_det(dst_p), cfg_det((config *)src_p));
 #else
@@ -1452,7 +1452,7 @@ copy_config(char * tag, config * dst_p, const config * src_p)
 void
 init_config(void)
 {
-  copy_config((char *)"init", &cfg, &default_cfg);
+  copy_config(const_cast<char *>("init"), &cfg, &default_cfg);
 }
 
 void
@@ -1600,11 +1600,11 @@ apply_config(bool save)
           changed = (*(char *)val_p != *(char *)new_val_p);
       }
       if (changed)
-        remember_file_option((char *)"apply", i);
+        remember_file_option(const_cast<char *>("apply"), i);
     }
   }
 
-  copy_config((char *)"apply", &file_cfg, &new_cfg);
+  copy_config(const_cast<char *>("apply"), &file_cfg, &new_cfg);
   if (wcscmp(new_cfg.lang, cfg.lang) != 0
       || (wcscmp(new_cfg.lang, W("=")) == 0 && new_cfg.locale != cfg.locale)
      )
@@ -1641,7 +1641,7 @@ regopen(HKEY key, char * subkey)
 static HKEY
 getmuicache()
 {
-  HKEY hk = regopen(HKEY_CURRENT_USER, (char *)"Software\\Classes\\Local Settings\\MuiCache");
+  HKEY hk = regopen(HKEY_CURRENT_USER, const_cast<char *>("Software\\Classes\\Local Settings\\MuiCache"));
   if (!hk)
     return 0;
 
@@ -1673,7 +1673,7 @@ retrievemuicache()
 {
   muicache = getmuicache();
   if (muicache) {
-    evlabels = regopen(HKEY_CURRENT_USER, (char *)"AppEvents\\EventLabels");
+    evlabels = regopen(HKEY_CURRENT_USER, const_cast<char *>("AppEvents\\EventLabels"));
     if (!evlabels) {
       RegCloseKey(muicache);
       muicache = 0;
@@ -2031,8 +2031,8 @@ term_handler(control *ctrl, int event)
       free(terminfo);
       return exists;
     };
-    return terminfo_exists_in((char *)"/usr/share/terminfo", 0, ti)
-        || terminfo_exists_in(home, (char *)"/.terminfo", ti)
+    return terminfo_exists_in(const_cast<char *>("/usr/share/terminfo"), 0, ti)
+        || terminfo_exists_in(home, const_cast<char *>("/.terminfo"), ti)
          ;
   };
   switch (event) {
@@ -2040,7 +2040,7 @@ term_handler(control *ctrl, int event)
       dlg_listbox_clear(ctrl);
       dlg_listbox_add(ctrl, "xterm");
       dlg_listbox_add(ctrl, "xterm-256color");
-      if (terminfo_exists((char *)"xterm-direct"))
+      if (terminfo_exists(const_cast<char *>("xterm-direct")))
         dlg_listbox_add(ctrl, "xterm-direct");
       dlg_listbox_add(ctrl, "xterm-vt220");
       dlg_listbox_add(ctrl, "vt100");
@@ -2048,9 +2048,9 @@ term_handler(control *ctrl, int event)
       dlg_listbox_add(ctrl, "vt340");
       dlg_listbox_add(ctrl, "vt420");
       dlg_listbox_add(ctrl, "vt525");
-      if (terminfo_exists((char *)"fatty"))
+      if (terminfo_exists(const_cast<char *>("fatty")))
         dlg_listbox_add(ctrl, "fatty");
-      if (terminfo_exists((char *)"fatty-direct"))
+      if (terminfo_exists(const_cast<char *>("fatty-direct")))
         dlg_listbox_add(ctrl, "fatty-direct");
       dlg_editbox_set(ctrl, new_cfg.term);
     when EVENT_VALCHANGE case_or EVENT_SELCHANGE:
@@ -2070,11 +2070,11 @@ static struct {
 } beeps[] = {
   {__("simple beep"), null},
   {__("no beep"), null},
-  {__("Default Beep"),	(wchar *)(W(".Default"))},
-  {__("Critical Stop"),	(wchar *)(W("SystemHand"))},
-  {__("Question"),	(wchar *)(W("SystemQuestion"))},
-  {__("Exclamation"),	(wchar *)(W("SystemExclamation"))},
-  {__("Asterisk"),	(wchar *)(W("SystemAsterisk"))},
+  {__("Default Beep"),	const_cast<wchar *>(W(".Default"))},
+  {__("Critical Stop"),	const_cast<wchar *>(W("SystemHand"))},
+  {__("Question"),	const_cast<wchar *>(W("SystemQuestion"))},
+  {__("Exclamation"),	const_cast<wchar *>(W("SystemExclamation"))},
+  {__("Asterisk"),	const_cast<wchar *>(W("SystemAsterisk"))},
 };
 
 static void
@@ -2701,7 +2701,7 @@ fontenum(const ENUMLOGFONTW *lpelf, const NEWTEXTMETRICW *lpntm, DWORD fontType,
     if (!st || !*st)
       st = (wchar *)lpelf->elfStyle;
     if (!*st)
-      st = (wchar *)(W("Regular"));
+      st = const_cast<wchar *>(W("Regular"));
     st = wcsdup(st);
     fn = renewn(fn, wcslen(fn) + 1);
 
@@ -2900,7 +2900,7 @@ setup_config_box(controlbox * b)
   * The standard panel that appears at the bottom of all panels:
   * Open, Cancel, Apply etc.
   */
-  s = ctrl_new_set(b, (char *)"", (char *)"", (char *)"");
+  s = ctrl_new_set(b, const_cast<char *>(""), const_cast<char *>(""), const_cast<char *>(""));
   ctrl_columns(s, 5, 20, 20, 20, 20, 20);
   //__ Dialog button - show About text
   c = ctrl_pushbutton(s, _("About..."), about_handler, 0);

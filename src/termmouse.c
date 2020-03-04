@@ -791,14 +791,14 @@ term_mouse_wheel(struct term* term_p, bool horizontal, int delta, int lines_per_
         int pages = lines / lines_per_page;
         lines -= pages * lines_per_page;
         if (term.app_wheel && !term.wheel_reporting_xterm) {
-          send_keys(term_p, up ? (char *)"\e[1;2a" : (char *)"\e[1;2b", 6, pages);
-          send_keys(term_p, up ? (char *)"\eOa" : (char *)"\eOb", 3, lines);
+          send_keys(term_p, up ? const_cast<char *>("\e[1;2a") : const_cast<char *>("\e[1;2b"), 6, pages);
+          send_keys(term_p, up ? const_cast<char *>("\eOa") : const_cast<char *>("\eOb"), 3, lines);
         }
         else if (term.vt52_mode) {
-          send_keys(term_p, up ? (char *)"\eA" : (char *)"\eB", 2, lines);
+          send_keys(term_p, up ? const_cast<char *>("\eA") : const_cast<char *>("\eB"), 2, lines);
         }
         else {
-          send_keys(term_p, up ? (char *)"\e[5~" : (char *)"\e[6~", 4, pages);
+          send_keys(term_p, up ? const_cast<char *>("\e[5~") : const_cast<char *>("\e[6~"), 4, pages);
           char code[3] =
             {'\e', term.app_cursor_keys ? 'O' : '[', up ? 'A' : 'B'};
           send_keys(term_p, code, 3, lines);

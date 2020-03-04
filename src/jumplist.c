@@ -27,7 +27,7 @@ typedef struct _PROCESSOR_NUMBER {
 #include "config.h"
 
 
-static inline wchar *
+static inline const wchar *
 last_error()
 {
   int err = GetLastError();
@@ -40,7 +40,7 @@ last_error()
     return winmsg;
   }
   else
-    return (wchar *)W("");
+    return W("");
 }
 
 

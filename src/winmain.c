@@ -20,7 +20,7 @@ extern "C" {
 FILE * mtlog = 0;
 #endif
 
-char * fatty_debug;
+const char * fatty_debug;
 
 #define dont_debug_resize
 
@@ -2119,7 +2119,7 @@ win_reconfig(void)
     win_set_colour(CURSOR_COLOUR_I, new_cfg.cursor_colour);
 
   /* Copy the new config and refresh everything */
-  copy_config((char *)"win_reconfig", &cfg, &new_cfg);
+  copy_config(const_cast<char *>("win_reconfig"), &cfg, &new_cfg);
 
   if (emojistyle_changed) {
     clear_emoji_data();
@@ -2223,7 +2223,7 @@ show_message(char * msg, UINT type)
   char * outmsg = cs__utftombs(msg);
   if (fputs(outmsg, out) < 0 || fputs("\n", out) < 0 || fflush(out) < 0) {
     wchar * wmsg = cs__utftowcs(msg);
-    message_box_w(0, wmsg, (wchar *)(W(APPNAME)), type, null);
+    message_box_w(0, wmsg, const_cast<wchar *>(W(APPNAME)), type, null);
     std_delete(wmsg);
   }
   std_delete(outmsg);
@@ -2298,7 +2298,7 @@ option_error(char * msg, char * option, int err)
   char * optmsg = opterror_msg(_(msg), false, option, null);
   //char * fullmsg = asform("%s\n%s", optmsg, _("Try '--help' for more information"));
   char * fullmsg = strdup(optmsg);
-  strappend(fullmsg, (char *)"\n");
+  strappend(fullmsg, const_cast<char *>("\n"));
   if (err) {
     strappend(fullmsg, asform("[Error info %d]\n", err));
   }
@@ -2629,16 +2629,16 @@ static struct {
         switch (LOWORD(wp)) {
           when SB_LINEUP:
             //win_key_down(VK_UP, 1);
-            win_csi_seq(term.child, (char *)"65", (char *)"#e");
+            win_csi_seq(term.child, const_cast<char *>("65"), const_cast<char *>("#e"));
           when SB_LINEDOWN:
             //win_key_down(VK_DOWN, 1);
-            win_csi_seq(term.child, (char *)"66", (char *)"#e");
+            win_csi_seq(term.child, const_cast<char *>("66"), const_cast<char *>("#e"));
           when SB_PAGEUP:
             //win_key_down(VK_PRIOR, 1);
-            win_csi_seq(term.child, (char *)"5", (char *)"#e");
+            win_csi_seq(term.child, const_cast<char *>("5"), const_cast<char *>("#e"));
           when SB_PAGEDOWN:
             //win_key_down(VK_NEXT, 1);
-            win_csi_seq(term.child, (char *)"6", (char *)"#e");
+            win_csi_seq(term.child, const_cast<char *>("6"), const_cast<char *>("#e"));
           when SB_TOP:
             child_printf(term.child, "\e[0#d");
           when SB_BOTTOM:
@@ -2685,10 +2685,10 @@ static struct {
             {
               if (delta > 0) // mouse wheel up
                 //win_key_down(VK_UP, 1);
-                win_csi_seq(term.child, (char *)"65", (char *)"#e");
+                win_csi_seq(term.child, const_cast<char *>("65"), const_cast<char *>("#e"));
               else // mouse wheel down
                 //win_key_down(VK_DOWN, 1);
-                win_csi_seq(term.child, (char *)"66", (char *)"#e");
+                win_csi_seq(term.child, const_cast<char *>("66"), const_cast<char *>("#e"));
             }
           }
         }
@@ -3249,13 +3249,13 @@ report_pos(void)
     printf("%s", main_argv[0]);
     printf(*report_geom == 'o' ? " -o Columns=%d -o Rows=%d" : " -s %d,%d", cols, rows);
     printf(*report_geom == 'o' ? " -o X=%d -o Y=%d" : " -p %d,%d", x, y);
-    char * winstate = 0;
+    const char * winstate = 0;
     if (win_is_fullscreen)
-      winstate = (char *)"full";
+      winstate = "full";
     else if (IsZoomed(wnd))
-      winstate = (char *)"max";
+      winstate = "max";
     else if (IsIconic(wnd))
-      winstate = (char *)"min";
+      winstate = "min";
     if (winstate)
       printf(*report_geom == 'o' ? " -o Window=%s" : " -w %s", winstate);
     printf("\n");
@@ -3329,15 +3329,17 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
     wchar * wicon = wil;
 
     /* Append ,icon-index if non-zero.  */
-    wchar * widx = (wchar *)(W(""));
+    wchar * widx = null;
     if (index) {
       char idx[22];
       sprintf(idx, ",%d", index);
       widx = cs__mbstowcs(idx);
     }
-
+    if (!widx)
+      widx = cs__mbstowcs("");
+      
     /* Resolve leading Windows environment variable component.  */
-    wchar * wenv = (wchar *)(W(""));
+    wchar * wenv = null;
     wchar * fin;
     if (wil[0] == '%' && wil[1] && wil[1] != '%' && (fin = wcschr(&wil[2], '%'))) {
       char var[fin - wil];
@@ -3360,6 +3362,8 @@ get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
         wenv = cs__mbstowcs(val);
       }
     }
+    if (!wenv)
+      wenv = cs__mbstowcs("");
 
     result = newn(wchar, wcslen(wenv) + wcslen(wicon) + wcslen(widx) + 1);
     wcscpy(result, wenv);
@@ -3614,7 +3618,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
         err = 7;
 #else
       *wsl_ver = 1;
-      *wsl_guid = (char *)"";
+      *wsl_guid = const_cast<char *>("");
       *wsl_rootfs = W("");  // activate legacy tricks in winclip.c
       *wsl_icon = legacy_icon();
       err = 0;
@@ -4091,7 +4095,7 @@ main(int argc, char *argv[])
 
   main_argv = argv;
   main_argc = argc;
-  fatty_debug = getenv("FATTY_DEBUG") ?: (char *)"";
+  fatty_debug = getenv("FATTY_DEBUG") ?: "";
 #ifdef debuglog
   mtlog = fopen("/tmp/mtlog", "a");
   {
@@ -4144,7 +4148,7 @@ main(int argc, char *argv[])
       exearg ++;
     int err = select_WSL(exearg);
     if (err)
-      option_error((char *)(__("WSL distribution '%s' not found")), exearg ?: _("(Default)"), err);
+      option_error(__(const_cast<char *>("WSL distribution '%s' not found")), exearg ?: _("(Default)"), err);
     else {
       wsl_launch = true;
       wsltty_appx = true;
@@ -4263,14 +4267,14 @@ main(int argc, char *argv[])
       when '': {
         int err = select_WSL(optarg);
         if (err)
-          option_error((char *)(__("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
+          option_error(__(const_cast<char *>("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
         else
           wsl_launch = true;
       }
       when '': {
         int err = select_WSL(optarg);
         if (err)
-          option_error((char *)(__("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
+          option_error(__(const_cast<char *>("WSL distribution '%s' not found")), optarg ?: _("(Default)"), err);
       }
 #endif
       when '~':
@@ -4301,7 +4305,7 @@ main(int argc, char *argv[])
       }
       when '':
         if (config_dir)
-          option_error((char *)(__("Duplicate option '%s'")), (char *)("configdir"), 0);
+          option_error(__(const_cast<char *>("Duplicate option '%s'")), const_cast<char *>("configdir"), 0);
         else {
           config_dir = strdup(optarg);
           string rc_file = asform("%s/config", config_dir);
@@ -4309,9 +4313,9 @@ main(int argc, char *argv[])
           std_delete(rc_file);
         }
       when '?':
-        option_error((char *)(__("Unknown option '%s'")), optopt ? shortopt : longopt, 0);
+        option_error(__(const_cast<char *>("Unknown option '%s'")), optopt ? shortopt : longopt, 0);
       when ':':
-        option_error((char *)(__("Option '%s' requires an argument")),
+        option_error(__(const_cast<char *>("Option '%s' requires an argument")),
                      longopt[1] == '-' ? longopt : shortopt, 0);
       when 'h': set_arg_option("Hold", optarg);
       when 'i': set_arg_option("Icon", optarg);
@@ -4339,7 +4343,7 @@ main(int argc, char *argv[])
         else if (sscanf(optarg, "%i,%i%1s", &cfg.x, &cfg.y, tmp_c) == 2)
           ;
         else
-          option_error((char *)(__("Syntax error in position argument '%s'")), optarg, 0);
+          option_error(__(const_cast<char *>("Syntax error in position argument '%s'")), optarg, 0);
       }
       when 's': {
         char tmp_c[2];
@@ -4352,7 +4356,7 @@ main(int argc, char *argv[])
         else if (sscanf(optarg, "%ux%u%1s", &cfg.cols, &cfg.rows, tmp_c) == 2)
           ;
         else
-          option_error((char *)(__("Syntax error in size argument '%s'")), optarg, 0);
+          option_error(__(const_cast<char *>("Syntax error in size argument '%s'")), optarg, 0);
       }
       when 't':
         tablist_title[current_tab_size] = optarg;
@@ -4383,7 +4387,7 @@ main(int argc, char *argv[])
             report_winpid = true;
             break;
           default:
-            option_error((char *)(__("Unknown option '%s'")), optarg, 0);
+            option_error(const_cast<char *>(__("Unknown option '%s'")), optarg, 0);
         }
       when 'u': cfg.create_utmp = true;
       when '':
@@ -4404,11 +4408,11 @@ main(int argc, char *argv[])
         finish_config();  // ensure localized message
         //char * helptext = asform("%s %s %s\n\n%s", _(usage), APPNAME, _(synopsis), _(help));
         char * helptext = strdup(_(usage));
-        strappend(helptext, (char *)" ");
-        strappend(helptext, (char *)APPNAME);
-        strappend(helptext, (char *)" ");
+        strappend(helptext, const_cast<char *>(" "));
+        strappend(helptext, const_cast<char *>(APPNAME));
+        strappend(helptext, const_cast<char *>(" "));
         strappend(helptext, _(synopsis));
-        strappend(helptext, (char *)"\n\n");
+        strappend(helptext, const_cast<char *>("\n\n"));
         strappend(helptext, _(help));
         show_info(helptext);
         free(helptext);
@@ -4420,13 +4424,13 @@ main(int argc, char *argv[])
         //  asform("%s\n%s\n%s\n%s\n", 
         //         VERSION_TEXT, COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT));
         char * vertext = strdup(VERSION_TEXT);
-        strappend(vertext, (char *)"\n");
-        strappend(vertext, (char *)COPYRIGHT);
-        strappend(vertext, (char *)"\n");
-        strappend(vertext, (char *)LICENSE_TEXT);
-        strappend(vertext, (char *)"\n");
+        strappend(vertext, const_cast<char *>("\n"));
+        strappend(vertext, const_cast<char *>(COPYRIGHT));
+        strappend(vertext, const_cast<char *>("\n"));
+        strappend(vertext, const_cast<char *>(LICENSE_TEXT));
+        strappend(vertext, const_cast<char *>("\n"));
         strappend(vertext, _(WARRANTY_TEXT));
-        strappend(vertext, (char *)"\n");
+        strappend(vertext, const_cast<char *>("\n"));
         show_info(vertext);
         free(vertext);
         return 0;
@@ -4495,7 +4499,7 @@ main(int argc, char *argv[])
           oa += n;
 
         if (*oa)
-          option_error((char *)(__("Syntax error in geometry argument '%s'")), optarg, 0);
+          option_error(const_cast<char *>(__("Syntax error in geometry argument '%s'")), optarg, 0);
       }
       when '': {
         int tfd = open(optarg, O_WRONLY | O_CREAT | O_APPEND | O_NOCTTY, 0600);
@@ -4506,7 +4510,7 @@ main(int argc, char *argv[])
     }
   }
 
-  copy_config((char *)"main after -o", &file_cfg, &cfg);
+  copy_config(const_cast<char *>("main after -o"), &file_cfg, &cfg);
   if (*cfg.colour_scheme)
     load_scheme(cfg.colour_scheme);
   else if (*cfg.theme_file)
@@ -4596,11 +4600,11 @@ main(int argc, char *argv[])
 # ifndef __x86_64__
     argc += 2;  // -V 1/2
 # endif
-    cmd = (char *)"/bin/wslbridge2";
-    char * cmd0 = (char *)"-wslbridge2";
+    cmd = const_cast<char *>("/bin/wslbridge2");
+    char * cmd0 = const_cast<char *>("-wslbridge2");
 #else
-    cmd = (char *)"/bin/wslbridge";
-    char * cmd0 = (char *)"-wslbridge";
+    cmd = const_cast<char *>("/bin/wslbridge");
+    char * cmd0 = const_cast<char *>("-wslbridge");
 #endif
     bool login_dash = false;
     if (*argv && !strcmp(*argv, "-") && !argv[1]) {
@@ -4636,7 +4640,7 @@ main(int argc, char *argv[])
     if (*wsl_guid) {
 #ifdef wslbridge2
       if (*wslname) {
-        *pargv++ = (char *)"-d";
+        *pargv++ = const_cast<char *>("-d");
         *pargv++ = cs__wcstombs(wslname);
       }
 #else
@@ -4647,12 +4651,12 @@ main(int argc, char *argv[])
 #ifdef wslbridge_t
     *pargv++ = "-t";
 #endif
-    *pargv++ = (char *)"-e";
-    *pargv++ = (char *)"APPDATA";
+    *pargv++ = const_cast<char *>("-e");
+    *pargv++ = const_cast<char *>("APPDATA");
     if (start_home) {
 #ifdef wslbridge2
-      *pargv++ = (char *)"--wsldir";
-      *pargv++ = (char *)"~";
+      *pargv++ = const_cast<char *>("--wsldir");
+      *pargv++ = const_cast<char *>("~");
 #else
       *pargv++ = "-C~";
 #endif
@@ -4697,7 +4701,7 @@ main(int argc, char *argv[])
     if (wsltty_appx && lappdata && *lappdata) {
 #ifdef wslbridge2
       char * wslbridge_backend = asform("%s/wslbridge2-backend", lappdata);
-      char * bin_backend = (char *)"/bin/wslbridge2-backend";
+      char * bin_backend = const_cast<char *>("/bin/wslbridge2-backend");
       bool ok = copyfile(bin_backend, wslbridge_backend, true);
 #else
       char * wslbridge_backend = asform("%s/wslbridge-backend", lappdata);
@@ -4705,7 +4709,7 @@ main(int argc, char *argv[])
 #endif
       (void)ok;
 
-      *pargv++ = (char *)"--backend";
+      *pargv++ = const_cast<char *>("--backend");
       *pargv++ = wslbridge_backend;
       // don't free(wslbridge_backend);
     }
@@ -4733,7 +4737,7 @@ main(int argc, char *argv[])
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
       (pw && pw->pw_shell && *pw->pw_shell) ? strdup(pw->pw_shell) :
 #endif
-      (char *)"/bin/sh";
+      const_cast<char *>("/bin/sh");
 
     // Determine the program name argument.
     char *slash = strrchr(cmd, '/');
@@ -5161,7 +5165,7 @@ main(int argc, char *argv[])
     for (int i = 0; i < current_tab_size; i++) {
       if (tablist[i] != NULL) {
         char *tabexec = tablist[i];
-        char *tab_argv[4] = { cmd, (char *)"-c", tabexec, NULL };
+        char *tab_argv[4] = { cmd, const_cast<char *>("-c"), tabexec, NULL };
 
         win_tab_init(home, cmd, tab_argv, term_width, term_height, tablist_title[i]);
       }

@@ -736,8 +736,8 @@ win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
     UINT CF_HTML = level ? RegisterClipboardFormatA("HTML Format") : 0;
     if (CF_HTML) {
       char * html = term_get_html(level);
-      char * htmlpre = (char *)"<html><!--StartFragment-->";
-      char * htmlpost = (char *)"<!--EndFragment--></html>";
+      const char * htmlpre = "<html><!--StartFragment-->";
+      const char * htmlpost = "<!--EndFragment--></html>";
       int htmldescrlen = 92;
       char * htmlcb = asform(
              "Version:0.9\n"
@@ -916,7 +916,7 @@ buf_path(wchar * wfn)
             if (*path)
               return path;
             else
-              return (char *)"/";
+              return const_cast<char *>("/");
           }
           return null;
         };

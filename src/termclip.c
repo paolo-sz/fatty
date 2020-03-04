@@ -737,7 +737,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
       auto add_color = [&](char * pre, int col) {
         colour ansii = win_get_colour((colour_i)(ANSI0 + col));
         uchar r = red(ansii), g = green(ansii), b = blue(ansii);
-        add_style((char *)"");
+        add_style(const_cast<char *>(""));
         hprintf(hf, "%scolor: #%02X%02X%02X;", pre, r, g, b);
       };
 
@@ -747,13 +747,13 @@ term_create_html(struct term* term_p, FILE * hf, int level)
       // (Powerpoint; Word would take id= but not class=)
       if (ca->attr & ATTR_BOLD) {
         if (enhtml)
-          add_style((char *)"font-weight: bold;");
+          add_style(const_cast<char *>("font-weight: bold;"));
         else
           hprintf(hf, " bd");
       }
       if (ca->attr & ATTR_ITALIC) {
         if (enhtml)
-          add_style((char *)"font-style: italic;");
+          add_style(const_cast<char *>("font-style: italic;"));
         else
           hprintf(hf, " it");
       }
@@ -771,7 +771,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
       if (findex) {
         if (enhtml) {
           if (*cfg.fontfams[findex].name || findex == 10) {
-            add_style((char *)"font-family: ");
+            add_style(const_cast<char *>("font-family: "));
             if (*cfg.fontfams[findex].name) {
               char * fn = cs__wcstoutf(cfg.fontfams[findex].name);
               hprintf(hf, "\"%s\";", fn);
@@ -790,7 +790,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
         if ((ca->attr & ATTR_BOLD) && term.enable_bold_colour) {
           if (fg == bold_colour) {
             if (enhtml) {
-              add_style((char *)"color: ");
+              add_style(const_cast<char *>("color: "));
               hprintf(hf, "#%02X%02X%02X;",
                       red(bold_colour), green(bold_colour), blue(bold_colour));
             }
@@ -807,14 +807,14 @@ term_create_html(struct term* term_p, FILE * hf, int level)
               )
       {
         if (enhtml)
-          add_color((char *)"", fga + 8);
+          add_color(const_cast<char *>(""), fga + 8);
         else
           hprintf(hf, " fg-color%d", fga + 8);
         fg = (colour)-1;
       }
       else if (fga < 16 && fg == win_get_colour((colour_i)(ANSI0 + fga))) {
         if (enhtml)
-          add_color((char *)"", fga);
+          add_color(const_cast<char *>(""), fga);
         else
           hprintf(hf, " fg-color%d", fga);
         fg = (colour)-1;
@@ -823,7 +823,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
         bg = (colour)-1;
       else if (bga < 16 && bg == win_get_colour((colour_i)(ANSI0 + bga))) {
         if (enhtml)
-          add_color((char *)"background-", bga);
+          add_color(const_cast<char *>("background-"), bga);
         else
           hprintf(hf, " bg-color%d", bga);
         bg = (colour)-1;
@@ -834,19 +834,19 @@ term_create_html(struct term* term_p, FILE * hf, int level)
       // add individual colours, or fix unmatched colours
       if (fg != (colour)-1) {
         uchar r = red(fg), g = green(fg), b = blue(fg);
-        add_style((char *)"");
+        add_style(const_cast<char *>(""));
         hprintf(hf, "color: #%02X%02X%02X;", r, g, b);
       }
       if (bg != (colour)-1) {
         uchar r = red(bg), g = green(bg), b = blue(bg);
-        add_style((char *)"");
+        add_style(const_cast<char *>(""));
         hprintf(hf, "background-color: #%02X%02X%02X;", r, g, b);
       }
 
       if (enhtml && (ca->attr & (UNDER_MASK | ATTR_STRIKEOUT | ATTR_OVERL))) {
         // add explicit style= lining attributes for the sake of tools 
         // that do not take styles by class (Powerpoint)
-        add_style((char *)"text-decoration:");
+        add_style(const_cast<char *>("text-decoration:"));
         if (ca->attr & UNDER_MASK)
           hprintf(hf, " underline");
         if (ca->attr & ATTR_STRIKEOUT)
@@ -856,7 +856,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
         hprintf(hf, ";");
       }
       else if (ca->attr & ATTR_OVERL) {
-        add_style((char *)"text-decoration-line: overline");
+        add_style(const_cast<char *>("text-decoration-line: overline"));
         if (ca->attr & ATTR_STRIKEOUT)
           hprintf(hf, " line-through");
         if (ca->attr & ATTR_UNDER)
@@ -865,23 +865,23 @@ term_create_html(struct term* term_p, FILE * hf, int level)
       }
       if (ca->attr & ATTR_BROKENUND)
         if (ca->attr & ATTR_DOUBLYUND)
-          add_style((char *)"text-decoration-style: dashed;");
+          add_style(const_cast<char *>("text-decoration-style: dashed;"));
         else
-          add_style((char *)"text-decoration-style: dotted;");
+          add_style(const_cast<char *>("text-decoration-style: dotted;"));
       else if ((ca->attr & UNDER_MASK) == ATTR_CURLYUND)
-        add_style((char *)"text-decoration-style: wavy;");
+        add_style(const_cast<char *>("text-decoration-style: wavy;"));
       else if ((ca->attr & UNDER_MASK) == ATTR_DOUBLYUND)
-        add_style((char *)"text-decoration-style: double;");
+        add_style(const_cast<char *>("text-decoration-style: double;"));
 
       colour ul = (ca->attr & ATTR_ULCOLOUR) ? ca->ulcolr : cfg.underl_colour;
       if (ul != (colour)-1 && (ca->attr & (UNDER_MASK | ATTR_STRIKEOUT | ATTR_OVERL))) {
         uchar r = red(ul), g = green(ul), b = blue(ul);
-        add_style((char *)"");
+        add_style(const_cast<char *>(""));
         hprintf(hf, "text-decoration-color: #%02X%02X%02X;", r, g, b);
       }
 
       if (ca->attr & ATTR_INVISIBLE)
-        add_style((char *)"visibility: hidden;");
+        add_style(const_cast<char *>("visibility: hidden;"));
       else {
         // add JavaScript triggers
         if (ca->attr & ATTR_BLINK2)

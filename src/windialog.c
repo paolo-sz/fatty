@@ -182,8 +182,8 @@ determine_geometry(HWND wnd)
 
 #ifdef debug_dialog_crash
 
-static char * debugopt = null;
-static char * debugtag = (char *)"none";
+static const char * debugopt = null;
+static const char * debugtag = "none";
 
 static void
 sigsegv(int sig)
@@ -202,12 +202,12 @@ crashtest()
 }
 
 static void
-debug(char *tag)
+debug(const char *tag)
 {
   if (!debugopt) {
     debugopt = getenv("FATTY_DEBUG");
     if (!debugopt)
-      debugopt = (char *)"";
+      debugopt = "";
   }
 
   debugtag = tag;
@@ -246,7 +246,7 @@ display_update(char * new_char)
   char * opt = _("Options");
   //__ Options: dialog title: "fatty <release> available (for download)"
   char * avl = _("available");
-  char * pat = (char *)"%s            ▶ %s %s %s ◀";
+  const char * pat = "%s            ▶ %s %s %s ◀";
   int len = strlen(opt) + strlen(CHECK_APP) + strlen(new_char) + strlen(avl) + strlen(pat) - 7;
   char * msg = newn(char, len);
   sprintf(msg, pat, opt, CHECK_APP, new_char, avl);
@@ -442,7 +442,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       winctrl_init(&ctrls_panel);
       windlg_add_tree(&ctrls_base);
       windlg_add_tree(&ctrls_panel);
-      copy_config((char *)"dialog", &new_cfg, &file_cfg);
+      copy_config(const_cast<char *>("dialog"), &new_cfg, &file_cfg);
 
       RECT r;
       GetWindowRect(GetParent(wnd), &r);
@@ -452,7 +452,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
       * Create the actual GUI widgets.
       */
       // here we need the correct DIALOG_HEIGHT already
-      create_controls(wnd, (char *)"");        /* Open and Cancel buttons etc */
+      create_controls(wnd, const_cast<char *>(""));        /* Open and Cancel buttons etc */
 
       SendMessage(wnd, WM_SETICON, (WPARAM) ICON_BIG,
                   (LPARAM) LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)));
@@ -549,7 +549,7 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
 #endif
 
     when WM_USER: {
-      debug((char *)"WM_USER");
+      debug("WM_USER");
       HWND target = (HWND)wParam;
       // could delegate this to winctrls.c, like winctrl_handle_command;
       // but then we'd have to fiddle with the location of dragndrop
@@ -571,23 +571,23 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
             }
         }
       }
-      debug((char *)"WM_USER: lookup");
+      debug("WM_USER: lookup");
       if (ctrl) {
         //dlg_editbox_set_w(ctrl, L"Test");  // may hit unrelated items...
         // drop the drag-and-drop contents here
         dragndrop = (wstring)lParam;
         ctrl->handler(ctrl, EVENT_DROP);
-        debug((char *)"WM_USER: handler");
+        debug("WM_USER: handler");
       }
-      debug((char *)"WM_USER: end");
+      debug("WM_USER: end");
     }
 
     when WM_NOTIFY: {
       if (LOWORD(wParam) == IDCX_TREEVIEW &&
           ((LPNMHDR) lParam)->code == TVN_SELCHANGED) {
-        debug((char *)"WM_NOTIFY");
+        debug("WM_NOTIFY");
         HTREEITEM i = TreeView_GetSelection(((LPNMHDR) lParam)->hwndFrom);
-        debug((char *)"WM_NOTIFY: GetSelection");
+        debug("WM_NOTIFY: GetSelection");
 
         TVITEM item;
         item.hItem = i;
@@ -602,27 +602,27 @@ config_dialog_proc(HWND wnd, UINT msg, WPARAM wParam, LPARAM lParam)
               DestroyWindow(item);
           }
         }
-        debug((char *)"WM_NOTIFY: Destroy");
+        debug("WM_NOTIFY: Destroy");
         winctrl_cleanup(&ctrls_panel);
-        debug((char *)"WM_NOTIFY: cleanup");
+        debug("WM_NOTIFY: cleanup");
 
         // here we need the correct DIALOG_HEIGHT already
         create_controls(wnd, (char *) item.lParam);
-        debug((char *)"WM_NOTIFY: create");
+        debug("WM_NOTIFY: create");
         dlg_refresh(null); /* set up control values */
-        debug((char *)"WM_NOTIFY: refresh");
+        debug("WM_NOTIFY: refresh");
       }
     }
 
     when WM_COMMAND case_or WM_DRAWITEM: {
-      debug((char *)"WM_COMMAND");
+      debug("WM_COMMAND");
       int ret = winctrl_handle_command(msg, wParam, lParam);
-      debug((char *)"WM_COMMAND: handle");
+      debug("WM_COMMAND: handle");
       if (dlg.ended) {
         DestroyWindow(wnd);
-        debug((char *)"WM_COMMAND: Destroy");
+        debug("WM_COMMAND: Destroy");
       }
-      debug((char *)"WM_COMMAND: end");
+      debug("WM_COMMAND: end");
       return ret;
     }
   }
@@ -886,7 +886,7 @@ win_show_about(void)
     hwndOwner : config_wnd,
     hInstance : inst,
     lpszText : wmsg,
-    lpszCaption : (wchar *)APPNAME,
+    lpszCaption : W(APPNAME),
 #ifdef about_version_check
     dwStyle : MB_USERICON | MB_OK | MB_HELP,
 #else

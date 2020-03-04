@@ -898,14 +898,14 @@ mapfont(char * script, uchar f)
     if (0 == strcmp(scriptfonts[i].scriptname, script))
       scriptfonts[i].font = f;
   if (0 == strcmp(script, "CJK")) {
-    mapfont((char *)"Han", f);
-    mapfont((char *)"Hangul", f);
-    mapfont((char *)"Katakana", f);
-    mapfont((char *)"Hiragana", f);
-    mapfont((char *)"Bopomofo", f);
-    mapfont((char *)"Kanbun", f);
-    mapfont((char *)"Fullwidth", f);
-    mapfont((char *)"Halfwidth", f);
+    mapfont(const_cast<char *>("Han"), f);
+    mapfont(const_cast<char *>("Hangul"), f);
+    mapfont(const_cast<char *>("Katakana"), f);
+    mapfont(const_cast<char *>("Hiragana"), f);
+    mapfont(const_cast<char *>("Bopomofo"), f);
+    mapfont(const_cast<char *>("Kanbun"), f);
+    mapfont(const_cast<char *>("Fullwidth"), f);
+    mapfont(const_cast<char *>("Halfwidth"), f);
   }
 }
 
@@ -1297,8 +1297,8 @@ do_esc(struct term* term_p, uchar c)
         gi = csdesigna - designa + cstype - 1;
       }
     };
-    check_designa((char *)"()*+", 1);  // 94-character set designation?
-    check_designa((char *)"-./", 2);  // 96-character set designation?
+    check_designa(const_cast<char *>("()*+"), 1);  // 94-character set designation?
+    check_designa(const_cast<char *>("-./"), 2);  // 96-character set designation?
   }
   if (csmask) {
     ushort nrc_code = CPAIR(esc_mod1, c);
@@ -3482,7 +3482,7 @@ do_cmd(struct term* term_p)
           sval++;
         }
         else
-          sval = (char *)"";
+          sval = const_cast<char *>("");
         int val = atoi(sval);
         char * suf = sval;
         while (isdigit((uchar)*suf))
@@ -3819,7 +3819,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
 
         auto NRC = [&](wchar * map) -> wchar
         {
-          static char * rpl = (char *)"#@[\\]^_`{|}~";
+          static char * rpl = const_cast<char *>("#@[\\]^_`{|}~");
           char * match = strchr(rpl, c);
           if (match)
             return map[match - rpl];
@@ -3908,27 +3908,27 @@ term_do_write(struct term* term_p, const char *buf, uint len)
               term.curs.attr.attr |= ((cattrflags)dispcode) << ATTR_GRAPH_SHIFT;
             }
           when CSET_NL:
-            wc = NRC((wchar *)W("£¾ĳ½|^_`¨ƒ¼´"));  // Dutch
+            wc = NRC(const_cast<wchar *>(W("£¾ĳ½|^_`¨ƒ¼´")));  // Dutch
           when CSET_FI:
-            wc = NRC((wchar *)W("#@ÄÖÅÜ_éäöåü"));  // Finnish
+            wc = NRC(const_cast<wchar *>(W("#@ÄÖÅÜ_éäöåü")));  // Finnish
           when CSET_FR:
-            wc = NRC((wchar *)W("£à°ç§^_`éùè¨"));  // French
+            wc = NRC(const_cast<wchar *>(W("£à°ç§^_`éùè¨")));  // French
           when CSET_CA:
-            wc = NRC((wchar *)W("#àâçêî_ôéùèû"));  // French Canadian
+            wc = NRC(const_cast<wchar *>(W("#àâçêî_ôéùèû")));  // French Canadian
           when CSET_DE:
-            wc = NRC((wchar *)W("#§ÄÖÜ^_`äöüß"));  // German
+            wc = NRC(const_cast<wchar *>(W("#§ÄÖÜ^_`äöüß")));  // German
           when CSET_IT:
-            wc = NRC((wchar *)W("£§°çé^_ùàòèì"));  // Italian
+            wc = NRC(const_cast<wchar *>(W("£§°çé^_ùàòèì")));  // Italian
           when CSET_NO:
-            wc = NRC((wchar *)W("#ÄÆØÅÜ_äæøåü"));  // Norwegian/Danish
+            wc = NRC(const_cast<wchar *>(W("#ÄÆØÅÜ_äæøåü")));  // Norwegian/Danish
           when CSET_PT:
-            wc = NRC((wchar *)W("#@ÃÇÕ^_`ãçõ~"));  // Portuguese
+            wc = NRC(const_cast<wchar *>(W("#@ÃÇÕ^_`ãçõ~")));  // Portuguese
           when CSET_ES:
-            wc = NRC((wchar *)W("£§¡Ñ¿^_`°ñç~"));  // Spanish
+            wc = NRC(const_cast<wchar *>(W("£§¡Ñ¿^_`°ñç~")));  // Spanish
           when CSET_SE:
-            wc = NRC((wchar *)W("#ÉÄÖÅÜ_éäöåü"));  // Swedish
+            wc = NRC(const_cast<wchar *>(W("#ÉÄÖÅÜ_éäöåü")));  // Swedish
           when CSET_CH:
-            wc = NRC((wchar *)W("ùàéçêîèôäöüû"));  // Swiss
+            wc = NRC(const_cast<wchar *>(W("ùàéçêîèôäöüû")));  // Swiss
           when CSET_DECSPGR   // DEC Supplemental Graphic
             case_or CSET_DECSUPP:  // DEC Supplemental (user-preferred in VT*)
             if (c > ' ' && c < 0x7F) {

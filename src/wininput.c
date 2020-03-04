@@ -447,23 +447,23 @@ win_update_menus(bool callback)
   };
 
   //__ System menu:
-  modify_menu(sysmenu, SC_RESTORE, 0, itemlabel(__((char*)"&Restore")), null);
+  modify_menu(sysmenu, SC_RESTORE, 0, itemlabel(__(const_cast<char *>("&Restore"))), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MOVE, 0, itemlabel(__((char*)"&Move")), null);
+  modify_menu(sysmenu, SC_MOVE, 0, itemlabel(__(const_cast<char *>("&Move"))), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_SIZE, 0, itemlabel(__((char*)"&Size")), null);
+  modify_menu(sysmenu, SC_SIZE, 0, itemlabel(__(const_cast<char *>("&Size"))), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MINIMIZE, 0, itemlabel(__((char*)"Mi&nimize")), null);
+  modify_menu(sysmenu, SC_MINIMIZE, 0, itemlabel(__(const_cast<char *>("Mi&nimize"))), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_MAXIMIZE, 0, itemlabel(__((char*)"Ma&ximize")), null);
+  modify_menu(sysmenu, SC_MAXIMIZE, 0, itemlabel(__(const_cast<char *>("Ma&ximize"))), null);
   //__ System menu:
-  modify_menu(sysmenu, SC_CLOSE, 0, itemlabel(__((char*)"&Close")),
-    (wchar *)(alt_fn ? W("Alt+F4") : ct_sh ? W("Ctrl+Shift+W") : null)
+  modify_menu(sysmenu, SC_CLOSE, 0, itemlabel(__(const_cast<char *>("&Close"))),
+    alt_fn ? const_cast<wchar *>(W("Alt+F4")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+W")) : null
   );
 
   //__ System menu:
 //  modify_menu(sysmenu, IDM_NEW, 0, _W("Ne&w"),
-//    alt_fn ? W("Alt+F2") : ct_sh ? W("Ctrl+Shift+N") : null
+//    alt_fn ? const_cast<wchar *>(W("Alt+F2")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+N")) : null
 //  );
 
   uint switch_move_left_enabled = ((win_tab_count() > 1) && (win_active_tab() > 0)) ? MF_ENABLED : MF_GRAYED;
@@ -477,7 +477,7 @@ win_update_menus(bool callback)
   EnableMenuItem(ctxmenu, IDM_OPEN, sel_enabled);
   //__ Context menu:
   modify_menu(ctxmenu, IDM_COPY, sel_enabled, _W("&Copy"),
-    (wchar *)(clip ? W("Ctrl+Ins") : ct_sh ? W("Ctrl+Shift+C") : null)
+    clip ? const_cast<wchar *>(W("Ctrl+Ins")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+C")) : null
   );
   // enable/disable predefined extended context menu entries
   // (user-definable ones are handled via fct_status())
@@ -494,17 +494,17 @@ win_update_menus(bool callback)
     ? MF_ENABLED : MF_GRAYED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_PASTE, paste_enabled, _W("&Paste "),
-    (wchar *)(clip ? W("Shift+Ins") : ct_sh ? W("Ctrl+Shift+V") : null)
+    clip ? const_cast<wchar *>(W("Shift+Ins")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+V")) : null
   );
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_COPASTE, sel_enabled, _W("Copy → Paste"),
-    (wchar *)(clip ? W("Ctrl+Shift+Ins") : null)
+    clip ? const_cast<wchar *>(W("Ctrl+Shift+Ins")) : null
   );
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_SEARCH, 0, _W("S&earch"),
-    (wchar *)(alt_fn ? W("Alt+F3") : ct_sh ? W("Ctrl+Shift+H") : null)
+    alt_fn ? const_cast<wchar *>(W("Alt+F3")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+H")) : null
   );
 
   uint logging_enabled = (logging || *cfg.log) ? MF_ENABLED : MF_GRAYED;
@@ -528,7 +528,7 @@ win_update_menus(bool callback)
 
   //__ Context menu:
   modify_menu(ctxmenu, IDM_RESET, 0, _W("&Reset"),
-    (wchar *)(alt_fn ? W("Alt+F8") : ct_sh ? W("Ctrl+Shift+R") : null)
+    alt_fn ? const_cast<wchar *>(W("Alt+F8")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+R")) : null
   );
 
   uint defsize_enabled =
@@ -536,7 +536,7 @@ win_update_menus(bool callback)
     ? MF_ENABLED : MF_GRAYED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_DEFSIZE_ZOOM, defsize_enabled, _W("&Default Size"),
-    (wchar *)(alt_fn ? W("Alt+F10") : ct_sh ? W("Ctrl+Shift+D") : null)
+    alt_fn ? const_cast<wchar *>(W("Alt+F10")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+D")) : null
   );
 
   uint scrollbar_checked = term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
@@ -552,7 +552,7 @@ win_update_menus(bool callback)
   uint fullscreen_checked = win_is_fullscreen ? MF_CHECKED : MF_UNCHECKED;
   //__ Context menu:
   modify_menu(ctxmenu, IDM_FULLSCREEN_ZOOM, fullscreen_checked, _W("&Full Screen"),
-    (wchar *)(alt_fn ? W("Alt+F11") : ct_sh ? W("Ctrl+Shift+F") : null)
+    alt_fn ? const_cast<wchar *>(W("Alt+F11")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+F")) : null
   );
 
 //  uint otherscreen_checked = term.show_other_screen ? MF_CHECKED : MF_UNCHECKED;

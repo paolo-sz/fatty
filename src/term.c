@@ -1629,10 +1629,10 @@ get_emoji_description(termchar * cpoi)
       char ec[8];
       sprintf(ec, "U+%04X", xc);
       strappend(en, ec);
-      strappend(en, (char *)" ");
+      strappend(en, const_cast<char *>(" "));
     }
-    strappend(en, (char *)"| Emoji sequence: ");
-    strappend(en, (char *)emoji_seqs[ee->idx].name);
+    strappend(en, const_cast<char *>("| Emoji sequence: "));
+    strappend(en, const_cast<char *>(emoji_seqs[ee->idx].name));
     return en;
   }
   else
@@ -1665,36 +1665,36 @@ fallback:;
     Noto Emoji: emoji_u0023_20e3.png
   */
   char * pre;
-  char * fmt = (char *)"%04x";
-  char * sep = (char *)"-";
-  char * suf = (char *)".png";
+  char * fmt = const_cast<char *>("%04x");
+  char * sep = const_cast<char *>("-");
+  char * suf = const_cast<char *>(".png");
   bool zwj = true;
   bool sel = true;
   switch (style) {
     when EMOJIS_NOTO:
-      pre = (char *)"noto/emoji_u";
-      sep = (char *)"_";
+      pre = const_cast<char *>("noto/emoji_u");
+      sep = const_cast<char *>("_");
       zwj = true;
       sel = false;
     when EMOJIS_ONE:
-      pre = (char *)"emojione/";
-      sep = (char *)"-";
+      pre = const_cast<char *>("emojione/");
+      sep = const_cast<char *>("-");
       zwj = false;
       sel = false;
     when EMOJIS_APPLE:
-      pre = (char *)"apple/";
+      pre = const_cast<char *>("apple/");
     when EMOJIS_GOOGLE:
-      pre = (char *)"google/";
+      pre = const_cast<char *>("google/");
     when EMOJIS_TWITTER:
-      pre = (char *)"twitter/";
+      pre = const_cast<char *>("twitter/");
     when EMOJIS_FB:
-      pre = (char *)"facebook/";
+      pre = const_cast<char *>("facebook/");
     when EMOJIS_SAMSUNG:
-      pre = (char *)"samsung/";
+      pre = const_cast<char *>("samsung/");
     when EMOJIS_WINDOWS:
-      pre = (char *)"windows/";
+      pre = const_cast<char *>("windows/");
     when EMOJIS_NONE:
-      pre = (char *)"common/";
+      pre = const_cast<char *>("common/");
       break;
     default:
       return false;
@@ -1945,7 +1945,7 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
   void * * bufpoi;
   int * buflen;
   if (e.seq) {
-    efn = (wchar *)emoji_seqs[e.idx].efn;
+    efn = const_cast<wchar *>(emoji_seqs[e.idx].efn);
     bufpoi = &emoji_seqs[e.idx].buf;
     buflen = &emoji_seqs[e.idx].buflen;
   }
@@ -2386,11 +2386,11 @@ term_paint(struct term* term_p)
     }
     if (prevdirtyitalic) {
       // clear overhang into right padding border
-      win_text(term.cols, i, (wchar *)(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
+      win_text(term.cols, i, const_cast<wchar *>(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
     }
     if (firstdirtyitalic) {
       // clear overhang into left padding border
-      win_text(-1, i, (wchar *)(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
+      win_text(-1, i, const_cast<wchar *>(W(" ")), 1, CATTR_DEFAULT, (cattr*)&CATTR_DEFAULT, line->lattr, false, true, 0);
     }
 
 #define dont_debug_bidi_paragraphs

@@ -1080,7 +1080,7 @@ charname(xchar ucs)
       return (char *) mide;
     }
   }
-  return (char *)"";
+  return const_cast<char *>("");
 }
 
 void
@@ -1358,7 +1358,7 @@ show_link(void)
   if (hoverlink != lasthoverlink) {
     lasthoverlink = hoverlink;
 
-    char * url = geturl(hoverlink) ?: (char *)"";
+    char * url = geturl(hoverlink) ?: const_cast<char *>("");
 
     if (nonascii(url)) {
       wchar * wcs = cs__utftowcs(url);

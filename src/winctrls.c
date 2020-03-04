@@ -168,8 +168,8 @@ endbox(ctrlpos * cp)
   r.right = cp->width;
   r.top = cp->boxystart;
   r.bottom = cp->ypos - cp->boxystart;
-  doctl(null, cp, r, (char *)"BUTTON", BS_GROUPBOX | WS_CHILD | WS_VISIBLE, 0,
-        cp->boxtext ? cp->boxtext : (char *)"", cp->boxid);
+  doctl(null, cp, r, const_cast<char *>("BUTTON"), BS_GROUPBOX | WS_CHILD | WS_VISIBLE, 0,
+        cp->boxtext ? cp->boxtext : const_cast<char *>(""), cp->boxid);
   cp->ypos += GAPYBOX;
 }
 
@@ -188,15 +188,15 @@ editbox(control * ctrl, ctrlpos * cp, int password, char * text,
   if (text) {
     r.top = cp->ypos;
     r.bottom = STATICHEIGHT;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, text, staticid);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, text, staticid);
     cp->ypos += STATICHEIGHT + GAPWITHIN;
   }
   r.top = cp->ypos;
   r.bottom = EDITHEIGHT;
-  doctl(ctrl, cp, r, (char *)"EDIT",
+  doctl(ctrl, cp, r, const_cast<char *>("EDIT"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | (password ?
                                                                ES_PASSWORD : 0),
-        WS_EX_CLIENTEDGE, (char *)"", editid);
+        WS_EX_CLIENTEDGE, const_cast<char *>(""), editid);
   cp->ypos += EDITHEIGHT + GAPBETWEEN;
 }
 
@@ -214,12 +214,12 @@ combobox(control * ctrl, ctrlpos * cp, char *text, int staticid, int listid)
   if (text) {
     r.top = cp->ypos;
     r.bottom = STATICHEIGHT;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, text, staticid);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, text, staticid);
     cp->ypos += STATICHEIGHT + GAPWITHIN;
   }
   r.top = cp->ypos;
   r.bottom = COMBOHEIGHT * 10;
-  doctl(ctrl, cp, r, (char *)"COMBOBOX",
+  doctl(ctrl, cp, r, const_cast<char *>("COMBOBOX"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWN |
         CBS_HASSTRINGS, WS_EX_CLIENTEDGE, "", listid);
   cp->ypos += COMBOHEIGHT + GAPBETWEEN;
@@ -245,7 +245,7 @@ radioline_common(ctrlpos * cp, char *text, int id, int nacross,
     r.right = cp->width;
     r.bottom = STATICHEIGHT;
     cp->ypos += r.bottom + GAPWITHIN;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, text, id);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, text, id);
   }
 
   group = WS_GROUP;
@@ -262,7 +262,7 @@ radioline_common(ctrlpos * cp, char *text, int id, int nacross,
       r.right = cp->width - r.left;
     r.top = cp->ypos;
     r.bottom = RADIOHEIGHT;
-    doctl(null, cp, r, (char *)"BUTTON",
+    doctl(null, cp, r, const_cast<char *>("BUTTON"),
           BS_NOTIFY | BS_AUTORADIOBUTTON | WS_CHILD | WS_VISIBLE | WS_TABSTOP |
           group, 0, buttons[j].label, buttons[j].id);
     group = 0;
@@ -284,7 +284,7 @@ checkbox(ctrlpos * cp, char *text, int id)
   r.right = cp->width;
   r.bottom = CHECKBOXHEIGHT;
   cp->ypos += r.bottom + GAPBETWEEN;
-  doctl(null, cp, r, (char *)"BUTTON",
+  doctl(null, cp, r, const_cast<char *>("BUTTON"),
         BS_NOTIFY | BS_AUTOCHECKBOX | WS_CHILD | WS_VISIBLE | WS_TABSTOP, 0,
         text, id);
 }
@@ -302,7 +302,7 @@ paneltitle(ctrlpos * cp, int id)
   r.right = cp->width;
   r.bottom = TITLEHEIGHT;
   cp->ypos += r.bottom + GAPBETWEEN;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, 0, null, id);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE | SS_OWNERDRAW, 0, null, id);
 }
 
 /*
@@ -320,7 +320,7 @@ statictext(ctrlpos * cp, char * stext, int sid)
   r.right = cp->width;
   r.bottom = STATICHEIGHT;
   cp->ypos += r.bottom + GAPBETWEEN;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
 }
 
 /*
@@ -342,13 +342,13 @@ staticbtn(ctrlpos * cp, char *stext, int sid, char *btext, int bid)
   r.top = cp->ypos + (height - STATICHEIGHT) / 2 - 1;
   r.right = lwid;
   r.bottom = STATICHEIGHT;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
 
   r.left = rpos;
   r.top = cp->ypos + (height - PUSHBTNHEIGHT) / 2 - 1;
   r.right = rwid;
   r.bottom = PUSHBTNHEIGHT;
-  doctl(null, cp, r, (char *)"BUTTON",
+  doctl(null, cp, r, const_cast<char *>("BUTTON"),
         BS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_TABSTOP | BS_PUSHBUTTON, 0,
         btext, bid);
 
@@ -374,7 +374,7 @@ button(control * ctrl, ctrlpos * cp, char *btext, int bid, int defbtn)
     SendMessage(cp->wnd, DM_SETDEFID, bid, 0);
 
   //HWND but = // if we'd want to send it a message right away
-  doctl(ctrl, cp, r, (char *)"BUTTON",
+  doctl(ctrl, cp, r, const_cast<char *>("BUTTON"),
           BS_NOTIFY | WS_CHILD | WS_VISIBLE | WS_TABSTOP |
           (defbtn ? BS_DEFPUSHBUTTON : 0) | BS_PUSHBUTTON, 0, btext, bid);
 #ifdef need_to_disable_widgets_here
@@ -407,13 +407,13 @@ staticedit_internal(ctrlpos * cp, char *stext, int sid, int eid,
   r.top = cp->ypos + (height - STATICHEIGHT) / 2;
   r.right = lwid;
   r.bottom = STATICHEIGHT;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
 
   r.left = rpos;
   r.top = cp->ypos + (height - EDITHEIGHT) / 2;
   r.right = rwid;
   r.bottom = EDITHEIGHT;
-  doctl(null, cp, r, (char *)"EDIT",
+  doctl(null, cp, r, const_cast<char *>("EDIT"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | ES_AUTOHSCROLL | style,
         WS_EX_CLIENTEDGE, "", eid);
 
@@ -450,13 +450,13 @@ staticddl(ctrlpos * cp, char *stext, int sid, int lid, int percentlist)
   r.top = cp->ypos + (height - STATICHEIGHT) / 2;
   r.right = lwid;
   r.bottom = STATICHEIGHT;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
 
   r.left = rpos;
   r.top = cp->ypos + (height - EDITHEIGHT) / 2;
   r.right = rwid;
   r.bottom = COMBOHEIGHT * 4;
-  doctl(null, cp, r, (char *)"COMBOBOX",
+  doctl(null, cp, r, const_cast<char *>("COMBOBOX"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST |
         CBS_HASSTRINGS, WS_EX_CLIENTEDGE, "", lid);
 
@@ -481,13 +481,13 @@ staticcombo(ctrlpos * cp, char *stext, int sid, int lid, int percentlist)
   r.top = cp->ypos + (height - STATICHEIGHT) / 2;
   r.right = lwid;
   r.bottom = STATICHEIGHT;
-  doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+  doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
 
   r.left = rpos;
   r.top = cp->ypos + (height - EDITHEIGHT) / 2;
   r.right = rwid;
   r.bottom = COMBOHEIGHT * 10;
-  doctl(null, cp, r, (char *)"COMBOBOX",
+  doctl(null, cp, r, const_cast<char *>("COMBOBOX"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWN |
         CBS_HASSTRINGS, WS_EX_CLIENTEDGE, "", lid);
 
@@ -507,7 +507,7 @@ staticddlbig(ctrlpos * cp, char *stext, int sid, int lid)
     r.top = cp->ypos;
     r.right = cp->width;
     r.bottom = STATICHEIGHT;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
     cp->ypos += STATICHEIGHT;
   }
 
@@ -515,7 +515,7 @@ staticddlbig(ctrlpos * cp, char *stext, int sid, int lid)
   r.top = cp->ypos;
   r.right = cp->width;
   r.bottom = COMBOHEIGHT * 4;
-  doctl(null, cp, r, (char *)"COMBOBOX",
+  doctl(null, cp, r, const_cast<char *>("COMBOBOX"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | CBS_DROPDOWNLIST |
         CBS_HASSTRINGS, WS_EX_CLIENTEDGE, "", lid);
   cp->ypos += COMBOHEIGHT + GAPBETWEEN;
@@ -534,7 +534,7 @@ staticlabel(ctrlpos * cp, char *stext, int sid)
     r.top = cp->ypos;
     r.right = cp->width;
     r.bottom = STATICHEIGHT;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
     cp->ypos += STATICHEIGHT + GAPBETWEEN;
   }
 }
@@ -553,7 +553,7 @@ listbox(control * ctrl, ctrlpos * cp, char *stext, int sid, int lid, int lines)
     r.right = cp->width;
     r.bottom = STATICHEIGHT;
     cp->ypos += r.bottom + GAPWITHIN;
-    doctl(null, cp, r, (char *)"STATIC", WS_CHILD | WS_VISIBLE, 0, stext, sid);
+    doctl(null, cp, r, const_cast<char *>("STATIC"), WS_CHILD | WS_VISIBLE, 0, stext, sid);
   }
 
   r.left = GAPBETWEEN;
@@ -561,7 +561,7 @@ listbox(control * ctrl, ctrlpos * cp, char *stext, int sid, int lid, int lines)
   r.right = cp->width;
   r.bottom = LISTHEIGHT + (lines - 1) * LISTINCREMENT;
   cp->ypos += r.bottom + GAPBETWEEN;
-  doctl(ctrl, cp, r, (char *)"LISTBOX",
+  doctl(ctrl, cp, r, const_cast<char *>("LISTBOX"),
         WS_CHILD | WS_VISIBLE | WS_TABSTOP | WS_VSCROLL | LBS_NOTIFY |
         LBS_HASSTRINGS | LBS_USETABSTOPS, WS_EX_CLIENTEDGE, "", lid);
 }
@@ -832,7 +832,7 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
       when CTRL_FONTSELECT: {
         num_ids = 3;
         //__ Options - Text: font chooser activation button
-        staticbtn(&pos, (char *)"", base_id + 1, _("&Select..."), base_id + 2);
+        staticbtn(&pos, const_cast<char *>(""), base_id + 1, _("&Select..."), base_id + 2);
         data = std_new(font_spec);
 
         char * fontinfo = fontpropinfo();
@@ -1994,15 +1994,15 @@ dlg_fontsel_set(control *ctrl, font_spec *fs)
   *(font_spec *) c->data = *fs;   /* structure copy */
 
   static char * boldnesses[] = {
-    (char *)"Thin, ",
-    (char *)"Extralight, ",
-    (char *)"Light, ",
-    (char *)"",
-    (char *)"Medium, ",
-    (char *)"Semibold, ",
-    (char *)"Bold, ",
-    (char *)"Extrabold, ",
-    (char *)"Heavy, "
+    const_cast<char *>("Thin, "),
+    const_cast<char *>("Extralight, "),
+    const_cast<char *>("Light, "),
+    const_cast<char *>(""),
+    const_cast<char *>("Medium, "),
+    const_cast<char *>("Semibold, "),
+    const_cast<char *>("Bold, "),
+    const_cast<char *>("Extrabold, "),
+    const_cast<char *>("Heavy, ")
   };
 
   //int boldness = (fs->weight - 1) / 111;

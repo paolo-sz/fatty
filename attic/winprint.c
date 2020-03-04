@@ -12,9 +12,9 @@ extern "C" {
 static HANDLE printer;
 
 static const DOC_INFO_1 doc_info = {
-  pDocName : (char *)"Mintty ANSI printer output",
+  pDocName : const_cast<char *>("Mintty ANSI printer output"),
   pOutputFile : null,
-  pDatatype : (char *)"TEXT"
+  pDatatype : const_cast<char *>("TEXT")
 };
 
 void
