@@ -1677,7 +1677,7 @@ vk_name(uint key)
 #ifdef debug_key
 #define trace_key(tag)	printf(" <-%s\n", tag)
 #else
-#define trace_key(tag)	
+#define trace_key(tag)	(void)0
 #endif
 
 #ifdef debug_alt
@@ -3032,12 +3032,14 @@ win_key_down(WPARAM wp, LPARAM lp)
 #ifdef debug_key
       printf("mods %d (modf %d comp %d)\n", mods, term.modify_other_keys, comp_state);
 #endif
-      if (altgr_key())
-        trace_key("altgr");
-      else if (allow_shortcut && check_menu) {
+      if (allow_shortcut && check_menu) {
         send_syscommand(SC_KEYMENU);
         return true;
       }
+      else if (altgr_key())
+        trace_key("altgr");
+      else if (altgr && !term.modify_other_keys)
+        trace_key("!altgr");
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
       else if (shift && ctrl && key == 'T')
@@ -3053,6 +3055,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (term.modify_other_keys > 1 || (term.modify_other_keys && altgr))
         // handle Alt+space after char_key, avoiding undead_ glitch;
         // also handle combinations like Ctrl+AltGr+e
+        trace_key("modf"),
         modify_other_key();
       else if (ctrl_key())
         trace_key("ctrl");
