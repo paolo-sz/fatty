@@ -20,7 +20,7 @@
 #define IDM_UNUSED          0x0040
 #define IDM_COPASTE         0x0140
 #define IDM_SELALL          0x0050
-#define IDM_CLRSCRLBCK      0x0160
+#define IDM_CLRSCRLBCK      0x0150
 #define IDM_RESET           0x0060
 #define IDM_DEFSIZE         0x0070
 #define IDM_DEFSIZE_ZOOM    0x0170
