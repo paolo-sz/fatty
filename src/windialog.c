@@ -701,7 +701,7 @@ win_open_config(void)
   static bool initialised = false;
   if (!initialised) {
     InitCommonControls();
-    WNDCLASSW pippo = {
+    WNDCLASSW class_tmp = {
       style : CS_DBLCLKS,
       lpfnWndProc : DefDlgProcW,
       cbClsExtra : 0,
@@ -713,7 +713,7 @@ win_open_config(void)
       lpszMenuName : null,
       lpszClassName : W(DIALOG_CLASS)
     };
-    RegisterClassW(&pippo);
+    RegisterClassW(&class_tmp);
     initialised = true;
   }
 
@@ -881,7 +881,7 @@ win_show_about(void)
   oklabel = null;
   oktype = MB_OK;
   hook_windows(set_labels);
-  MSGBOXPARAMSW pippo = {
+  MSGBOXPARAMSW msgbox_tmp = {
     cbSize : sizeof(MSGBOXPARAMSW),
     hwndOwner : config_wnd,
     hInstance : inst,
@@ -901,7 +901,7 @@ win_show_about(void)
 #endif
     dwLanguageId : 0
   };
-  MessageBoxIndirectW(&pippo);
+  MessageBoxIndirectW(&msgbox_tmp);
   unhook_windows();
   free(wmsg);
 }

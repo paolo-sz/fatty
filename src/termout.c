@@ -57,10 +57,11 @@ static string primary_da5 = "\e[?65;1;2;4;6;9;15;21;22;28;29c";
 */
 
 
+#define term_push_cmd(...) (term_push_cmd)(term_p, ##__VA_ARGS__)
 static bool
-term_push_cmd(struct term* term_p, char c)
+(term_push_cmd)(struct term* term_p, char c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   uint new_size;
 
@@ -87,6 +88,7 @@ term_push_cmd(struct term* term_p, char c)
   return true;
 }
 
+#define move(...) (move)(term_p, ##__VA_ARGS__)
 /*
  * Move the cursor to a given position, clipping at boundaries.
  * We may or may not want to clip at the scroll margin: marg_clip is
@@ -95,9 +97,9 @@ term_push_cmd(struct term* term_p, char c)
  * 2 to disallow even _being_ outside the margins.
  */
 static void
-move(struct term* term_p, int x, int y, int marg_clip)
+(move)(struct term* term_p, int x, int y, int marg_clip)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
 
@@ -126,24 +128,26 @@ move(struct term* term_p, int x, int y, int marg_clip)
   curs->wrapnext = false;
 }
 
+#define save_cursor(...) (save_cursor)(term_p, ##__VA_ARGS__)
 /*
  * Save the cursor and SGR mode.
  */
 static void
-save_cursor(struct term* term_p)
+(save_cursor)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term.saved_cursors[term.on_alt_screen] = term.curs;
 }
 
+#define restore_cursor(...) (restore_cursor)(term_p, ##__VA_ARGS__)
 /*
  * Restore the cursor and SGR mode.
  */
 static void
-restore_cursor(struct term* term_p)
+(restore_cursor)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
   *curs = term.saved_cursors[term.on_alt_screen];
@@ -175,17 +179,18 @@ restore_cursor(struct term* term_p)
   if (curs->wrapnext && curs->x < term.cols - 1 && curs->x != term.marg_right)
     curs->wrapnext = false;
 
-  term_update_cs(term_p);
+  term_update_cs();
 }
 
+#define insert_char(...) (insert_char)(term_p, ##__VA_ARGS__)
 /*
  * Insert or delete characters within the current line.
  * n is +ve if insertion is desired, and -ve for deletion.
  */
 static void
-insert_char(struct term* term_p, int n)
+(insert_char)(struct term* term_p, int n)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.curs.x < term.marg_left || term.curs.x > term.marg_right)
     return;
@@ -201,8 +206,8 @@ insert_char(struct term* term_p, int n)
   if (n > cols - curs->x)
     n = cols - curs->x;
   m = cols - curs->x - n;
-  term_check_boundary(term_p, curs->x, curs->y);
-  term_check_boundary(term_p, curs->x + m, curs->y);
+  term_check_boundary(curs->x, curs->y);
+  term_check_boundary(curs->x + m, curs->y);
   if (del) {
     for (int j = 0; j < m; j++)
       move_termchar(line, line->chars + curs->x + j,
@@ -234,10 +239,11 @@ illegal_rect_char(xchar chr)
   return width != 1;
 }
 
+#define attr_rect(...) (attr_rect)(term_p, ##__VA_ARGS__)
 static void
-attr_rect(struct term* term_p, cattrflags add, cattrflags sub, cattrflags xor_, short y0, short x0, short y1, short x1)
+(attr_rect)(struct term* term_p, cattrflags add, cattrflags sub, cattrflags xor_, short y0, short x0, short y1, short x1)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("attr_rect %d,%d..%d,%d +%llX -%llX ^%llX\n", y0, x0, y1, x1, add, sub, xor);
   y0--; x0--; y1--; x1--;
@@ -276,19 +282,20 @@ attr_rect(struct term* term_p, cattrflags add, cattrflags sub, cattrflags xor_, 
       ca |= add;
       if (ca != l->chars[x].attr.attr) {
         if (x == xl)
-          term_check_boundary(term_p, x, y);
+          term_check_boundary(x, y);
         if (x == xr)
-          term_check_boundary(term_p, x + 1, y);
+          term_check_boundary(x + 1, y);
       }
       l->chars[x].attr.attr = ca;
     }
   }
 }
 
+#define fill_rect(...) (fill_rect)(term_p, ##__VA_ARGS__)
 static void
-fill_rect(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short x0, short y1, short x1)
+(fill_rect)(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short x0, short y1, short x1)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("fill_rect %d,%d..%d,%d\n", y0, x0, y1, x1);
   if (chr == UCSWIDE || illegal_rect_char(chr))
@@ -330,7 +337,7 @@ fill_rect(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short 
         // PN check
         if (!prot) {  // includes the case x == x0
           // clear previous half of wide char, even if protected
-          term_check_boundary(term_p, x0, y);
+          term_check_boundary(x0, y);
         }
         else if (l->chars[x].chr == UCSWIDE) {
           // clear right half of wide char, even if protected;
@@ -341,7 +348,7 @@ fill_rect(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short 
       }
       // clear wide char on right area border unless protected
       if (!prot && x == x1)
-        term_check_boundary(term_p, x1 + 1, y);
+        term_check_boundary(x1 + 1, y);
       prevprot = prot;
 
       if (!sel || !prot) {
@@ -355,10 +362,11 @@ fill_rect(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short 
   }
 }
 
+#define copy_rect(...) (copy_rect)(term_p, ##__VA_ARGS__)
 static void
-copy_rect(struct term* term_p, short y0, short x0, short y1, short x1, short y2, short x2)
+(copy_rect)(struct term* term_p, short y0, short x0, short y1, short x1, short y2, short x2)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("copy_rect %d,%d..%d,%d -> %d,%d\n", y0, x0, y1, x1, y2, x2);
   y0--; x0--; y1--; x1--; y2--; x2--;
@@ -395,8 +403,8 @@ copy_rect(struct term* term_p, short y0, short x0, short y1, short x1, short y2,
   for (int y = down ? y1 : y0; down ? y >= y0 : y <= y1; down ? y-- : y++) {
     termline * src = term.lines[y];
     termline * dst = term.lines[y + y2 - y0];
-    term_check_boundary(term_p, x2, y + y2 - y0);
-    term_check_boundary(term_p, x2 + x1 - x0 + 1, y + y2 - y0);
+    term_check_boundary(x2, y + y2 - y0);
+    term_check_boundary(x2 + x1 - x0 + 1, y + y2 - y0);
     for (int x = left ? x1 : x0; left ? x >= x0 : x <= x1; left ? x-- : x++) {
       copy_termchar(dst, x + x2 - x0, &src->chars[x]);
       //printf("copy %d:%d -> %d:%d\n", y, x, y + y2 - y0, x + x2 - x0);
@@ -412,9 +420,9 @@ copy_rect(struct term* term_p, short y0, short x0, short y1, short x1, short y2,
 }
 
 void
-scroll_rect(struct term* term_p, int topline, int botline, int lines)
+(scroll_rect)(struct term* term_p, int topline, int botline, int lines)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("scroll_rect %d..%d %s%d\n", topline, botline, lines > 0 ? "+" : "", lines);
   int y0, y1, y2, e0, e1;
@@ -455,14 +463,15 @@ scroll_rect(struct term* term_p, int topline, int botline, int lines)
     e0 -= term.marg_top;
     e1 -= term.marg_top;
   }
-  copy_rect(term_p, y0, xl, y1, xr, y2, xl);
-  fill_rect(term_p, ' ', term.curs.attr, false, e0, xl, e1, xr);
+  copy_rect(y0, xl, y1, xr, y2, xl);
+  fill_rect(' ', term.curs.attr, false, e0, xl, e1, xr);
 }
 
+#define insdel_column(...) (insdel_column)(term_p, ##__VA_ARGS__)
 static void
-insdel_column(struct term* term_p, int col, bool del, int n)
+(insdel_column)(struct term* term_p, int col, bool del, int n)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("insdel_column @%d %d marg %d..%d\n", col, n, term.marg_left, term.marg_right);
   int x0, x1, x2, e0, e1;
@@ -499,14 +508,15 @@ insdel_column(struct term* term_p, int col, bool del, int n)
     e0 -= term.marg_left;
     e1 -= term.marg_left;
   }
-  copy_rect(term_p, yt, x0, yb, x1, yt, x2);
-  fill_rect(term_p, ' ', term.curs.attr, false, yt, e0, yb, e1);
+  copy_rect(yt, x0, yb, x1, yt, x2);
+  fill_rect(' ', term.curs.attr, false, yt, e0, yb, e1);
 }
 
+#define sum_rect(...) (sum_rect)(term_p, ##__VA_ARGS__)
 static uint
-sum_rect(struct term* term_p, short y0, short x0, short y1, short x1)
+(sum_rect)(struct term* term_p, short y0, short x0, short y1, short x1)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //printf("sum_rect %d,%d..%d,%d\n", y0, x0, y1, x1);
 
@@ -558,18 +568,22 @@ sum_rect(struct term* term_p, short y0, short x0, short y1, short x1)
 }
 
 
+#define write_bell(...) (write_bell)(term_p, ##__VA_ARGS__)
 static void
-write_bell(struct term* term_p)
+(write_bell)(struct term* term_p)
 {
+  TERM_VAR_REF
+  
   if (cfg.bell_flash)
-    term_schedule_vbell(term_p, false, 0);
-  win_bell(term_p, &cfg);
+    term_schedule_vbell(false, 0);
+  win_bell(&cfg);
 }
 
+#define write_backspace(...) (write_backspace)(term_p, ##__VA_ARGS__)
 static void
-write_backspace(struct term* term_p)
+(write_backspace)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
   if (curs->x == term.marg_left && curs->y == term.marg_top
@@ -595,10 +609,11 @@ write_backspace(struct term* term_p)
     curs->x--;
 }
 
+#define write_tab(...) (write_tab)(term_p, ##__VA_ARGS__)
 static void
-write_tab(struct term* term_p)
+(write_tab)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
 
@@ -618,10 +633,11 @@ write_tab(struct term* term_p)
   }
 }
 
+#define write_return(...) (write_return)(term_p, ##__VA_ARGS__)
 static void
-write_return(struct term* term_p)
+(write_return)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term.curs.wrapnext = false;
   if (term.curs.x < term.marg_left)
@@ -630,25 +646,27 @@ write_return(struct term* term_p)
     term.curs.x = term.marg_left;
 }
 
+#define write_linefeed(...) (write_linefeed)(term_p, ##__VA_ARGS__)
 static void
-write_linefeed(struct term* term_p)
+(write_linefeed)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
   if (curs->x < term.marg_left || curs->x > term.marg_right)
     return;
 
-  clear_wrapcontd(term_p, term.lines[curs->y], curs->y);
+  clear_wrapcontd(term.lines[curs->y], curs->y);
   if (curs->y == term.marg_bot)
-    term_do_scroll(term_p, term.marg_top, term.marg_bot, 1, true);
+    term_do_scroll(term.marg_top, term.marg_bot, 1, true);
   else if (curs->y < term.rows - 1)
     curs->y++;
   curs->wrapnext = false;
 }
 
+#define write_primary_da(...) (write_primary_da)(child_p, ##__VA_ARGS__)
 static void
-write_primary_da(struct child* child)
+(write_primary_da)(struct child* child_p)
 {
   string primary_da = primary_da4;
   char * vt = strstr(cfg.term, "vt");
@@ -667,7 +685,7 @@ write_primary_da(struct child* child)
         primary_da = primary_da1;
     }
   }
-  child_write(child, primary_da, strlen(primary_da));
+  child_write(primary_da, strlen(primary_da));
 }
 
 static wchar last_high = 0;
@@ -676,10 +694,11 @@ static int last_width = 0;
 cattr last_attr = {attr : ATTR_DEFAULT,
                    truebg : 0, truefg : 0, ulcolr : (colour)-1, link : 0, imgi : 0};
 
+#define write_char(...) (write_char)(term_p, ##__VA_ARGS__)
 static void
-write_char(struct term* term_p, wchar c, int width)
+(write_char)(struct term* term_p, wchar c, int width)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   //if (kb_trace) printf("[%ld] write_char 'q'\n", mtime());
 
@@ -747,7 +766,7 @@ write_char(struct term* term_p, wchar c, int width)
       line->lattr = (line->lattr & ~LATTR_BIDIMASK) | curs->bidimode;
     //TODO: if changed, propagate mode onto paragraph
     if (cfg.ligatures_support)
-      term_invalidate(term_p, 0, curs->y, curs->x, curs->y);
+      term_invalidate(0, curs->y, curs->x, curs->y);
   };
 
   if (curs->wrapnext && term.autowrap && width > 0) {
@@ -755,7 +774,7 @@ write_char(struct term* term_p, wchar c, int width)
     line->wrappos = curs->x;
     ushort parabidi = getparabidi(line);
     if (curs->y == term.marg_bot)
-      term_do_scroll(term_p, term.marg_top, term.marg_bot, 1, true);
+      term_do_scroll(term.marg_top, term.marg_bot, 1, true);
     else if (curs->y < term.rows - 1)
       curs->y++;
     curs->x = term.marg_left;
@@ -772,7 +791,7 @@ write_char(struct term* term_p, wchar c, int width)
   }
 
   if (term.insert && width > 0)
-    insert_char(term_p, width);
+    insert_char(width);
 
   bool single_width = false;
   if (cfg.charwidth >= 10 || cs_single_forced) {
@@ -787,8 +806,8 @@ write_char(struct term* term_p, wchar c, int width)
 
   switch (width) {
     when 1:  // Normal character.
-      term_check_boundary(term_p, curs->x, curs->y);
-      term_check_boundary(term_p, curs->x + 1, curs->y);
+      term_check_boundary(curs->x, curs->y);
+      term_check_boundary(curs->x + 1, curs->y);
       put_char(c);
       if (single_width)
         line->chars[curs->x].attr.attr |= TATTR_SINGLE;
@@ -806,23 +825,23 @@ write_char(struct term* term_p, wchar c, int width)
       * pasted in the middle of those just because they had the misfortune 
       * to start in the wrong parity column. xterm concurs.)
       */
-      term_check_boundary(term_p, curs->x, curs->y);
-      term_check_boundary(term_p, curs->x + width, curs->y);
+      term_check_boundary(curs->x, curs->y);
+      term_check_boundary(curs->x + width, curs->y);
       if (curs->x == term.marg_right || curs->x == term.cols - 1) {
         line->chars[curs->x] = term.erase_char;
         line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
         line->wrappos = curs->x;
         ushort parabidi = getparabidi(line);
         if (curs->y == term.marg_bot)
-          term_do_scroll(term_p, term.marg_top, term.marg_bot, 1, true);
+          term_do_scroll(term.marg_top, term.marg_bot, 1, true);
         else if (curs->y < term.rows - 1)
           curs->y++;
         curs->x = term.marg_left;
         line = term.lines[curs->y];
         wrapparabidi(parabidi, line, curs->y);
        /* Now we must term_check_boundary again, of course. */
-        term_check_boundary(term_p, curs->x, curs->y);
-        term_check_boundary(term_p, curs->x + width, curs->y);
+        term_check_boundary(curs->x, curs->y);
+        term_check_boundary(curs->x + width, curs->y);
       }
       put_char(c);
       curs->x++;
@@ -980,10 +999,11 @@ scriptfont(ucschar ch)
   return 0;
 }
 
+#define write_ucschar(...) (write_ucschar)(term_p, ##__VA_ARGS__)
 static void
-write_ucschar(struct term* term_p, wchar hwc, wchar wc, int width)
+(write_ucschar)(struct term* term_p, wchar hwc, wchar wc, int width)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   cattrflags attr = term.curs.attr.attr;
   ucschar c = hwc ? combine_surrogates(hwc, wc) : wc;
@@ -1003,19 +1023,20 @@ write_ucschar(struct term* term_p, wchar hwc, wchar wc, int width)
     { // ensure indication of cjksingle width handling to trigger down-zooming
       width = 2;
     }
-    write_char(term_p, hwc, width);
-    write_char(term_p, wc, -1);  // -1 indicates low surrogate
+    write_char(hwc, width);
+    write_char(wc, -1);  // -1 indicates low surrogate
   }
   else
-    write_char(term_p, wc, width);
+    write_char(wc, width);
 
   term.curs.attr.attr = attr;
 }
 
+#define write_error(...) (write_error)(term_p, ##__VA_ARGS__)
 static void
-write_error(struct term* term_p)
+(write_error)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   // Write one of REPLACEMENT CHARACTER or, if that does not exist,
   // MEDIUM SHADE which looks appropriately erroneous.
@@ -1023,7 +1044,7 @@ write_error(struct term* term_p)
   win_check_glyphs(&errch, 1, term.curs.attr.attr);
   if (!errch)
     errch = 0x2592;
-  write_char(term_p, errch, 1);
+  write_char(errch, 1);
 }
 
 
@@ -1044,51 +1065,52 @@ contains(string s, int i)
   return false;
 }
 
+#define do_ctrl(...) (do_ctrl)(term_p, ##__VA_ARGS__)
 /* Process control character, returning whether it has been recognised. */
 static bool
-do_ctrl(struct term* term_p, char c)
+(do_ctrl)(struct term* term_p, char c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   switch (c) {
     when '\e':   /* ESC: Escape */
       term.state = ESCAPE;
       term.esc_mod = 0;
     when '\a':   /* BEL: Bell */
-      write_bell(term_p);
+      write_bell();
     when '\b':     /* BS: Back space */
-      write_backspace(term_p);
+      write_backspace();
     when '\t':     /* HT: Character tabulation */
-      write_tab(term_p);
+      write_tab();
     when '\v':   /* VT: Line tabulation */
-      write_linefeed(term_p);
+      write_linefeed();
       if (term.newline_mode)
-        write_return(term_p);
+        write_return();
     when '\f':   /* FF: Form feed */
-      write_linefeed(term_p);
+      write_linefeed();
       if (term.newline_mode)
-        write_return(term_p);
+        write_return();
     when '\r':   /* CR: Carriage return */
-      write_return(term_p);
+      write_return();
     when '\n':   /* LF: Line feed */
-      write_linefeed(term_p);
+      write_linefeed();
       if (term.newline_mode)
-        write_return(term_p);
+        write_return();
     when CTRL('E'):   /* ENQ: terminal type query */
       if (!term.vt52_mode) {
         char * ab = cs__wcstombs(cfg.answerback);
-        child_write(term.child, ab, strlen(ab));
+        child_write(ab, strlen(ab));
         free(ab);
       }
     when CTRL('N'):   /* LS1: Locking-shift one */
       if (!term.vt52_mode) {
         term.curs.gl = 1;
-        term_update_cs(term_p);
+        term_update_cs();
       }
     when CTRL('O'):   /* LS0: Locking-shift zero */
       if (!term.vt52_mode) {
         term.curs.gl = 0;
-        term_update_cs(term_p);
+        term_update_cs();
       }
       break;
     default:
@@ -1097,10 +1119,11 @@ do_ctrl(struct term* term_p, char c)
   return true;
 }
 
+#define do_vt52(...) (do_vt52)(term_p, ##__VA_ARGS__)
 static void
-do_vt52(struct term* term_p, uchar c)
+(do_vt52)(struct term* term_p, uchar c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   term_cursor *curs = &term.curs;
   term.state = NORMAL;
@@ -1117,56 +1140,56 @@ do_vt52(struct term* term_p, uchar c)
     when '>':  /* Exit alternate keypad mode. */
       term.app_keypad = false;
     when 'A':  /* Cursor up. */
-      move(term_p, curs->x, curs->y - 1, 0);
+      move(curs->x, curs->y - 1, 0);
     when 'B':  /* Cursor down. */
-      move(term_p, curs->x, curs->y + 1, 0);
+      move(curs->x, curs->y + 1, 0);
     when 'C':  /* Cursor right. */
-      move(term_p, curs->x + 1, curs->y, 0);
+      move(curs->x + 1, curs->y, 0);
     when 'D':  /* Cursor left. */
-      move(term_p, curs->x - 1, curs->y, 0);
+      move(curs->x - 1, curs->y, 0);
     when 'F':  /* Enter graphics mode. */
       term.vt52_mode = 2;
     when 'G':  /* Exit graphics mode. */
       term.vt52_mode = 1;
     when 'H':  /* Move the cursor to the home position. */
-      move(term_p, 0, 0, 0);
+      move(0, 0, 0);
     when 'I':  /* Reverse line feed. */
       if (curs->y == term.marg_top)
-        term_do_scroll(term_p, term.marg_top, term.marg_bot, -1, true);
+        term_do_scroll(term.marg_top, term.marg_bot, -1, true);
       else if (curs->y > 0)
         curs->y--;
       curs->wrapnext = false;
     when 'J':  /* Erase from the cursor to the end of the screen. */
-      term_erase(term_p, false, false, false, true);
+      term_erase(false, false, false, true);
     when 'K':  /* Erase from the cursor to the end of the line. */
-      term_erase(term_p, false, true, false, true);
+      term_erase(false, true, false, true);
     when 'Y':  /* Move the cursor to given row and column. */
       term.state = VT52_Y;
     when 'Z':  /* Identify. */
-      child_write(term.child, "\e/Z", 3);
+      child_write("\e/Z", 3);
     // Atari ST extensions
     when 'E':  /* Clear screen */
-      move(term_p, 0, 0, 0);
-      term_erase(term_p, false, false, false, true);
+      move(0, 0, 0);
+      term_erase(false, false, false, true);
     when 'b':  /* Foreground color */
       term.state = VT52_FG;
     when 'c':  /* Background color */
       term.state = VT52_BG;
     when 'd':  /* Clear to start of screen */
-      term_erase(term_p, false, false, true, false);
+      term_erase(false, false, true, false);
     when 'e':  /* Enable cursor */
       term.cursor_on = true;
     when 'f':  /* Disable cursor */
       term.cursor_on = false;
     when 'j':  /* Save cursor */
-      save_cursor(term_p);
+      save_cursor();
     when 'k':  /* Restore cursor */
-      restore_cursor(term_p);
+      restore_cursor();
     when 'l':  /* Clear line */
-      term_erase(term_p, false, true, true, true);
-      write_return(term_p);
+      term_erase(false, true, true, true);
+      write_return();
     when 'o':  /* Clear to start of line */
-      term_erase(term_p, false, true, true, false);
+      term_erase(false, true, true, false);
     when 'p':  /* Reverse video */
       term.curs.attr.attr |= ATTR_REVERSE;
     when 'q':  /* Normal video */
@@ -1180,23 +1203,25 @@ do_vt52(struct term* term_p, uchar c)
   }
 }
 
+#define do_vt52_move(...) (do_vt52_move)(term_p, ##__VA_ARGS__)
 static void
-do_vt52_move(struct term* term_p)
+(do_vt52_move)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term.state = NORMAL;
   uchar y = term.cmd_buf[0];
   uchar x = term.cmd_buf[1];
   if (y < ' ' || x < ' ')
     return;
-  move(term_p, x - ' ', y - ' ', 0);
+  move(x - ' ', y - ' ', 0);
 }
 
+#define do_vt52_colour(...) (do_vt52_colour)(term_p, ##__VA_ARGS__)
 static void
-do_vt52_colour(struct term* term_p, bool fg, uchar c)
+(do_vt52_colour)(struct term* term_p, bool fg, uchar c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term.state = NORMAL;
   if (fg) {
@@ -1271,10 +1296,11 @@ lookup_cset(ushort nrc_code, uchar csmask, bool enabled)
 static uchar esc_mod0 = 0;
 static uchar esc_mod1 = 0;
 
+#define do_esc(...) (do_esc)(term_p, ##__VA_ARGS__)
 static void
-do_esc(struct term* term_p, uchar c)
+(do_esc)(struct term* term_p, uchar c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   term_cursor *curs = &term.curs;
   term.state = NORMAL;
@@ -1305,7 +1331,7 @@ do_esc(struct term* term_p, uchar c)
     term_cset cs = lookup_cset(nrc_code, csmask, term.decnrc_enabled);
     if (cs) {
       curs->csets[gi] = cs;
-      term_update_cs(term_p);
+      term_update_cs();
       return;
     }
   }
@@ -1324,31 +1350,31 @@ do_esc(struct term* term_p, uchar c)
     when '^' case_or '_' case_or 'X': /* PM, APC, SOS strings to be ignored */
       term.state = IGNORE_STRING;
     when '7':  /* DECSC: save cursor */
-      save_cursor(term_p);
+      save_cursor();
     when '8':  /* DECRC: restore cursor */
-      restore_cursor(term_p);
+      restore_cursor();
     when '=':  /* DECKPAM: Keypad application mode */
       term.app_keypad = true;
     when '>':  /* DECKPNM: Keypad numeric mode */
       term.app_keypad = false;
     when 'D':  /* IND: exactly equivalent to LF */
-      write_linefeed(term_p);
+      write_linefeed();
     when 'E':  /* NEL: exactly equivalent to CR-LF */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right) {
-        write_return(term_p);
-        write_linefeed(term_p);
+        write_return();
+        write_linefeed();
       }
     when 'M':  /* RI: reverse index - backwards LF */
       if (curs->y == term.marg_top)
-        term_do_scroll(term_p, term.marg_top, term.marg_bot, -1, true);
+        term_do_scroll(term.marg_top, term.marg_bot, -1, true);
       else if (curs->y > 0)
         curs->y--;
       curs->wrapnext = false;
     when 'Z':  /* DECID: terminal type query */
-      write_primary_da(term.child);
+      write_primary_da();
     when 'c':  /* RIS: restore power-on settings */
-      winimgs_clear(term_p);
-      term_reset(term_p, true);
+      winimgs_clear();
+      term_reset(true);
       if (term.reset_132) {
         win_set_chars(term.rows, 80);
         term.reset_132 = 0;
@@ -1368,7 +1394,7 @@ do_esc(struct term* term_p, uchar c)
       term.marg_bot = term.rows - 1;
       term.marg_left = 0;
       term.marg_right = term.cols - 1;
-      move(term_p, 0, 0, 0);
+      move(0, 0, 0);
       for (int i = 0; i < term.rows; i++) {
         termline *line = term.lines[i];
         for (int j = 0; j < term.cols; j++) {
@@ -1398,46 +1424,47 @@ do_esc(struct term* term_p, uchar c)
       }
     when CPAIR('%', '8') case_or CPAIR('%', 'G'):
       curs->utf = true;
-      term_update_cs(term_p);
+      term_update_cs();
     when CPAIR('%', '@'):
       curs->utf = false;
-      term_update_cs(term_p);
+      term_update_cs();
     when 'n':  /* LS2: Invoke G2 character set as GL */
       term.curs.gl = 2;
-      term_update_cs(term_p);
+      term_update_cs();
     when 'o':  /* LS3: Invoke G3 character set as GL */
       term.curs.gl = 3;
-      term_update_cs(term_p);
+      term_update_cs();
     when '~':  /* LS1R: Invoke G1 character set as GR */
       term.curs.gr = 1;
-      term_update_cs(term_p);
+      term_update_cs();
     when '}':  /* LS2R: Invoke G2 character set as GR */
       term.curs.gr = 2;
-      term_update_cs(term_p);
+      term_update_cs();
     when '|':  /* LS3R: Invoke G3 character set as GR */
       term.curs.gr = 3;
-      term_update_cs(term_p);
+      term_update_cs();
     when 'N':  /* SS2: Single Shift G2 character set */
       term.curs.cset_single = curs->csets[2];
     when 'O':  /* SS3: Single Shift G3 character set */
       term.curs.cset_single = curs->csets[3];
     when '6':  /* Back Index (DECBI), VT420 */
       if (curs->x == term.marg_left)
-        insdel_column(term_p, term.marg_left, false, 1);
+        insdel_column(term.marg_left, false, 1);
       else
-        move(term_p, curs->x - 1, curs->y, 1);
+        move(curs->x - 1, curs->y, 1);
     when '9':  /* Forward Index (DECFI), VT420 */
       if (curs->x == term.marg_right)
-        insdel_column(term_p, term.marg_left, true, 1);
+        insdel_column(term.marg_left, true, 1);
       else
-        move(term_p, curs->x + 1, curs->y, 1);
+        move(curs->x + 1, curs->y, 1);
   }
 }
 
+#define do_sgr(...) (do_sgr)(term_p, ##__VA_ARGS__)
 static void
-do_sgr(struct term* term_p)
+(do_sgr)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
  /* Set Graphics Rendition. */
   uint argc = term.csi_argc;
@@ -1538,7 +1565,7 @@ do_sgr(struct term* term_p)
             if (!arg_10)
               attr.attr &= ~FONTFAM_MASK;
             term.curs.oem_acs = arg_10;
-            term_update_cs(term_p);
+            term_update_cs();
           }
         }
       when 12 ... 20:
@@ -1725,13 +1752,14 @@ do_sgr(struct term* term_p)
   term.erase_char.attr.attr &= (ATTR_FGMASK | ATTR_BGMASK);
 }
 
+#define set_modes(...) (set_modes)(term_p, ##__VA_ARGS__)
 /*
  * Set terminal modes in escape arguments to state.
  */
 static void
-set_modes(struct term* term_p, bool state)
+(set_modes)(struct term* term_p, bool state)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   for (uint i = 0; i < term.csi_argc; i++) {
     uint arg = term.csi_argv[i];
@@ -1750,7 +1778,7 @@ set_modes(struct term* term_p, bool state)
             for (uint i = 0; i < lengthof(term.curs.csets); i++)
               term.curs.csets[i] = CSET_ASCII;
             term.curs.cset_single = CSET_ASCII;
-            term_update_cs(term_p);
+            term_update_cs();
           }
           else
             term.vt52_mode = 1;
@@ -1763,9 +1791,9 @@ set_modes(struct term* term_p, bool state)
             term.marg_bot = term.rows - 1;
             term.marg_left = 0;
             term.marg_right = term.cols - 1;
-            move(term_p, 0, 0, 0);
+            move(0, 0, 0);
             if (!term.deccolm_noclear)
-              term_erase(term_p, false, false, true, true);
+              term_erase(false, false, true, true);
           }
         when 5:  /* DECSCNM: reverse video */
           if (state != term.rvideo) {
@@ -1775,9 +1803,9 @@ set_modes(struct term* term_p, bool state)
         when 6:  /* DECOM: DEC origin mode */
           term.curs.origin = state;
           if (state)
-            move(term_p, term.marg_left, term.marg_top, 0);
+            move(term.marg_left, term.marg_top, 0);
           else
-            move(term_p, 0, 0, 0);
+            move(0, 0, 0);
         when 7:  /* DECAWM: auto wrap */
           term.autowrap = state;
           term.curs.wrapnext = false;
@@ -1792,7 +1820,7 @@ set_modes(struct term* term_p, bool state)
         when 12: /* AT&T 610 blinking cursor */
           term.cursor_blinkmode = state;
           term.cursor_invalid = true;
-          term_schedule_cblink(term_p);
+          term_schedule_cblink();
         when 25: /* DECTCEM: enable/disable cursor */
           term.cursor_on = state;
           // Should we set term.cursor_invalid or call term_invalidate ?
@@ -1849,34 +1877,34 @@ set_modes(struct term* term_p, bool state)
         when 47: /* alternate screen */
           if (!cfg.disable_alternate_screen) {
             term.selected = false;
-            term_switch_screen(term_p, state, false);
+            term_switch_screen(state, false);
             term.disptop = 0;
           }
         when 1047:       /* alternate screen */
           if (!cfg.disable_alternate_screen) {
             term.selected = false;
-            term_switch_screen(term_p, state, true);
+            term_switch_screen(state, true);
             term.disptop = 0;
           }
         when 1046:       /* enable/disable alternate screen switching */
           if (term.on_alt_screen && !state)
-            term_switch_screen(term_p, false, false);
+            term_switch_screen(false, false);
           cfg.disable_alternate_screen = !state;
         when 1048:       /* save/restore cursor */
           if (!cfg.disable_alternate_screen) {
             if (state)
-              save_cursor(term_p);
+              save_cursor();
             else
-              restore_cursor(term_p);
+              restore_cursor();
           }
         when 1049:       /* cursor & alternate screen */
           if (!cfg.disable_alternate_screen) {
             if (state)
-              save_cursor(term_p);
+              save_cursor();
             term.selected = false;
-            term_switch_screen(term_p, state, true);
+            term_switch_screen(state, true);
             if (!state)
-              restore_cursor(term_p);
+              restore_cursor();
             term.disptop = 0;
           }
         when 1061:       /* VT220 keyboard emulation */
@@ -1959,18 +1987,19 @@ set_modes(struct term* term_p, bool state)
         when 33: /* WYSTCURM: steady Wyse cursor */
           term.cursor_blinkmode = !state;
           term.cursor_invalid = true;
-          term_schedule_cblink(term);
+          term_schedule_cblink();
         when 34: /* WYULCURM: Wyse underline cursor */
           term.cursor_type = state;
           term.cursor_blinkmode = false;
           term.cursor_invalid = true;
-          term_schedule_cblink(term);
+          term_schedule_cblink();
 #endif
       }
     }
   }
 }
 
+#define get_mode(...) (get_mode)(term_p, ##__VA_ARGS__)
 /*
  * Get terminal mode.
             0 - not recognized
@@ -1980,9 +2009,9 @@ set_modes(struct term* term_p, bool state)
             4 - permanently reset
  */
 static int
-get_mode(struct term* term_p, bool privatemode, int arg)
+(get_mode)(struct term* term_p, bool privatemode, int arg)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (privatemode) { /* DECRQM for DECSET/DECRST: DEC private mode */
     switch (arg) {
@@ -2128,34 +2157,40 @@ get_mode(struct term* term_p, bool privatemode, int arg)
   }
 }
 
+#define push_mode(...) (push_mode)(term_p, ##__VA_ARGS__)
 static void
-push_mode(struct term* term_p, int mode, int val)
+(push_mode)(struct term* term_p, int mode, int val)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
+  struct mode_entry *&mode_stack = term.mode_stack;
+  int &mode_stack_len = term.mode_stack_len;
   
-  struct mode_entry * new_stack = renewn(term.mode_stack, term.mode_stack_len + 1);
+  struct mode_entry * new_stack = renewn(mode_stack, mode_stack_len + 1);
   if (new_stack) {
-    term.mode_stack = new_stack;
-    term.mode_stack[term.mode_stack_len].mode = mode;
-    term.mode_stack[term.mode_stack_len].val = val;
-    term.mode_stack_len++;
+    mode_stack = new_stack;
+    mode_stack[mode_stack_len].mode = mode;
+    mode_stack[mode_stack_len].val = val;
+    mode_stack_len++;
   }
 }
 
+#define pop_mode(...) (pop_mode)(term_p, ##__VA_ARGS__)
 static int
-pop_mode(struct term* term_p, int mode)
+(pop_mode)(struct term* term_p, int mode)
 {
-  struct term& term = *term_p;
-  
-  for (int i = term.mode_stack_len - 1; i >= 0; i--)
-    if (term.mode_stack[i].mode == mode) {
-      int val = term.mode_stack[i].val;
-      term.mode_stack_len--;
-      for (int j = i; j < term.mode_stack_len; j++)
-        term.mode_stack[j] = term.mode_stack[j + 1];
-      struct mode_entry * new_stack = renewn(term.mode_stack, term.mode_stack_len);
+  TERM_VAR_REF
+  struct mode_entry *&mode_stack = term.mode_stack;
+  int &mode_stack_len = term.mode_stack_len;
+ 
+  for (int i = mode_stack_len - 1; i >= 0; i--)
+    if (mode_stack[i].mode == mode) {
+      int val = mode_stack[i].val;
+      mode_stack_len--;
+      for (int j = i; j < mode_stack_len; j++)
+        mode_stack[j] = mode_stack[j + 1];
+      struct mode_entry * new_stack = renewn(mode_stack, mode_stack_len);
       if (new_stack)
-        term.mode_stack = new_stack;
+        mode_stack = new_stack;
       return val;
     }
   return -1;
@@ -2194,14 +2229,15 @@ pop_attrs(cattr * _ca, cattrflags * _caflagsmask)
   return true;
 }
 
+#define do_winop(...) (do_winop)(term_p, ##__VA_ARGS__)
 /*
  * dtterm window operations and xterm extensions.
    CSI Ps ; Ps ; Ps t
  */
 static void
-do_winop(struct term* term_p)
+(do_winop)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   int arg1 = term.csi_argv[1], arg2 = term.csi_argv[2];
   if (*cfg.suppress_win && contains(cfg.suppress_win, term.csi_argv[0]))
@@ -2263,49 +2299,50 @@ do_winop(struct term* term_p)
         win_maximise(-2);
       else if (arg1 == 1 || arg1 == 0)
         win_maximise(arg1 ? 2 : 0);
-    when 11: child_write(term.child, win_is_iconic() ? "\e[2t" : "\e[1t", 4);
+    when 11: child_write(win_is_iconic() ? "\e[2t" : "\e[1t", 4);
     when 13: {
       int x, y;
       win_get_scrpos(&x, &y, arg1 == 2);
-      child_printf(term.child, "\e[3;%u;%ut", (ushort)x, (ushort)y);
+      child_printf("\e[3;%u;%ut", (ushort)x, (ushort)y);
     }
     when 14: {
       int height, width;
       win_get_pixels(&height, &width, arg1 == 2);
-      child_printf(term.child, "\e[4;%d;%dt", height, width);
+      child_printf("\e[4;%d;%dt", height, width);
     }
     when 15: {
       int w, h;
       search_monitors(&w, &h, 0, false, 0);
-      child_printf(term.child, "\e[5;%d;%dt", h, w);
+      child_printf("\e[5;%d;%dt", h, w);
     }
-    when 16: child_printf(term.child, "\e[6;%d;%dt", cell_height, cell_width);
-    when 18: child_printf(term.child, "\e[8;%d;%dt", term.rows, term.cols);
+    when 16: child_printf("\e[6;%d;%dt", cell_height, cell_width);
+    when 18: child_printf("\e[8;%d;%dt", term.rows, term.cols);
     when 19: {
 #ifdef size_of_monitor_only
 #warning not what xterm reports
       int rows, cols;
       win_get_screen_chars(&rows, &cols);
-      child_printf(term.child, "\e[9;%d;%dt", rows, cols);
+      child_printf("\e[9;%d;%dt", rows, cols);
 #else
       int w, h;
       search_monitors(&w, &h, 0, false, 0);
-      child_printf(term.child, "\e[9;%d;%dt", h / cell_height, w / cell_width);
+      child_printf("\e[9;%d;%dt", h / cell_height, w / cell_width);
 #endif
     }
     when 22:
       if (arg1 == 0 || arg1 == 2)
-        win_tab_save_title(term_p);
+        win_tab_save_title();
     when 23:
       if (arg1 == 0 || arg1 == 2)
-        win_tab_restore_title(term_p);
+        win_tab_restore_title();
   }
 }
 
+#define do_csi(...) (do_csi)(term_p, ##__VA_ARGS__)
 static void
-do_csi(struct term* term_p, uchar c)
+(do_csi)(struct term* term_p, uchar c)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   term_cursor *curs = &term.curs;
   int arg0 = term.csi_argv[0], arg1 = term.csi_argv[1];
@@ -2321,86 +2358,86 @@ do_csi(struct term* term_p, uchar c)
 
   switch (CPAIR(term.esc_mod, c)) {
     when CPAIR('!', 'p'):     /* DECSTR: soft terminal reset */
-      term_reset(term_p, false);
+      term_reset(false);
     when 'b': {      /* REP: repeat preceding character */
       cattr cur_attr = term.curs.attr;
       term.curs.attr = last_attr;
       wchar h = last_high, c = last_char;
       for (int i = 0; i < arg0_def1; i++)
-        write_ucschar(term_p, h, c, last_width);
+        write_ucschar(h, c, last_width);
       term.curs.attr = cur_attr;
     }
     when 'A':        /* CUU: move up N lines */
-      move(term_p, curs->x, curs->y - arg0_def1, 1);
+      move(curs->x, curs->y - arg0_def1, 1);
     when 'e':        /* VPR: move down N lines */
-      move(term_p, curs->x, curs->y + arg0_def1, 1);
+      move(curs->x, curs->y + arg0_def1, 1);
     when 'B':        /* CUD: Cursor down */
-      move(term_p, curs->x, curs->y + arg0_def1, 1);
+      move(curs->x, curs->y + arg0_def1, 1);
     when 'c':        /* Primary DA: report device/terminal type */
       if (!arg0)
-        write_primary_da(term.child);
+        write_primary_da();
     when CPAIR('>', 'c'):     /* Secondary DA: report device version */
       if (!arg0) {
         if (cfg.charwidth % 10)
-          child_printf(term.child, "\e[>77;%u;%uc", DECIMAL_VERSION, UNICODE_VERSION);
+          child_printf("\e[>77;%u;%uc", DECIMAL_VERSION, UNICODE_VERSION);
         else
-          child_printf(term.child, "\e[>77;%u;0c", DECIMAL_VERSION);
+          child_printf("\e[>77;%u;0c", DECIMAL_VERSION);
       }
     when 'a':        /* HPR: move right N cols */
-      move(term_p, curs->x + arg0_def1, curs->y, 1);
+      move(curs->x + arg0_def1, curs->y, 1);
     when 'C':        /* CUF: Cursor right */
-      move(term_p, curs->x + arg0_def1, curs->y, 1);
+      move(curs->x + arg0_def1, curs->y, 1);
     when 'D':        /* CUB: move left N cols */
       if (arg0_def1 > curs->x) {
         arg0_def1 -= curs->x + 1;
-        move(term_p, 0, curs->y, 1);
-        write_backspace(term_p);
-        move(term_p, curs->x - arg0_def1, curs->y, 1);
+        move(0, curs->y, 1);
+        write_backspace();
+        move(curs->x - arg0_def1, curs->y, 1);
       }
       else
-        move(term_p, curs->x - arg0_def1, curs->y, 1);
+        move(curs->x - arg0_def1, curs->y, 1);
     when 'E':        /* CNL: move down N lines and CR */
-      move(term_p, 0, curs->y + arg0_def1, 1);
+      move(0, curs->y + arg0_def1, 1);
     when 'F':        /* CPL: move up N lines and CR */
-      move(term_p, 0, curs->y - arg0_def1, 1);
+      move(0, curs->y - arg0_def1, 1);
     when 'G' case_or '`': /* CHA or HPA: set horizontal position */
-      move(term_p, (curs->origin ? term.marg_left : 0) + arg0_def1 - 1,
+      move((curs->origin ? term.marg_left : 0) + arg0_def1 - 1,
            curs->y, 
            curs->origin ? 2 : 0);
     when 'd':        /* VPA: set vertical position */
-      move(term_p, curs->x,
+      move(curs->x,
            (curs->origin ? term.marg_top : 0) + arg0_def1 - 1,
            curs->origin ? 2 : 0);
     when 'H' case_or 'f':  /* CUP or HVP: set horiz. and vert. positions at once */
-      move(term_p, (curs->origin ? term.marg_left : 0) + (arg1 ?: 1) - 1,
+      move((curs->origin ? term.marg_left : 0) + (arg1 ?: 1) - 1,
            (curs->origin ? term.marg_top : 0) + arg0_def1 - 1,
            curs->origin ? 2 : 0);
     when 'I':  /* CHT: move right N TABs */
       for (int i = 0; i < arg0_def1; i++)
-        write_tab(term_p);
+        write_tab();
     when 'J' case_or CPAIR('?', 'J'):  /* ED/DECSED: (selective) erase in display */
       if (arg0 == 3) { /* Erase Saved Lines (xterm) */
         // don't care if (term.esc_mod) // ignore selective
-        term_clear_scrollback(term_p);
+        term_clear_scrollback();
         term.disptop = 0;
       }
       else if (arg0 <= 2) {
         bool above = arg0 == 1 || arg0 == 2;
         bool below = arg0 == 0 || arg0 == 2;
-        term_erase(term_p, term.esc_mod, false, above, below);
+        term_erase(term.esc_mod, false, above, below);
       }
     when 'K' case_or CPAIR('?', 'K'):  /* EL/DECSEL: (selective) erase in line */
       if (arg0 <= 2) {
         bool right = arg0 == 0 || arg0 == 2;
         bool left  = arg0 == 1 || arg0 == 2;
-        term_erase(term_p, term.esc_mod, true, left, right);
+        term_erase(term.esc_mod, true, left, right);
       }
     when 'L':        /* IL: insert lines */
       if (curs->y >= term.marg_top && curs->y <= term.marg_bot
        && curs->x >= term.marg_left && curs->x <= term.marg_right
          )
       {
-        term_do_scroll(term_p, curs->y, term.marg_bot, -arg0_def1, false);
+        term_do_scroll(curs->y, term.marg_bot, -arg0_def1, false);
         curs->x = term.marg_left;
       }
     when 'M':        /* DL: delete lines */
@@ -2408,29 +2445,29 @@ do_csi(struct term* term_p, uchar c)
        && curs->x >= term.marg_left && curs->x <= term.marg_right
          )
       {
-        term_do_scroll(term_p, curs->y, term.marg_bot, arg0_def1, true);
+        term_do_scroll(curs->y, term.marg_bot, arg0_def1, true);
         curs->x = term.marg_left;
       }
     when '@':        /* ICH: insert chars */
-      insert_char(term_p, arg0_def1);
+      insert_char(arg0_def1);
     when 'P':        /* DCH: delete chars */
-      insert_char(term_p, -arg0_def1);
+      insert_char(-arg0_def1);
     when 'h' case_or CPAIR('?', 'h'):  /* SM/DECSET: set (private) modes */
-      set_modes(term_p, true);
+      set_modes(true);
     when 'l' case_or CPAIR('?', 'l'):  /* RM/DECRST: reset (private) modes */
-      set_modes(term_p, false);
+      set_modes(false);
     when CPAIR('?', 's'): { /* Save DEC Private Mode (DECSET) values */
       int arg = term.csi_argv[0];
-      int val = get_mode(term_p, true, arg);
+      int val = get_mode(true, arg);
       if (val)
-        push_mode(term_p, arg, val);
+        push_mode(arg, val);
     }
     when CPAIR('?', 'r'): { /* Restore DEC Private Mode (DECSET) values */
       int arg = term.csi_argv[0];
-      int val = pop_mode(term_p, arg);
+      int val = pop_mode(arg);
       if (val >= 0) {
         term.csi_argc = 1;
-        set_modes(term_p, val & 1);
+        set_modes(val & 1);
       }
     }
     when CPAIR('#', '{') case_or CPAIR('#', 'p'): { /* Push video attributes onto stack (XTPUSHSGR) */
@@ -2495,10 +2532,10 @@ do_csi(struct term* term_p, uchar c)
     }
     when CPAIR('$', 'p'): { /* DECRQM: request (private) mode */
       int arg = term.csi_argv[0];
-      child_printf(term.child, "\e[%s%u;%u$y",
+      child_printf("\e[%s%u;%u$y",
                    esc_mod0 ? "?" : "",
                    arg,
-                   get_mode(term_p, esc_mod0, arg));
+                   get_mode(esc_mod0, arg));
     }
     when 'i' case_or CPAIR('?', 'i'):  /* MC: Media copy */
       if (arg0 == 5 && *cfg.printer) {
@@ -2513,7 +2550,7 @@ do_csi(struct term* term_p, uchar c)
       else if (arg0 == 4 && term.printing) {
         // Drop escape sequence from print buffer and finish printing.
         while (term.printbuf[--term.printbuf_pos] != '\e');
-        term_print_finish(term_p);
+        term_print_finish();
       }
       else if (arg0 == 10 && !term.esc_mod) {
         term_export_html(false);
@@ -2551,11 +2588,11 @@ do_csi(struct term* term_p, uchar c)
         }
       }
       else           /* SCOSC: save cursor */
-        save_cursor(term_p);
+        save_cursor();
     when 'u':        /* SCORC: restore cursor */
-      restore_cursor(term_p);
+      restore_cursor();
     when 'm':        /* SGR: set graphics rendition */
-      do_sgr(term_p);
+      do_sgr();
     when 't':        /* DECSLPP: set page size - ie window height */
      /*
       * VT340/VT420 sequence DECSLPP, for setting the height of the window.
@@ -2572,14 +2609,14 @@ do_csi(struct term* term_p, uchar c)
         }
       }
       else
-        do_winop(term_p);
+        do_winop();
     when 'S':        /* SU: Scroll up */
-      term_do_scroll(term_p, term.marg_top, term.marg_bot, arg0_def1, true);
+      term_do_scroll(term.marg_top, term.marg_bot, arg0_def1, true);
       curs->wrapnext = false;
     when 'T':        /* SD: Scroll down */
       /* Avoid clash with unsupported hilight mouse tracking mode sequence */
       if (term.csi_argc <= 1) {
-        term_do_scroll(term_p, term.marg_top, term.marg_bot, -arg0_def1, true);
+        term_do_scroll(term.marg_top, term.marg_bot, -arg0_def1, true);
         curs->wrapnext = false;
       }
     when CPAIR('*', '|'):     /* DECSNLS */
@@ -2603,15 +2640,15 @@ do_csi(struct term* term_p, uchar c)
       int n = min(arg0_def1, cols - curs->x);
       if (n > 0) {
         int p = curs->x;
-        term_check_boundary(term_p, curs->x, curs->y);
-        term_check_boundary(term_p, curs->x + n, curs->y);
+        term_check_boundary(curs->x, curs->y);
+        term_check_boundary(curs->x + n, curs->y);
         while (n--)
           line->chars[p++] = term.erase_char;
       }
     }
     when 'x':        /* DECREQTPARM: report terminal characteristics */
       if (arg0 <= 1)
-        child_printf(term.child, "\e[%u;1;1;120;120;1;0x", arg0 + 2);
+        child_printf("\e[%u;1;1;120;120;1;0x", arg0 + 2);
     when 'Z': {      /* CBT (Cursor Backward Tabulation) */
       int n = arg0_def1;
       while (--n >= 0 && curs->x > 0) {
@@ -2622,14 +2659,14 @@ do_csi(struct term* term_p, uchar c)
     }
     when CPAIR('$', 'w'):     /* DECTABSR: tab stop report */
       if (arg0 == 2) {
-        child_printf(term.child, "\eP2$");
+        child_printf("\eP2$");
         char sep = 'u';
         for (int i = 0; i < term.cols; i++)
           if (term.tabs[i]) {
-            child_printf(term.child, "%c%d", sep, i + 1);
+            child_printf("%c%d", sep, i + 1);
             sep = '/';
           }
-        child_printf(term.child, "\e\\");
+        child_printf("\e\\");
       }
     when CPAIR('>', 'm'):     /* xterm: modifier key setting */
       /* only the modifyOtherKeys setting is implemented */
@@ -2652,7 +2689,7 @@ do_csi(struct term* term_p, uchar c)
       if (term.cursor_blinks)
         term.cursor_blink_interval = arg1;
       term.cursor_invalid = true;
-      term_schedule_cblink(term_p);
+      term_schedule_cblink();
     when CPAIR('?', 'c'):  /* Cursor size (Linux console) */
       term.cursor_size = arg0;
     when CPAIR('"', 'q'):  /* DECSCA: select character protection attribute */
@@ -2662,24 +2699,24 @@ do_csi(struct term* term_p, uchar c)
       }
     when 'n':        /* DSR: device status report */
       if (arg0 == 6)  // CPR
-        child_printf(term.child, "\e[%d;%dR",
+        child_printf("\e[%d;%dR",
                      curs->y + 1 - (curs->origin ? term.marg_top : 0),
                      curs->x + 1 - (curs->origin ? term.marg_left : 0));
       else if (arg0 == 5)
-        child_write(term.child, "\e[0n", 4);
+        child_write("\e[0n", 4);
     when CPAIR('?', 'n'):  /* DSR, DEC specific */
       switch (arg0) {
         when 6:  // DECXCPR
-          child_printf(term.child, "\e[?%d;%dR",  // VT420: third parameter "page"...
+          child_printf("\e[?%d;%dR",  // VT420: third parameter "page"...
                        curs->y + 1 - (curs->origin ? term.marg_top : 0),
                        curs->x + 1 - (curs->origin ? term.marg_left : 0));
         when 15:
-          child_printf(term.child, "\e[?%un", 11 - !!*cfg.printer);
+          child_printf("\e[?%un", 11 - !!*cfg.printer);
         // DEC Locator
         when 53 case_or 55:
-          child_printf(term.child, "\e[?53n");
+          child_printf("\e[?53n");
         when 56:
-          child_printf(term.child, "\e[?57;1n");
+          child_printf("\e[?57;1n");
       }
     // DEC Locator
     when CPAIR('\'', 'z'): {  /* DECELR: enable locator reporting */
@@ -2718,8 +2755,8 @@ do_csi(struct term* term_p, uchar c)
     when CPAIR('\'', '|'): {  /* DECRQLP: request locator position */
       if (term.mouse_mode == MM_LOCATOR || term.locator_1_enabled) {
         int x, y, buttons;
-        win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
-        child_printf(term.child, "\e[1;%d;%d;%d;0&w", buttons, y, x);
+        win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
+        child_printf("\e[1;%d;%d;%d;0&w", buttons, y, x);
         term.locator_1_enabled = false;
       }
       else {
@@ -2729,7 +2766,7 @@ do_csi(struct term* term_p, uchar c)
     when CPAIR('\'', 'w'): {  /* DECEFR: enable filter rectangle */
       int arg2 = term.csi_argv[2], arg3 = term.csi_argv[3];
       int x, y, buttons;
-      win_get_locator_info(term_p, &x, &y, &buttons, term.locator_by_pixels);
+      win_get_locator_info(&x, &y, &buttons, term.locator_by_pixels);
       term.locator_top = arg0 ?: y;
       term.locator_left = arg1 ?: x;
       term.locator_bottom = arg2 ?: y;
@@ -2767,22 +2804,22 @@ do_csi(struct term* term_p, uchar c)
 #define urows (uint) term.rows
 #define ucols (uint) term.cols
     when CPAIR('$', 'v'):  /* DECCRA: VT420 Copy Rectangular Area */
-      copy_rect(term_p, arg0_def1, arg1 ?: 1, 
+      copy_rect(arg0_def1, arg1 ?: 1, 
                 term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols,
                 // skip term.csi_argv[4] (source page)
                 term.csi_argv[5] ?: urows, term.csi_argv[6] ?: ucols
                 // skip term.csi_argv[7] (destination page)
                 );
     when CPAIR('$', 'x'):  /* DECFRA: VT420 Fill Rectangular Area */
-      fill_rect(term_p, arg0 ?: ' ', curs->attr, false,
+      fill_rect(arg0 ?: ' ', curs->attr, false,
                 arg1 ?: 1, term.csi_argv[2] ?: 1,
                 term.csi_argv[3] ?: urows, term.csi_argv[4] ?: ucols);
     when CPAIR('$', 'z'):  /* DECERA: VT420 Erase Rectangular Area */
-      fill_rect(term_p, ' ', term.erase_char.attr, false,
+      fill_rect(' ', term.erase_char.attr, false,
                 arg0_def1, arg1 ?: 1,
                 term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols);
     when CPAIR('$', '{'):  /* DECSERA: VT420 Selective Erase Rectangular Area */
-      fill_rect(term_p, ' ', term.erase_char.attr, true,
+      fill_rect(' ', term.erase_char.attr, true,
                 arg0_def1, arg1 ?: 1,
                 term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols);
     when CPAIR('*', 'x'):  /* DECSACE: VT420 Select Attribute Change Extent */
@@ -2812,55 +2849,56 @@ do_csi(struct term* term_p, uchar c)
         }
       a1 &= ~a2;
       if (c == 'r')
-        attr_rect(term_p, a1, a2, 0, arg0_def1, arg1 ?: 1,
+        attr_rect(a1, a2, 0, arg0_def1, arg1 ?: 1,
                   term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols);
       else
-        attr_rect(term_p, 0, 0, a1, arg0_def1, arg1 ?: 1,
+        attr_rect(0, 0, a1, arg0_def1, arg1 ?: 1,
                   term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols);
     }
     when CPAIR('*', 'y'): { /* DECRQCRA: VT420 Request Rectangular Checksum */
-      uint s = sum_rect(term_p, term.csi_argv[2] ?: 1, term.csi_argv[3] ?: 1,
+      uint s = sum_rect(term.csi_argv[2] ?: 1, term.csi_argv[3] ?: 1,
                         term.csi_argv[4] ?: urows, term.csi_argv[5] ?: ucols);
-      child_printf(term.child, "\eP%u!~%04X\e\\", arg0, -s & 0xFFFF);
+      child_printf("\eP%u!~%04X\e\\", arg0, -s & 0xFFFF);
     }
     when CPAIR('\'', '}'):  /* DECIC: VT420 Insert Columns */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
        && curs->y >= term.marg_top && curs->y <= term.marg_bot
          )
-        insdel_column(term_p, curs->x, false, arg0_def1);
+        insdel_column(curs->x, false, arg0_def1);
     when CPAIR('\'', '~'):  /* DECDC: VT420 Delete Columns */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
        && curs->y >= term.marg_top && curs->y <= term.marg_bot
          )
-        insdel_column(term_p, curs->x, true, arg0_def1);
+        insdel_column(curs->x, true, arg0_def1);
     when CPAIR(' ', 'A'):     /* SR: ECMA-48 shift columns right */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
        && curs->y >= term.marg_top && curs->y <= term.marg_bot
          )
-        insdel_column(term_p, term.marg_left, false, arg0_def1);
+        insdel_column(term.marg_left, false, arg0_def1);
     when CPAIR(' ', '@'):     /* SR: ECMA-48 shift columns left */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
        && curs->y >= term.marg_top && curs->y <= term.marg_bot
          )
-        insdel_column(term_p, term.marg_left, true, arg0_def1);
+        insdel_column(term.marg_left, true, arg0_def1);
     when CPAIR('#', 't'):  /* application scrollbar */
       win_set_scrollview(arg0, arg1, term.csi_argc > 2 ? (int)term.csi_argv[2] : -1);
     when CPAIR('<', 't'):  /* TTIMEST: change IME state (Tera Term) */
       win_set_ime(arg0);
     when CPAIR('<', 's'):  /* TTIMESV: save IME state (Tera Term) */
-      push_mode(term_p, -1, win_get_ime());
+      push_mode(-1, win_get_ime());
     when CPAIR('<', 'r'):  /* TTIMERS: restore IME state (Tera Term) */
-      win_set_ime(pop_mode(term_p, -1));
+      win_set_ime(pop_mode(-1));
   }
 }
 
+#define fill_image_space(...) (fill_image_space)(term_p, ##__VA_ARGS__)
 /*
  * Fill image area with sixel placeholder characters and set cursor.
  */
 static void
-fill_image_space(struct term* term_p, imglist * img)
+(fill_image_space)(struct term* term_p, imglist * img)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   cattrflags attr0 = term.curs.attr.attr;
   // refer SIXELCH cells to image for display/discard management
@@ -2875,7 +2913,7 @@ fill_image_space(struct term* term_p, imglist * img)
       term.curs.x = 0;
       //printf("SIXELCH @%d imgi %d\n", y, term.curs.attr.imgi);
       for (int x = x0; x < x0 + img->width && x < term.cols; ++x)
-        write_char(term_p, SIXELCH, 1);
+        write_char(SIXELCH, 1);
     }
     term.curs.y = y0;
     term.curs.x = x0;
@@ -2884,14 +2922,14 @@ fill_image_space(struct term* term_p, imglist * img)
       term.curs.x = x0;
       //printf("SIXELCH @%d imgi %d\n", term.curs.y, term.curs.attr.imgi);
       for (int x = x0; x < x0 + img->width && x < term.cols; ++x)
-        write_char(term_p, SIXELCH, 1);
+        write_char(SIXELCH, 1);
       if (i == img->height - 1) {  // in the last line
         if (!term.sixel_scrolls_right) {
-          write_linefeed(term_p);
+          write_linefeed();
           term.curs.x = term.sixel_scrolls_left ? 0: x0;
         }
       } else {
-        write_linefeed(term_p);
+        write_linefeed();
       }
     }
   }
@@ -2899,10 +2937,11 @@ fill_image_space(struct term* term_p, imglist * img)
   term.curs.attr.attr = attr0;
 }
 
+#define do_dcs(...) (do_dcs)(term_p, ##__VA_ARGS__)
 static void
-do_dcs(struct term* term_p)
+(do_dcs)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   // Implemented:
   // DECRQSS (Request Status String)
@@ -2926,7 +2965,7 @@ do_dcs(struct term* term_p)
       term_cset cs = lookup_cset(nrc_code, 7, false);
       if (cs) {
         term.curs.decsupp = cs;
-        term_update_cs(term_p);
+        term_update_cs();
         return;
       }
     }
@@ -2992,7 +3031,7 @@ do_dcs(struct term* term_p)
       img->cwidth = st->max_x;
       img->cheight = st->max_y;
 
-      fill_image_space(term_p, img);
+      fill_image_space(img);
 
       // add image to image list;
       // replace previous for optimisation in some cases
@@ -3160,27 +3199,27 @@ do_dcs(struct term* term_p)
 
         p += sprintf(p, "m\e\\");  // m for SGR, followed by ST
 
-        child_write(term.child, buf, p - buf);
+        child_write(buf, p - buf);
       } else if (!strcmp(s, "r")) {  // DECSTBM (scrolling region margins)
-        child_printf(term.child, "\eP1$r%u;%ur\e\\", term.marg_top + 1, term.marg_bot + 1);
+        child_printf("\eP1$r%u;%ur\e\\", term.marg_top + 1, term.marg_bot + 1);
       } else if (!strcmp(s, "s")) {  // DECSLRM (left and right margins)
-        child_printf(term.child, "\eP1$r%u;%us\e\\", term.marg_left + 1, term.marg_right + 1);
+        child_printf("\eP1$r%u;%us\e\\", term.marg_left + 1, term.marg_right + 1);
       } else if (!strcmp(s, "\"p")) {  // DECSCL (conformance level)
-        child_printf(term.child, "\eP1$r%u;%u\"p\e\\", 65, 1);  // report as VT500 S7C1T
+        child_printf("\eP1$r%u;%u\"p\e\\", 65, 1);  // report as VT500 S7C1T
       } else if (!strcmp(s, "\"q")) {  // DECSCA (protection attribute)
-        child_printf(term.child, "\eP1$r%u\"q\e\\", (attr.attr & ATTR_PROTECTED) != 0);
+        child_printf("\eP1$r%u\"q\e\\", (attr.attr & ATTR_PROTECTED) != 0);
       } else if (!strcmp(s, " q")) {  // DECSCUSR (cursor style)
-        child_printf(term.child, "\eP1$r%u q\e\\", 
+        child_printf("\eP1$r%u q\e\\", 
                      (term.cursor_type >= 0 ? term.cursor_type * 2 : 0) + 1
                      + !(term.cursor_blinks & 1));
       } else if (!strcmp(s, "t") && term.rows >= 24) {  // DECSLPP (lines)
-        child_printf(term.child, "\eP1$r%ut\e\\", term.rows);
+        child_printf("\eP1$r%ut\e\\", term.rows);
       } else if (!strcmp(s, "$|")) {  // DECSCPP (columns)
-        child_printf(term.child, "\eP1$r%u$|\e\\", term.cols);
+        child_printf("\eP1$r%u$|\e\\", term.cols);
       } else if (!strcmp(s, "*|")) {  // DECSNLS (lines)
-        child_printf(term.child, "\eP1$r%u*|\e\\", term.rows);
+        child_printf("\eP1$r%u*|\e\\", term.rows);
       } else {
-        child_printf(term.child, "\eP0$r%s\e\\", s);
+        child_printf("\eP0$r%s\e\\", s);
       }
     }
     break;
@@ -3191,10 +3230,11 @@ do_dcs(struct term* term_p)
   }
 }
 
+#define do_colour_osc(...) (do_colour_osc)(term_p, ##__VA_ARGS__)
 static void
-do_colour_osc(struct term* term_p, bool has_index_arg, uint i, bool reset)
+(do_colour_osc)(struct term* term_p, bool has_index_arg, uint i, bool reset)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   char *s = term.cmd_buf;
   int index;
@@ -3230,24 +3270,25 @@ do_colour_osc(struct term* term_p, bool has_index_arg, uint i, bool reset)
   if (reset)
     win_set_colour((colour_i)i, (colour)-1);
   else if (!strcmp(s, "?")) {
-    child_printf(term.child, "\e]%u;", term.cmd_num);
+    child_printf("\e]%u;", term.cmd_num);
     if (has_index_arg)
-      child_printf(term.child, "%u;", index);
+      child_printf("%u;", index);
     c = i < COLOUR_NUM ? colours[i] : 0;  // should not be affected by rvideo
-    child_printf(term.child, "rgb:%04x/%04x/%04x\e\\",
+    child_printf("rgb:%04x/%04x/%04x\e\\",
                  red(c) * 0x101, green(c) * 0x101, blue(c) * 0x101);
   }
   else if (parse_colour(s, &c))
     win_set_colour((colour_i)i, c);
 }
 
+#define do_clipboard(...) (do_clipboard)(term_p, ##__VA_ARGS__)
 /*
  * OSC52: \e]52;[cp0-6];?|base64-string\07"
  * Only system clipboard is supported now.
  */
-static void do_clipboard(struct term* term_p)
+static void (do_clipboard)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   char *s = term.cmd_buf;
   char *output;
@@ -3284,13 +3325,14 @@ static void do_clipboard(struct term* term_p)
   free(output);
 }
 
+#define do_cmd(...) (do_cmd)(term_p, ##__VA_ARGS__)
 /*
  * Process OSC command sequences.
  */
 static void
-do_cmd(struct term* term_p)
+(do_cmd)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   char *s = term.cmd_buf;
   s[term.cmd_len] = 0;
@@ -3303,20 +3345,20 @@ do_cmd(struct term* term_p)
   switch (term.cmd_num) {
     when 0 case_or 2: {
 	  wchar *ws = cs__mbstowcs(s);
-	  win_tab_set_title(term_p, ws);  // ignore icon title
+	  win_tab_set_title(ws);  // ignore icon title
 	  free(ws);
     }
-    when 4:   do_colour_osc(term_p, true, 4, false);
-    when 5:   do_colour_osc(term_p, true, 5, false);
+    when 4:   do_colour_osc(true, 4, false);
+    when 5:   do_colour_osc(true, 5, false);
     when 6 case_or 106: {
       int col, on;
       if (sscanf(term.cmd_buf, "%u;%u", &col, &on) == 2)
         if (col == 0)
           term.enable_bold_colour = on;
     }
-    when 104: do_colour_osc(term_p, true, 4, true);
-    when 105: do_colour_osc(term_p, true, 5, true);
-    when 10:  do_colour_osc(term_p, false, FG_COLOUR_I, false);
+    when 104: do_colour_osc(true, 4, true);
+    when 105: do_colour_osc(true, 5, true);
+    when 10:  do_colour_osc(false, FG_COLOUR_I, false);
     when 11:  if (strchr("*_%=", *term.cmd_buf)) {
                 wchar * bn = cs__mbstowcs(term.cmd_buf);
                 wstrset(&cfg.background, bn);
@@ -3326,15 +3368,15 @@ do_cmd(struct term* term_p)
                 win_invalidate_all(true);
               }
               else
-                do_colour_osc(term_p, false, BG_COLOUR_I, false);
-    when 12:  do_colour_osc(term_p, false, CURSOR_COLOUR_I, false);
-    when 17:  do_colour_osc(term_p, false, SEL_COLOUR_I, false);
-    when 19:  do_colour_osc(term_p, false, SEL_TEXT_COLOUR_I, false);
-    when 110: do_colour_osc(term_p, false, FG_COLOUR_I, true);
-    when 111: do_colour_osc(term_p, false, BG_COLOUR_I, true);
-    when 112: do_colour_osc(term_p, false, CURSOR_COLOUR_I, true);
-    when 117: do_colour_osc(term_p, false, SEL_COLOUR_I, true);
-    when 119: do_colour_osc(term_p, false, SEL_TEXT_COLOUR_I, true);
+                do_colour_osc(false, BG_COLOUR_I, false);
+    when 12:  do_colour_osc(false, CURSOR_COLOUR_I, false);
+    when 17:  do_colour_osc(false, SEL_COLOUR_I, false);
+    when 19:  do_colour_osc(false, SEL_TEXT_COLOUR_I, false);
+    when 110: do_colour_osc(false, FG_COLOUR_I, true);
+    when 111: do_colour_osc(false, BG_COLOUR_I, true);
+    when 112: do_colour_osc(false, CURSOR_COLOUR_I, true);
+    when 117: do_colour_osc(false, SEL_COLOUR_I, true);
+    when 119: do_colour_osc(false, SEL_TEXT_COLOUR_I, true);
     when 7:  // Set working directory (from Mac Terminal) for Alt+F2
       // extract dirname from file://host/path scheme
       if (!strncmp(s, "file:", 5))
@@ -3344,10 +3386,10 @@ do_cmd(struct term* term_p)
       else if (!strncmp(s, "///", 3))
         s += 2;
       if (!*s || *s == '/')
-        child_set_fork_dir(term.child, s);
+        child_set_fork_dir(s);
     when 701:  // Set/get locale (from urxvt).
       if (!strcmp(s, "?"))
-        child_printf(term.child, "\e]701;%s\e\\", cs_get_locale());
+        child_printf("\e]701;%s\e\\", cs_get_locale());
       else
         cs_set_locale(s);
     when 7721:  // Copy window title to clipboard.
@@ -3367,7 +3409,7 @@ do_cmd(struct term* term_p)
     }
     when 7770:  // Change font size.
       if (!strcmp(s, "?"))
-        child_printf(term.child, "\e]7770;%u\e\\", win_get_font_size());
+        child_printf("\e]7770;%u\e\\", win_get_font_size());
       else {
         char *end;
         int i = strtol(s, &end, 10);
@@ -3380,7 +3422,7 @@ do_cmd(struct term* term_p)
       }
     when 7777:  // Change font and window size.
       if (!strcmp(s, "?"))
-        child_printf(term.child, "\e]7777;%u\e\\", win_get_font_size());
+        child_printf("\e]7777;%u\e\\", win_get_font_size());
       else {
         char *end;
         int i = strtol(s, &end, 10);
@@ -3409,7 +3451,7 @@ do_cmd(struct term* term_p)
           s += sprintf(s, "%u", wcs[i]);
       }
       *s = 0;
-      child_printf(term.child, "\e]7771;!%s\e\\", term.cmd_buf);
+      child_printf("\e]7771;!%s\e\\", term.cmd_buf);
     }
     when 77119: {  // Indic and Extra characters wide handling
       int what = atoi(s);
@@ -3420,12 +3462,12 @@ do_cmd(struct term* term_p)
       if (what & 2)
         term.wide_extra = true;
     }
-    when 52: do_clipboard(term_p);
+    when 52: do_clipboard();
     when 50: {
       uint ff = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
       if (!strcmp(s, "?")) {
         char * fn = cs__wcstombs(win_get_font(ff) ?: W(""));
-        child_printf(term.child, "\e]50;%s\e\\", fn);
+        child_printf("\e]50;%s\e\\", fn);
         free(fn);
       }
       else {
@@ -3584,7 +3626,7 @@ do_cmd(struct term* term_p)
           short left = term.curs.x;
           short top = term.virtuallines + term.curs.y;
           if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height)) {
-            fill_image_space(term_p, img);
+            fill_image_space(img);
 
             if (term.imgs.first == NULL) {
               term.imgs.first = term.imgs.last = img;
@@ -3605,9 +3647,9 @@ do_cmd(struct term* term_p)
 }
 
 void
-term_print_finish(struct term* term_p)
+(term_print_finish)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.printing) {
     printer_write(term.printbuf, term.printbuf_pos);
@@ -3619,14 +3661,15 @@ term_print_finish(struct term* term_p)
   }
 }
 
+#define term_do_write(...) (term_do_write)(term_p, ##__VA_ARGS__)
 static void
-term_do_write(struct term* term_p, const char *buf, uint len)
+(term_do_write)(struct term* term_p, const char *buf, uint len)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   // Reset cursor blinking.
   term.cblinker = 1;
-  term_schedule_cblink(term_p);
+  term_schedule_cblink();
 
   short oldy = term.curs.y;
 
@@ -3657,7 +3700,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
           term.print_state = 3;
         else if (c == 'i' && term.print_state == 3) {
           term.printbuf_pos -= 4;
-          term_print_finish(term_p);
+          term_print_finish();
         }
         else
           term.print_state = 0;
@@ -3672,7 +3715,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         if (term.curs.oem_acs && !memchr("\e\n\r\b", c, 4)) {
           if (term.curs.oem_acs == 2)
             c |= 0x80;
-          write_char(term_p, cs_btowc_glyph(c), 1);
+          write_char(cs_btowc_glyph(c), 1);
           continue;
         }
 
@@ -3711,7 +3754,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
             if (wc)
               pos--;
           when -1: // Encoding error
-            write_error(term_p);
+            write_error();
             if (term.in_mb_char || term.high_surrogate)
               pos--;
             term.high_surrogate = 0;
@@ -3743,19 +3786,19 @@ term_do_write(struct term* term_p, const char *buf, uint len)
 #else
             int width = xcwidth(combine_surrogates(hwc, wc));
 #endif
-            write_ucschar(term_p, hwc, wc, width);
+            write_ucschar(hwc, wc, width);
           }
           else
-            write_error(term_p);
+            write_error();
           continue;
         }
 
         if (hwc) // Previous high surrogate not followed by low one
-          write_error(term_p);
+          write_error();
 
         // ASCII shortcut for some speedup (~5%), earliest applied here
         if (wc >= ' ' && wc <= 0x7E && cset == CSET_ASCII) {
-          write_ucschar(term_p, 0, wc, 1);
+          write_ucschar(0, wc, 1);
           continue;
         }
 
@@ -3766,17 +3809,17 @@ term_do_write(struct term* term_p, const char *buf, uint len)
 
         // Control characters
         if (wc < 0x20 || wc == 0x7F) {
-          if (!do_ctrl(term_p, wc) && c == wc) {
+          if (!do_ctrl(wc) && c == wc) {
             wc = cs_btowc_glyph(c);
             if (wc != c)
-              write_char(term_p, wc, 1);
+              write_char(wc, 1);
           }
           continue;
         }
 
         // Non-characters
         if (wc == 0xFFFE || wc == 0xFFFF) {
-          write_error(term_p);
+          write_error();
           continue;
         }
 
@@ -4020,30 +4063,30 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         }
 #endif
 
-        write_ucschar(term_p, 0, wc, width);
+        write_ucschar(0, wc, width);
         term.curs.attr.attr = asav;
       } // end term_write switch (term.state) when NORMAL
 
       when VT52_Y:
         term.cmd_len = 0;
-        term_push_cmd(term_p, c);
+        term_push_cmd(c);
         term.state = VT52_X;
 
       when VT52_X:
-        term_push_cmd(term_p, c);
-        do_vt52_move(term_p);
+        term_push_cmd(c);
+        do_vt52_move();
 
       when VT52_FG:
-        do_vt52_colour(term_p, true, c);
+        do_vt52_colour(true, c);
 
       when VT52_BG:
-        do_vt52_colour(term_p, false, c);
+        do_vt52_colour(false, c);
 
       when ESCAPE case_or CMD_ESCAPE:
         if (term.vt52_mode)
-          do_vt52(term_p, c);
+          do_vt52(c);
         else if (c < 0x20)
-          do_ctrl(term_p, c);
+          do_ctrl(c);
         else if (c < 0x30) {
           //term.esc_mod = term.esc_mod ? 0xFF : c;
           if (term.esc_mod) {
@@ -4059,17 +4102,17 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         }
         else if (c == '\\' && term.state == CMD_ESCAPE) {
           /* Process DCS or OSC sequence if we see ST. */
-          do_cmd(term_p);
+          do_cmd();
           term.state = NORMAL;
         }
         else {
-          do_esc(term_p, c);
+          do_esc(c);
           // term.state: NORMAL/CSI_ARGS/OSC_START/DCS_START/IGNORE_STRING
         }
 
       when CSI_ARGS:
         if (c < 0x20)
-          do_ctrl(term_p, c);
+          do_ctrl(c);
         else if (c == ';') {
           if (term.csi_argc < lengthof(term.csi_argv))
             term.csi_argc++;
@@ -4105,7 +4148,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
           }
         }
         else {
-          do_csi(term_p, c);
+          do_csi(c);
           term.state = NORMAL;
         }
 
@@ -4150,7 +4193,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
           when ';':
             term.state = CMD_STRING;
           when '\a':
-            do_cmd(term_p);
+            do_cmd();
             term.state = NORMAL;
           when '\e':
             term.state = CMD_ESCAPE;
@@ -4165,7 +4208,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         if (isxdigit(c)) {
           // The dodgy Linux palette sequence: keep going until we have
           // seven hexadecimal digits.
-          term_push_cmd(term_p, c);
+          term_push_cmd(c);
           if (term.cmd_len == 7) {
             uint n, r, g, b;
             sscanf(term.cmd_buf, "%1x%2x%2x%2x", &n, &r, &g, &b);
@@ -4188,13 +4231,13 @@ term_do_write(struct term* term_p, const char *buf, uint len)
           when '\n' case_or '\r':
             term.state = NORMAL;
           when '\a':
-            do_cmd(term_p);
+            do_cmd();
             term.state = NORMAL;
           when '\e':
             term.state = CMD_ESCAPE;
             break;
           default:
-            term_push_cmd(term_p, c);
+            term_push_cmd(c);
         }
 
       when IGNORE_STRING:
@@ -4212,7 +4255,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         switch (c) {
           when '@' ... '~':  /* DCS cmd final byte */
             term.dcs_cmd = c;
-            do_dcs(term_p);
+            do_dcs();
             term.state = DCS_PASSTHROUGH;
           when '\e':
             term.state = DCS_ESCAPE;
@@ -4237,7 +4280,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         switch (c) {
           when '@' ... '~':  /* DCS cmd final byte */
             term.dcs_cmd = term.dcs_cmd << 8 | c;
-            do_dcs(term_p);
+            do_dcs();
             term.state = DCS_PASSTHROUGH;
           when '\e':
             term.state = DCS_ESCAPE;
@@ -4259,7 +4302,7 @@ term_do_write(struct term* term_p, const char *buf, uint len)
         switch (c) {
           when '@' ... '~':  /* DCS cmd final byte */
             term.dcs_cmd = term.dcs_cmd << 8 | c;
-            do_dcs(term_p);
+            do_dcs();
             term.state = DCS_PASSTHROUGH;
           when '\e':
             term.state = DCS_ESCAPE;
@@ -4280,8 +4323,8 @@ term_do_write(struct term* term_p, const char *buf, uint len)
             term.esc_mod = 0;
             break;
           default:
-            if (!term_push_cmd(term_p, c)) {
-              do_dcs(term_p);
+            if (!term_push_cmd(c)) {
+              do_dcs();
               term.cmd_buf[0] = c;
               term.cmd_len = 1;
             }
@@ -4296,31 +4339,31 @@ term_do_write(struct term* term_p, const char *buf, uint len)
 
       when DCS_ESCAPE:
         if (c < 0x20) {
-          do_ctrl(term_p, c);
+          do_ctrl(c);
           term.state = NORMAL;
         } else if (c < 0x30) {
           term.esc_mod = term.esc_mod ? 0xFF : c;
           term.state = ESCAPE;
         } else if (c == '\\') {
           /* Process DCS sequence if we see ST. */
-          do_dcs(term_p);
+          do_dcs();
           term.state = NORMAL;
         } else {
           term.state = ESCAPE;
           term.imgs.parser_state = NULL;
-          do_esc(term_p, c);
+          do_esc(c);
         }
     }
   }
 
   if (cfg.ligatures_support > 1) {
     // refresh ligature rendering in old cursor line
-    term_invalidate(term_p, 0, oldy, term.cols - 1, oldy);
+    term_invalidate(0, oldy, term.cols - 1, oldy);
   }
 
   // Update search match highlighting
   //term_schedule_search_partial_update();
-  term_schedule_search_update(term_p);
+  term_schedule_search_update();
 
   // Update screen
   win_schedule_update();
@@ -4334,12 +4377,12 @@ term_do_write(struct term* term_p, const char *buf, uint len)
 
 /* Empty the input buffer */
 void
-term_flush(struct term* term_p)
+(term_flush)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.suspbuf) {
-    term_do_write(term_p, term.suspbuf, term.suspbuf_pos);
+    term_do_write(term.suspbuf, term.suspbuf_pos);
     free(term.suspbuf);
     term.suspbuf = 0;
     term.suspbuf_pos = 0;
@@ -4348,9 +4391,9 @@ term_flush(struct term* term_p)
 }
 
 void
-term_write(struct term* term_p, const char *buf, uint len)
+(term_write)(struct term* term_p, const char *buf, uint len)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
  /*
     During drag-selects, some people do not wish to process terminal output,
@@ -4358,10 +4401,10 @@ term_write(struct term* term_p, const char *buf, uint len)
     Therefore, we maintain a suspend-output-on-selection buffer which 
     can grow up to a configurable size.
   */
-  if (term_selecting(term_p) && cfg.suspbuf_max > 0) {
+  if (term_selecting() && cfg.suspbuf_max > 0) {
     // if buffer size would be exceeded, flush; prevent uint overflow
     if (len > cfg.suspbuf_max - term.suspbuf_pos)
-      term_flush(term_p);
+      term_flush();
     // if buffer length does not exceed max size, append output
     if (len <= cfg.suspbuf_max - term.suspbuf_pos) {
       // make sure buffer is large enough
@@ -4377,7 +4420,7 @@ term_write(struct term* term_p, const char *buf, uint len)
     // in this case, we've either flushed already or didn't need to
   }
 
-  term_do_write(term_p, buf, len);
+  term_do_write(buf, len);
 }
 
 }

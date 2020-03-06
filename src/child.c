@@ -60,8 +60,9 @@ bool logging = false;
 #endif
 
 
+#define childerror(...) (childerror)(term_p, ##__VA_ARGS__)
 static void
-childerror(struct term* term, char * action, bool from_fork, int errno_code, int code)
+(childerror)(struct term* term_p, char * action, bool from_fork, int errno_code, int code)
 {
 #if CYGWIN_VERSION_API_MINOR >= 66
   bool utf8 = strcmp(nl_langinfo(CODESET), "UTF-8") == 0;
@@ -80,20 +81,20 @@ childerror(struct term* term, char * action, bool from_fork, int errno_code, int
   char s[33];
   bool colour_code = code && !errno_code;
   sprintf(s, "\033[30;%dm\033[K", from_fork ? 41 : colour_code ? code : 43);
-  term_write(term, s, strlen(s));
-  term_write(term, action, strlen(action));
+  term_write(s, strlen(s));
+  term_write(action, strlen(action));
   if (errno_code) {
     char * err = strerror(errno_code);
     if (from_fork && errno_code == ENOENT)
       err = _("There are no available terminals");
-    term_write(term, ": ", 2);
-    term_write(term, err, strlen(err));
+    term_write(": ", 2);
+    term_write(err, strlen(err));
   }
   if (code && !colour_code) {
     sprintf(s, " (%d)", code);
-    term_write(term, s, strlen(s));
+    term_write(s, strlen(s));
   }
-  term_write(term, ".\033[0m\r\n", 7);
+  term_write(".\033[0m\r\n", 7);
 
   if (oldloc) {
     cs_set_locale(oldloc);
@@ -110,7 +111,7 @@ open_logfile(bool toggling)
     // and thus avoid the locale trick (2.2.3)
 
     if (0 == wcscmp(cfg.log, W("-"))) {
-      child_log_fd = fileno(stdout);
+      log_fd = fileno(stdout);
       logging = true;
     }
     else {
@@ -142,8 +143,8 @@ open_logfile(bool toggling)
         log = logf;
       }
 
-      child_log_fd = open(log, O_WRONLY | O_CREAT | O_EXCL, 0600);
-      if (child_log_fd < 0) {
+      log_fd = open(log, O_WRONLY | O_CREAT | O_EXCL, 0600);
+      if (log_fd < 0) {
         // report message and filename:
         wchar * wpath = path_posix_to_win_w(log);
         char * upath = cs__wcstoutf(wpath);
@@ -159,8 +160,10 @@ open_logfile(bool toggling)
           free(errmsg);
         }
         else {
-          childerror(win_active_terminal(), msg, false, errno, 0);
-          childerror(win_active_terminal(), upath, false, 0, 0);
+          struct term *term_p = win_active_terminal();
+
+          childerror(msg, false, errno, 0);
+          childerror(upath, false, 0, 0);
         }
         free(upath);
         free(wpath);
@@ -178,59 +181,61 @@ toggle_logging()
 {
   if (logging)
     logging = false;
-  else if (child_log_fd >= 0)
+  else if (log_fd >= 0)
     logging = true;
   else
     open_logfile(true);
 }
 
 void
-child_update_charset(struct child * child)
+(child_update_charset)(struct child * child_p)
 {
+  CHILD_VAR_REF  
+  
 #ifdef IUTF8
-  if (child->pty_fd >= 0) {
+  if (pty_fd >= 0) {
     // Terminal line settings
     struct termios attr;
-    tcgetattr(child->pty_fd, &attr);
+    tcgetattr(pty_fd, &attr);
     bool utf8 = strcmp(nl_langinfo(CODESET), "UTF-8") == 0;
     if (utf8)
       attr.c_iflag |= IUTF8;
     else
       attr.c_iflag &= ~IUTF8;
-    tcsetattr(child->pty_fd, TCSANOW, &attr);
+    tcsetattr(pty_fd, TCSANOW, &attr);
   }
 #endif
 }
 
 void
-child_create(struct child* child, struct term* term,
+(child_create)(struct child* child_p, struct term* term_in,
     char *argv[], struct winsize *winp, const char* path)
 {
-  int pid;
+  CHILD_VAR_REF
 
   trace_dir(asform("child_create: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
 
-  child->dir = null;
-  child->pty_fd = -1;
-  child->term = term;
+  child_dir = null;
+  pty_fd = -1;
+  term_p = term_in;
 
   string lang = cs_lang();
 
   // Create the child process and pseudo terminal.
-  pid = forkpty(&child->pty_fd, 0, 0, winp);
+  pid = forkpty(&pty_fd, 0, 0, winp);
   if (pid < 0) {
     bool rebase_prompt = (errno == EAGAIN);
     //ENOENT  There are no available terminals.
     //EAGAIN  Cannot allocate sufficient memory to allocate a task structure.
     //EAGAIN  Not possible to create a new process; RLIMIT_NPROC limit.
     //ENOMEM  Memory is tight.
-    childerror(term, _("Error: Could not fork child process"), true, errno, pid);
+    childerror(_("Error: Could not fork child process"), true, errno, pid);
     if (rebase_prompt)
-      childerror(term, _("DLL rebasing may be required; see 'rebaseall / rebase --help'"), false, 0, 0);
+      childerror(_("DLL rebasing may be required; see 'rebaseall / rebase --help'"), false, 0, 0);
 
-    child->pid = pid = 0;
+    pid = 0;
 
-    term_hide_cursor(term);
+    term_hide_cursor();
   }
   else if (!pid) { // Child process.
 #if CYGWIN_VERSION_DLL_MAJOR < 1007
@@ -301,13 +306,13 @@ child_create(struct child* child, struct term* term,
       chdir(path);
 
     // Invoke command
-    execvp(child->cmd, argv);
+    execvp(cmd, argv);
 
     // If we get here, exec failed.
     fprintf(stderr, "\033]701;C.UTF-8\007");
     fprintf(stderr, "\033[30;41m\033[K");
     //__ %1$s: client command (e.g. shell) to be run; %2$s: error message
-    fprintf(stderr, _("Failed to run '%s': %s"), child->cmd, strerror(errno));
+    fprintf(stderr, _("Failed to run '%s': %s"), cmd, strerror(errno));
     fprintf(stderr, "\r\n");
     fflush(stderr);
 
@@ -328,19 +333,17 @@ child_create(struct child* child, struct term* term,
 #ifdef __midipix__
     // This corrupts CR in cygwin
     struct termios attr;
-    tcgetattr(child->pty_fd, &attr);
+    tcgetattr(pty_fd, &attr);
     cfmakeraw(&attr);
-    tcsetattr(child->pty_fd, TCSANOW, &attr);
+    tcsetattr(pty_fd, TCSANOW, &attr);
 #endif
 
-    child->pid = pid;
+    fcntl(pty_fd, F_SETFL, O_NONBLOCK);
 
-    fcntl(child->pty_fd, F_SETFL, O_NONBLOCK);
-
-    child_update_charset(child);
+    child_update_charset();
 
     if (cfg.create_utmp) {
-      char *dev = ptsname(child->pty_fd);
+      char *dev = ptsname(pty_fd);
       if (dev) {
         struct utmp ut;
         memset(&ut, 0, sizeof ut);
@@ -369,41 +372,47 @@ child_create(struct child* child, struct term* term,
 }
 
 void
-child_free(struct child* child)
+child_free(struct child* child_p)
 {
-  if (child->pty_fd >= 0)
-    close(child->pty_fd);
-  child->pty_fd = -1;
+  CHILD_VAR_REF
+
+  if (pty_fd >= 0)
+    close(pty_fd);
+  pty_fd = -1;
 }
 
 bool
-child_is_alive(struct child* child)
+child_is_alive(struct child* child_p)
 {
-    return child->pid;
+  CHILD_VAR_REF
+
+    return pid;
 }
 
 bool
-child_is_parent(struct child* child)
+child_is_parent(struct child* child_p)
 {
-  if (!child->pid)
+  CHILD_VAR_REF
+
+  if (!pid)
     return false;
   DIR * d = opendir("/proc");
   if (!d)
     return false;
   bool res = false;
-  struct dirent *e;
-  char fn[280] = "/proc/";
+  struct dirent * e;
   while ((e = readdir(d))) {
     char * pn = e->d_name;
     if (isdigit((uchar)*pn) && strlen(pn) <= 6) {
-      snprintf(fn + 6, 280-6, "%s/ppid", pn);
-      FILE *f = fopen(fn, "r");
+      char * fn = asform("/proc/%s/ppid", pn);
+      FILE * f = fopen(fn, "r");
+      free(fn);
       if (!f)
         continue;
       pid_t ppid = 0;
       fscanf(f, "%u", &ppid);
       fclose(f);
-      if (ppid == child->pid) {
+      if (ppid == pid) {
         res = true;
         break;
       }
@@ -542,22 +551,26 @@ grandchild_process_list(void)
 */
 
 void
-child_write(struct child* child, const char *buf, uint len)
+(child_write)(struct child* child_p, const char *buf, uint len)
 {
-  if (child->pty_fd >= 0)
-    write(child->pty_fd, buf, len);
+  CHILD_VAR_REF
+
+  if (pty_fd >= 0)
+    write(pty_fd, buf, len);
 }
 
 /*
   Simulate a BREAK event.
  */
 void
-child_break(struct child* child)
+(child_break)(struct child* child_p)
 {
-  int gid = tcgetpgrp(child->pty_fd);
+  CHILD_VAR_REF
+
+  int gid = tcgetpgrp(pty_fd);
   if (gid > 1) {
     struct termios attr;
-    tcgetattr(child->pty_fd, &attr);
+    tcgetattr(pty_fd, &attr);
     if ((attr.c_iflag & (IGNBRK | BRKINT)) == BRKINT) {
       kill(gid, SIGINT);
     }
@@ -565,57 +578,68 @@ child_break(struct child* child)
 }
 
 void
-child_printf(struct child* child, const char *fmt, ...)
+(child_printf)(struct child* child_p, const char *fmt, ...)
 {
-  if (child->pty_fd >= 0) {
+  CHILD_VAR_REF
+
+  if (pty_fd >= 0) {
     va_list va;
     va_start(va, fmt);
     char *s;
     int len = vasprintf(&s, fmt, va);
     va_end(va);
     if (len >= 0)
-      write(child->pty_fd, s, len);
+      write(pty_fd, s, len);
     free(s);
   }
 }
 
 void
-child_send(struct child* child, const char *buf, uint len)
+(child_send)(struct child* child_p, const char *buf, uint len)
 {
-  term_reset_screen(child->term);
-  if (child->term->echoing)
-    term_write(child->term, buf, len);
-  child_write(child, buf, len);
+  CHILD_VAR_REF
+
+  term_reset_screen();
+  if (term.echoing)
+    term_write(buf, len);
+  child_write(buf, len);
 }
 
 void
-child_sendw(struct child* child, const wchar *ws, uint wlen)
+(child_sendw)(struct child* child_p, const wchar *ws, uint wlen)
 {
   char s[wlen * cs_cur_max];
   int len = cs_wcntombn(s, ws, sizeof s, wlen);
   if (len > 0)
-    child_send(child, s, len);
+    child_send(s, len);
 }
 
 void
-child_resize(struct child* child, struct winsize *winp)
+(child_resize)(struct child* child_p, struct winsize *winp)
 {
-  if (child->pty_fd >= 0)
-    ioctl(child->pty_fd, TIOCSWINSZ, winp);
+  CHILD_VAR_REF
+
+  if (pty_fd >= 0)
+    ioctl(pty_fd, TIOCSWINSZ, winp);
 }
 
+#define foreground_pid(...) (foreground_pid)(child_p, ##__VA_ARGS__)
 static int
-foreground_pid(struct child* child)
+(foreground_pid)(struct child* child_p)
 {
-  return (child->pty_fd >= 0) ? tcgetpgrp(child->pty_fd) : 0;
+  CHILD_VAR_REF
+
+  return (pty_fd >= 0) ? tcgetpgrp(pty_fd) : 0;
 }
 
 char *
-foreground_cwd(struct child* child)
+(foreground_cwd)(struct child* child_p)
 {
+  CHILD_VAR_REF
+
   // if working dir is communicated interactively, use it
-  if (child->dir && *(child->dir))
-    return strdup(child->dir);
+  if (child_dir && *child_dir)
+    return strdup(child_dir);
 
   // for WSL, do not check foreground process; hope start dir is good
   if (support_wsl) {
@@ -627,7 +651,7 @@ foreground_cwd(struct child* child)
   }
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
-  int fg_pid = foreground_pid(child);
+  int fg_pid = foreground_pid();
   if (fg_pid > 0) {
     char proc_cwd[32];
     sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
@@ -638,10 +662,10 @@ foreground_cwd(struct child* child)
 }
 
 char *
-foreground_prog(struct child* child)
+(foreground_prog)(struct child* child_p)
 {
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
-  int fg_pid = foreground_pid(child);
+  int fg_pid = foreground_pid();
   if (fg_pid > 0) {
     char exename[32];
     sprintf(exename, "/proc/%u/exename", fg_pid);
@@ -664,8 +688,10 @@ foreground_prog(struct child* child)
 }
 
 void
-user_command(struct child* child, wstring commands, int n)
+(user_command)(struct child* child_p, wstring commands, int n)
 {
+  CHILD_VAR_REF
+
   if (*commands) {
     char * cmds = cs__wcstombs(commands);
     char * cmdp = cmds;
@@ -681,7 +707,7 @@ user_command(struct child* child, wstring commands, int n)
         *sepp = '\0';
 
       if (n == 0) {
-        int fgpid = foreground_pid(child);
+        int fgpid = foreground_pid();
         if (fgpid) {
           char * _fgpid = 0;
           asprintf(&_fgpid, "%d", fgpid);
@@ -690,17 +716,17 @@ user_command(struct child* child, wstring commands, int n)
             free(_fgpid);
           }
         }
-        char * fgp = foreground_prog(child);
+        char * fgp = foreground_prog();
         if (fgp) {
           setenv("FATTY_PROG", fgp, true);
           free(fgp);
         }
-        char * fgd = foreground_cwd(child);
+        char * fgd = foreground_cwd();
         if (fgd) {
           setenv("FATTY_CWD", fgd, true);
           free(fgd);
         }
-        term_cmd(child->term, progp);
+        term_cmd(progp);
         unsetenv("FATTY_CWD");
         unsetenv("FATTY_PROG");
         unsetenv("FATTY_PID");
@@ -728,8 +754,10 @@ user_command(struct child* child, wstring commands, int n)
    used by win_open
 */
 wstring
-child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
+(child_conv_path)(struct child* child_p, wstring wpath, bool adjust_dir)
 {
+  CHILD_VAR_REF
+
   int wlen = wcslen(wpath);
   int len = wlen * cs_cur_max;
   char path[len];
@@ -747,7 +775,7 @@ child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
       rest = const_cast<char *>("");
     char * base;
     if (!*name)
-      base = child->home;
+      base = home;
     else {
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
       // Find named user's home directory
@@ -766,17 +794,17 @@ child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
     // requires the /proc filesystem, which isn't available before Cygwin 1.5.
 
     // Find pty's foreground process, if any. Fall back to child process.
-    int fg_pid = (child->pty_fd >= 0) ? tcgetpgrp(child->pty_fd) : 0;
+    int fg_pid = (pty_fd >= 0) ? tcgetpgrp(pty_fd) : 0;
     if (fg_pid <= 0)
-      fg_pid = child->pid;
+      fg_pid = pid;
 
-    char * cwd = foreground_cwd(child);
-    exp_path = asform("%s/%s", cwd ?: child->home, path);
+    char * cwd = foreground_cwd();
+    exp_path = asform("%s/%s", cwd ?: home, path);
     if (cwd)
       free(cwd);
 #else
     // If we're lucky, the path is relative to the home directory.
-    exp_path = asform("%s/%s", child->home, path);
+    exp_path = asform("%s/%s", home, path);
 #endif
   }
   else
@@ -809,9 +837,11 @@ child_conv_path(struct child* child, wstring wpath, bool adjust_dir)
 }
 
 void
-child_set_fork_dir(struct child* child, char * dir)
+(child_set_fork_dir)(struct child* child_p, char * dir)
 {
-  strset(&child->dir, dir);
+  CHILD_VAR_REF
+
+  strset(&child_dir, dir);
 }
 
 void
@@ -841,12 +871,15 @@ setup_sync()
   }
 }
 
+#define do_child_fork(...) (do_child_fork)(child_p, ##__VA_ARGS__)
 /*
   Called from Alt+F2 (or session launcher via child_launch).
  */
 static void
-do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch)
+(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch)
 {
+  CHILD_VAR_REF
+
   trace_dir(asform("do_child_fork: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
   setup_sync();
 
@@ -859,7 +892,7 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
   if (cfg.daemonize) {
     if (clone < 0) {
-      childerror(child->term, _("Error: Could not fork child daemon"), true, errno, 0);
+      childerror(_("Error: Could not fork child daemon"), true, errno, 0);
       reset_fork_mode();
       return;  // assume next fork will fail too
     }
@@ -880,16 +913,16 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
   }
 
   if (clone == 0) {  // prepare child process to spawn new terminal
-    if (child->pty_fd >= 0)
-      close(child->pty_fd);
-    if (child_log_fd >= 0)
-      close(child_log_fd);
-    close(child_win_fd);
+    if (pty_fd >= 0)
+      close(pty_fd);
+    if (log_fd >= 0)
+      close(log_fd);
+    close(win_fd);
 
-    if (child->dir && *child->dir) {
-      string set_dir = child->dir;
+    if (child_dir && *child_dir) {
+      string set_dir = child_dir;
       if (support_wsl) {
-        wchar * wcd = cs__utftowcs(child->dir);
+        wchar * wcd = cs__utftowcs(child_dir);
 #ifdef debug_wsl
         printf("fork wsl <%ls>\n", wcd);
 #endif
@@ -931,11 +964,11 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
         // insert additional parameters here
         newargv[j++] = "-o";
         static char parbuf1[28];  // static to prevent #530
-        sprintf(parbuf1, "Rows=%d",  child->term->rows);
+        sprintf(parbuf1, "Rows=%d", term.rows);
         newargv[j++] = parbuf1;
         newargv[j++] = "-o";
         static char parbuf2[31];  // static to prevent #530
-        sprintf(parbuf2, "Columns=%d",  child->term->cols);
+        sprintf(parbuf2, "Columns=%d", term.cols);
         newargv[j++] = parbuf2;
       }
       newargv[j] = argv[i];
@@ -951,8 +984,8 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
 
     // provide environment to clone size
     if (clone_size_token) {
-      setenvi(const_cast<char *>("FATTY_ROWS"), child->term->rows);
-      setenvi(const_cast<char *>("FATTY_COLS"), child->term->cols);
+      setenvi(const_cast<char *>("FATTY_ROWS"), term.rows);
+      setenvi(const_cast<char *>("FATTY_COLS"), term.cols);
     }
     // provide environment to select monitor
     if (moni > 0)
@@ -994,16 +1027,16 @@ do_child_fork(struct child* child, int argc, char *argv[], int moni, bool launch
   Called from Alt+F2.
  */
 void
-child_fork(struct child* child, int argc, char *argv[], int moni)
+child_fork(struct child* child_p, int argc, char *argv[], int moni)
 {
-  do_child_fork(child, argc, argv, moni, false);
+  do_child_fork(argc, argv, moni, false);
 }
 
 /*
   Called from session launcher.
  */
 void
-child_launch(struct child* child, int n, int argc, char * argv[], int moni)
+(child_launch)(struct child* child_p, int n, int argc, char * argv[], int moni)
 {
   if (*cfg.session_commands) {
     char * cmds = cs__wcstombs(cfg.session_commands);
@@ -1039,7 +1072,7 @@ child_launch(struct child* child, int n, int argc, char * argv[], int moni)
           }
         }
         new_argv[argc] = 0;
-        do_child_fork(child, argc, new_argv, moni, true);
+        do_child_fork(argc, new_argv, moni, true);
         free(new_argv);
         break;
       }

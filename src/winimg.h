@@ -10,8 +10,10 @@ extern bool winimg_new(imglist * * ppimg, char * id,
                        int crop_x, int crop_y, int crop_w, int crop_h);
 extern void winimg_destroy(imglist * img);
 extern void winimg_lazyinit(imglist * img);
-extern void winimgs_paint(struct term* term_p);
-extern void winimgs_clear(struct term* term_p);
+#define winimgs_paint(...) (winimgs_paint)(term_p, ##__VA_ARGS__)
+extern void (winimgs_paint)(struct term* term_p);
+#define winimgs_clear(...) (winimgs_clear)(term_p, ##__VA_ARGS__)
+extern void (winimgs_clear)(struct term* term_p);
 
 extern void win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr);
 

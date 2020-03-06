@@ -43,11 +43,12 @@ clip_addchar(clip_workbuf * b, wchar chr, cattr * ca)
   b->len++;
 }
 
+#define get_selection(...) (get_selection)(term_p, ##__VA_ARGS__)
 // except OOM, guaranteed at least emtpy null terminated wstring and one cattr
 static clip_workbuf *
-get_selection(struct term* term_p, pos start, pos end, bool rect, bool allinline)
+(get_selection)(struct term* term_p, pos start, pos end, bool rect, bool allinline)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   int old_top_x = start.x;    /* needed for rect==1 */
   clip_workbuf *buf = newn(clip_workbuf, 1);
@@ -55,7 +56,7 @@ get_selection(struct term* term_p, pos start, pos end, bool rect, bool allinline
 
   while (poslt(start, end)) {
     bool nl = false;
-    termline *line = fetch_line(term_p, start.y);
+    termline *line = fetch_line(start.y);
 
     if (start.y == term.curs.y) {
       line->chars[term.curs.x].attr.attr |= TATTR_ACTCURS;
@@ -164,32 +165,32 @@ get_selection(struct term* term_p, pos start, pos end, bool rect, bool allinline
 }
 
 void
-term_copy_as(struct term* term_p, char what)
+(term_copy_as)(struct term* term_p, char what)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (!term.selected)
     return;
 
-  clip_workbuf *buf = get_selection(term_p, term.sel_start, term.sel_end, term.sel_rect, false);
+  clip_workbuf *buf = get_selection(term.sel_start, term.sel_end, term.sel_rect, false);
   win_copy_as(buf->text, buf->cattrs, buf->len, what);
   destroy_clip_workbuf(buf);
 }
 
 void
-term_copy(struct term* term_p)
+(term_copy)(struct term* term_p)
 {
-  term_copy_as(term_p, 0);
+  term_copy_as(0);
 }
 
 void
-term_open(struct term* term_p)
+(term_open)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (!term.selected)
     return;
-  clip_workbuf *buf = get_selection(term_p, term.sel_start, term.sel_end, term.sel_rect, false);
+  clip_workbuf *buf = get_selection(term.sel_start, term.sel_end, term.sel_rect, false);
 
   // Don't bother opening if it's all whitespace.
   wchar *p = buf->text;
@@ -227,11 +228,11 @@ contains(string s, wchar c)
 }
 
 void
-term_paste(struct term* term_p, wchar *data, uint len, bool all)
+(term_paste)(struct term* term_p, wchar *data, uint len, bool all)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
-  term_cancel_paste(term_p);
+  term_cancel_paste();
 
   term.paste_buffer = newn(wchar, len);
   term.paste_len = term.paste_pos = 0;
@@ -252,27 +253,27 @@ term_paste(struct term* term_p, wchar *data, uint len, bool all)
   }
 
   if (term.bracketed_paste)
-    child_write(term.child, "\e[200~", 6);
-  term_send_paste(term_p);
+    child_write("\e[200~", 6);
+  term_send_paste();
 }
 
 void
-term_cancel_paste(struct term* term_p)
+(term_cancel_paste)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   if (term.paste_buffer) {
     free(term.paste_buffer);
     term.paste_buffer = 0;
     if (term.bracketed_paste)
-      child_write(term.child, "\e[201~", 6);
+      child_write("\e[201~", 6);
   }
 }
 
 void
-term_send_paste(struct term* term_p)
+(term_send_paste)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   int i = term.paste_pos;
   /* We must not feed more than MAXPASTEMAX bytes into the pty in one chunk 
@@ -287,7 +288,7 @@ term_send_paste(struct term* term_p)
   if (i < term.paste_len && is_high_surrogate(term.paste_buffer[i]))
     i++;
   //printf("term_send_paste pos %d @ %d (len %d)\n", term.paste_pos, i, term.paste_len);
-  child_sendw(term.child, term.paste_buffer + term.paste_pos, i - term.paste_pos);
+  child_sendw(term.paste_buffer + term.paste_pos, i - term.paste_pos);
   if (i < term.paste_len) {
     term.paste_pos = i;
     // if only part of the paste buffer has been written to the child,
@@ -300,35 +301,36 @@ term_send_paste(struct term* term_p)
     // paste the whole contents) were not successful to solve the stalling
   }
   else
-    term_cancel_paste(term_p);
+    term_cancel_paste();
 }
 
 void
-term_select_all(struct term* term_p)
+(term_select_all)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
-  term.sel_start = (pos){-sblines(term_p), 0, false};
-  term.sel_end = (pos){term_last_nonempty_line(term_p), term.cols, true};
+  term.sel_start = (pos){-sblines(), 0, false};
+  term.sel_end = (pos){term_last_nonempty_line(), term.cols, true};
   term.selected = true;
   if (cfg.copy_on_select)
-    term_copy(term_p);
+    term_copy();
 }
 
 #define dont_debug_user_cmd_clip
 
+#define term_get_text(...) (term_get_text)(term_p, ##__VA_ARGS__)
 static wchar *
-term_get_text(struct term* term_p, bool all, bool screen, bool command)
+(term_get_text)(struct term* term_p, bool all, bool screen, bool command)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   pos start;
   pos end;
   bool rect = false;
 
   if (command) {
-    int sbtop = -sblines(term_p);
-    int y = term_last_nonempty_line(term_p);
+    int sbtop = -sblines();
+    int y = term_last_nonempty_line();
     bool skipprompt = true;  // skip upper lines of multi-line prompt
 
     if (y < sbtop) {
@@ -336,12 +338,12 @@ term_get_text(struct term* term_p, bool all, bool screen, bool command)
       end = (pos){y, 0, false};
     }
     else {
-      termline * line = fetch_line(term_p, y);
+      termline * line = fetch_line(y);
       if (line->lattr & LATTR_MARKED) {
         if (y > sbtop) {
           y--;
           end = (pos){y, term.cols, false};
-          termline * line = fetch_line(term_p, y);
+          termline * line = fetch_line(y);
           if (line->lattr & LATTR_MARKED)
             y++;
         }
@@ -354,13 +356,13 @@ term_get_text(struct term* term_p, bool all, bool screen, bool command)
         end = (pos){y, term.cols, false};
       }
 
-      if (fetch_line(term_p, y)->lattr & LATTR_UNMARKED)
+      if (fetch_line(y)->lattr & LATTR_UNMARKED)
         end = (pos){y, 0, false};
     }
 
     int yok = y;
     while (y-- > sbtop) {
-      termline * line = fetch_line(term_p, y);
+      termline * line = fetch_line(y);
 #ifdef debug_user_cmd_clip
       printf("y %d skip %d marked %X\n", y, skipprompt, line->lattr & (LATTR_UNMARKED | LATTR_MARKED));
 #endif
@@ -380,11 +382,11 @@ term_get_text(struct term* term_p, bool all, bool screen, bool command)
   }
   else if (screen) {
     start = (pos){term.disptop, 0, false};
-    end = (pos){term_last_nonempty_line(term_p), term.cols, false};
+    end = (pos){term_last_nonempty_line(), term.cols, false};
   }
   else if (all) {
-    start = (pos){-sblines(term_p), 0, false};
-    end = (pos){term_last_nonempty_line(term_p), term.cols, false};
+    start = (pos){-sblines(), 0, false};
+    end = (pos){term_last_nonempty_line(), term.cols, false};
   }
   else if (!term.selected) {
     return wcsdup(W(""));
@@ -395,37 +397,37 @@ term_get_text(struct term* term_p, bool all, bool screen, bool command)
     rect = term.sel_rect;
   }
 
-  clip_workbuf *buf = get_selection(term_p, start, end, rect, false);
+  clip_workbuf *buf = get_selection(start, end, rect, false);
   wchar * tbuf = wcsdup(buf->text);
   destroy_clip_workbuf(buf);
   return tbuf;
 }
 
 void
-term_cmd(struct term* term_p, char * cmd)
+(term_cmd)(struct term* term_p, char * cmd)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   // provide scrollback buffer
-  wchar * wsel = term_get_text(term_p, true, false, false);
+  wchar * wsel = term_get_text(true, false, false);
   char * sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_BUFFER", sel, true);
   free(sel);
   // provide current selection
-  wsel = term_get_text(term_p, false, false, false);
+  wsel = term_get_text(false, false, false);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_SELECT", sel, true);
   free(sel);
   // provide current screen
-  wsel = term_get_text(term_p, false, true, false);
+  wsel = term_get_text(false, true, false);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_SCREEN", sel, true);
   free(sel);
   // provide last command output
-  wsel = term_get_text(term_p, false, false, true);
+  wsel = term_get_text(false, false, true);
   sel = cs__wcstombs(wsel);
   free(wsel);
   setenv("FATTY_OUTPUT", sel, true);
@@ -456,14 +458,14 @@ term_cmd(struct term* term_p, char * cmd)
   unsetenv("FATTY_BUFFER");
   if (cmdf) {
     if (term.bracketed_paste)
-      child_write(term.child, "\e[200~", 6);
+      child_write("\e[200~", 6);
     char line[222];
     while (fgets(line, sizeof line, cmdf)) {
-      child_send(term.child, line, strlen(line));
+      child_send(line, strlen(line));
     }
     pclose(cmdf);
     if (term.bracketed_paste)
-      child_write(term.child, "\e[201~", 6);
+      child_write("\e[201~", 6);
   }
   if (path0)
     setenv("PATH", path0, true);
@@ -476,10 +478,11 @@ term_cmd(struct term* term_p, char * cmd)
 #include <fcntl.h>
 #include "winpriv.h"  // PADDING
 
+#define term_create_html(...) (term_create_html)(term_p, ##__VA_ARGS__)
 static char *
-term_create_html(struct term* term_p, FILE * hf, int level)
+(term_create_html)(struct term* term_p, FILE * hf, int level)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   char * hbuf = hf ? 0 : strdup("");
   auto
@@ -667,7 +670,7 @@ term_create_html(struct term* term_p, FILE * hf, int level)
   hprintf(hf, "  <div class=background id='vt100'>\n");
   hprintf(hf, "   <pre>");
 
-  clip_workbuf * buf = get_selection(term_p, start, end, rect, level >= 3);
+  clip_workbuf * buf = get_selection(start, end, rect, level >= 3);
   int i0 = 0;
   bool odd = true;
   for (uint i = 0; i < buf->len; i++) {
@@ -968,15 +971,15 @@ term_create_html(struct term* term_p, FILE * hf, int level)
 }
 
 char *
-term_get_html(int level)
+(term_get_html)(struct term *term_p, int level)
 {
-  return term_create_html(win_active_terminal(), 0, level);
+  return term_create_html(0, level);
 }
 
 void
-term_export_html(bool do_open)
+(term_export_html)(struct term *term_p, bool do_open)
 {
-  struct term* term_p = win_active_terminal();
+  TERM_VAR_REF
   
   struct timeval now;
   gettimeofday(& now, 0);
@@ -985,16 +988,16 @@ term_export_html(bool do_open)
 
   int hfd = open(htmlf, O_WRONLY | O_CREAT | O_EXCL, 0600);
   if (hfd < 0) {
-    win_bell(term_p, &cfg);
+    win_bell(&cfg);
     return;
   }
   FILE * hf = fdopen(hfd, "w");
   if (!hf) {
-    win_bell(term_p, &cfg);
+    win_bell(&cfg);
     return;
   }
 
-  term_create_html(term_p, hf, 3);
+  term_create_html(hf, 3);
 
   fclose(hf);  // implies close(hfd);
 
@@ -1008,10 +1011,9 @@ term_export_html(bool do_open)
 #include "print.h"
 
 void
-print_screen(void)
+(print_screen)(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (*cfg.printer == '*')
     printer_start_job(printer_get_default());
@@ -1023,7 +1025,7 @@ print_screen(void)
   pos start = (pos){term.disptop, 0, false};
   pos end = (pos){term.disptop + term.rows - 1, term.cols, false};
   bool rect = false;
-  clip_workbuf * buf = get_selection(term_p, start, end, rect, false);
+  clip_workbuf * buf = get_selection(start, end, rect, false);
   printer_wwrite(buf->text, buf->len);
   printer_finish_job();
   destroy_clip_workbuf(buf);

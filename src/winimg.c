@@ -508,9 +508,9 @@ winimg_destroy(imglist *img)
 }
 
 void
-winimgs_clear(struct term* term_p)
+(winimgs_clear)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   // clear parser state
   sixel_parser_deinit((sixel_state_t*)(term.imgs.parser_state));
@@ -540,10 +540,11 @@ winimgs_clear(struct term* term_p)
   term.imgs.altlast = NULL;
 }
 
+#define draw_img(...) (draw_img)(term_p, ##__VA_ARGS__)
 static void
-draw_img(struct term* term_p, HDC dc, imglist * img)
+(draw_img)(struct term* term_p, HDC dc, imglist * img)
 {
-    struct term& term = *term_p;
+    TERM_VAR_REF
     
 #if CYGWIN_VERSION_API_MINOR >= 74
     gdiplus_init();
@@ -647,9 +648,9 @@ draw_img(struct term* term_p, HDC dc, imglist * img)
 }
 
 void
-winimgs_paint(struct term* term_p)
+(winimgs_paint)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   imglist * img;
   RECT tmp_rect;
@@ -666,7 +667,7 @@ winimgs_paint(struct term* term_p)
   RECT rc;
   GetClientRect(wnd, &rc);
   IntersectClipRect(dc, rc.left + PADDING, rc.top + PADDING,
-                    rc.left + PADDING +term.cols * cell_width,
+                    rc.left + PADDING + term.cols * cell_width,
                     rc.top + PADDING + term.rows * cell_height);
 
   imglist * prev = 0;
@@ -803,7 +804,7 @@ winimgs_paint(struct term* term_p)
               tmp_rect = {0, 0, xrgt, ybot};
               FillRect(hdc, &tmp_rect, br);
             }
-            draw_img(term_p, hdc, img);
+            draw_img(hdc, img);
             BitBlt(dc, xlft, ytop, xrgt - xlft, ybot - ytop,
                        hdc, xlft, ytop, SRCCOPY);
             DeleteObject(hbm);

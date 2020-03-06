@@ -16,8 +16,8 @@
 #include <sys/ioctl.h>
 #include <cygwin/version.h>
 
-int child_win_fd;
-int child_log_fd = -1;
+int win_fd;
+int log_fd = -1;
 
 extern "C" {
 #include "child.h"
@@ -48,7 +48,7 @@ void child_init() {
     signal(SIGTERM, sigexit);
     signal(SIGQUIT, sigexit);
 
-    child_win_fd = open("/dev/windows", O_RDONLY);
+    win_fd = open("/dev/windows", O_RDONLY);
 
     // Open log file if any
     if (cfg.logging) {
@@ -66,14 +66,14 @@ void child_proc() {
     for (;;) {
         for (Tab& t : win_tabs()) {
             if (t.terminal->paste_buffer)
-                term_send_paste(t.terminal.get());
-        }
+                (term_send_paste)(t.terminal.get());
+       }
 
         struct timeval timeout = {0, 100000}, *timeout_p = 0;
         fd_set fds;
         FD_ZERO(&fds);
-        FD_SET(child_win_fd, &fds);  
-        int highfd = child_win_fd;
+        FD_SET(win_fd, &fds);  
+        int highfd = win_fd;
         for (Tab& t : win_tabs()) {
             if (t.chld->pty_fd > highfd) highfd = t.chld->pty_fd;
             if (t.chld->pty_fd >= 0) {
@@ -91,18 +91,18 @@ void child_proc() {
 
         if (select(highfd + 1, &fds, 0, 0, timeout_p) > 0) {
             for (Tab& t : win_tabs()) {
-                struct child* child = t.chld.get();
-                if (child->pty_fd >= 0 && FD_ISSET(child->pty_fd, &fds)) {
+                struct child* child_p = t.chld.get();
+                if (child_p->pty_fd >= 0 && FD_ISSET(child_p->pty_fd, &fds)) {
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
                     static char buf[4096];
-                    int len = read(child->pty_fd, buf, sizeof buf);
+                    int len = read(child_p->pty_fd, buf, sizeof buf);
 #else
                     // Pty devices on old Cygwin version deliver only 4 bytes at a time,
                     // so call read() repeatedly until we have a worthwhile haul.
                     static char buf[512];
                     uint len = 0;
                     do {
-                        int ret = read(child->pty_fd, buf + len, sizeof buf - len);
+                        int ret = read(child_p->pty_fd, buf + len, sizeof buf - len);
                         if (ret > 0)
                             len += ret;
                         else
@@ -110,15 +110,15 @@ void child_proc() {
                     } while (len < sizeof buf);
 #endif
                     if (len > 0) {
-                        term_write(child->term, buf, len);
-                        if (child_log_fd >= 0)
-                            write(child_log_fd, buf, len);
+                        (term_write)(child_p->term, buf, len);
+                        if (log_fd >= 0)
+                            write(log_fd, buf, len);
                     } else {
-                        child->pty_fd = -1;
-                        term_hide_cursor(child->term);
+                        child_p->pty_fd = -1;
+                        (term_hide_cursor)(child_p->term);
                     }
                 }
-                if (FD_ISSET(child_win_fd, &fds)) {
+                if (FD_ISSET(win_fd, &fds)) {
                     win_tab_clean();
                     return;
                 }
@@ -127,8 +127,8 @@ void child_proc() {
     }
 }
 
-void child_terminate(struct child *child) {
-    pid_t pid = child->pid;
+void child_terminate(struct child *child_p) {
+    pid_t pid = child_p->pid;
     if (pid) {
       kill(-pid, SIGHUP);
       win_callback(500, [pid]() {
@@ -136,7 +136,7 @@ void child_terminate(struct child *child) {
           // Really, lets just die. It would be really annoying not to...
           kill(-pid, SIGKILL);
       });
-      child->pid = 0;
+      child_p->pid = 0;
     }
 }
 

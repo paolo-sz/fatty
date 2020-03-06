@@ -147,10 +147,9 @@ struct fontfam {
 int line_scale;
 
 wchar
-win_linedraw_char(int i)
+(win_linedraw_char)(struct term* term_p, int i)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   int findex = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   if (findex > 10)
@@ -938,7 +937,7 @@ win_get_font(uint fi)
 }
 
 void
-win_change_font(uint fi, wstring fn)
+(win_change_font)(struct term* term_p, uint fi, wstring fn)
 {
   if (fi < lengthof(fontfamilies)) {
     fontfamilies[fi].name = fn;
@@ -947,7 +946,7 @@ win_change_font(uint fi, wstring fn)
     win_init_fontfamily(dc, fi);
     ReleaseDC(wnd, dc);
     win_adapt_term_size(true, false);
-    win_for_each_term_bool(win_font_cs_reconfig, true);
+    win_for_each_term_bool((win_font_cs_reconfig), true);
   }
 }
 
@@ -958,7 +957,7 @@ win_get_font_size(void)
 }
 
 void
-win_set_font_size(int size, bool sync_size_with_font)
+(win_set_font_size)(struct term* term_p, int size, bool sync_size_with_font)
 {
   trace_resize(("--- win_set_font_size %d %d×%d\n", size, term.rows, term.cols));
   size = size ? sgn(font_size) * min(size, 72) : cfg.font.size;
@@ -970,7 +969,7 @@ win_set_font_size(int size, bool sync_size_with_font)
 }
 
 void
-win_zoom_font(int zoom, bool sync_size_with_font)
+(win_zoom_font)(struct term* term_p, int zoom, bool sync_size_with_font)
 {
   trace_resize(("--- win_zoom_font %d\n", zoom));
   win_set_font_size(zoom ? max(1, abs(font_size) + zoom) : 0, sync_size_with_font);
@@ -984,8 +983,7 @@ static bool ime_open = false;
 static int update_skipped = 0;
 int lines_scrolled = 0;
 
-void do_update(void);
-static void do_update_cb(void* _) { (void)_; do_update(); }
+static void do_update_cb(void* _) { (void)_; struct term *term_p = win_active_terminal(); do_update(); }
 
 #define dont_debug_cursor 1
 
@@ -1089,8 +1087,9 @@ toggle_charinfo()
   show_charinfo = !show_charinfo;
 }
 
+#define show_curchar_info(...) (show_curchar_info)(term_p, ##__VA_ARGS__)
 static void
-show_curchar_info(char tag)
+(show_curchar_info)(struct term* term_p, char tag)
 {
   if (!show_charinfo)
     return;
@@ -1193,8 +1192,7 @@ show_curchar_info(char tag)
     show_char_msg(cs);  // does free(cs);
   };
   
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   int line = term.curs.y - term.disptop;
   if (line < 0 || line >= term.rows) {
@@ -1211,7 +1209,7 @@ show_curchar_info(char tag)
 #define update_timer 16
 
 void
-do_update(void)
+(do_update)(struct term* term_p)
 {
   //if (kb_trace) printf("[%ld] do_update\n", mtime());
 
@@ -1219,8 +1217,7 @@ do_update(void)
   printf("do_update cursor_on %d @%d,%d\n", term.cursor_on, term.curs.y, term.curs.x);
 #endif
 
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
@@ -1247,16 +1244,16 @@ do_update(void)
   dc = GetDC(wnd);
 
   win_paint_exclude_search(dc);
-  term_update_search(term_p);
+  term_update_search();
 
-  term_paint(term_p);
-  winimgs_paint(term_p);
+  term_paint();
+  winimgs_paint();
 
   ReleaseDC(wnd, dc);
 
   // Update scrollbar
   if (cfg.scrollbar && term.show_scrollbar && !term.app_scrollbar) {
-    int lines = sblines(term_p);
+    int lines = sblines();
     SCROLLINFO si = {
       cbSize : sizeof si,
       fMask : SIF_ALL | SIF_DISABLENOSCROLL,
@@ -1289,6 +1286,7 @@ do_update(void)
 
 #include <math.h>
 
+#define sel_update(...) (sel_update)(term_p, ##__VA_ARGS__)
 /*
    Indicate size of selection with a popup tip (option SelectionShowSize).
    Future enhancements may be automatic position flipping depending 
@@ -1297,10 +1295,9 @@ do_update(void)
    window size tip which is now abused for this feature.
  */
 static void
-sel_update(bool update_sel_tip)
+(sel_update)(struct term* term_p, bool update_sel_tip)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   static bool selection_tip_active = false;
   //printf("sel_update tok %d sel %d act %d\n", tip_token, term.selected, selection_tip_active);
@@ -1346,11 +1343,11 @@ sel_update(bool update_sel_tip)
   }
 }
 
+#define show_link(...) (show_link)(term_p, ##__VA_ARGS__)
 static void
-show_link(void)
+(show_link)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   static int lasthoverlink = -1;
 
@@ -1371,7 +1368,7 @@ show_link(void)
 }
 
 void
-win_update_now(void)
+(win_update_now)(struct term* term_p)
 {
   if (update_state == UPDATE_PENDING)
     update_state = UPDATE_IDLE;
@@ -1379,7 +1376,7 @@ win_update_now(void)
 }
 
 void
-win_update(bool update_sel_tip)
+(win_update)(struct term* term_p, bool update_sel_tip)
 {
   //if (kb_trace) printf("[%ld] win_update state %d (idl/blk/pnd)\n", mtime(), update_state);
   trace_resize(("----- win_update\n"));
@@ -1394,13 +1391,13 @@ win_update(bool update_sel_tip)
     show_link();
 }
 
-void win_update_term(struct term* term_p, bool update_sel_tip)
+void (win_update_term)(struct term* term_p, bool update_sel_tip)
 {
-  if (win_active_terminal() == term_p) win_update(update_sel_tip);
+  if (is_active_terminal()) win_update(update_sel_tip);
 }
 
 void
-win_schedule_update(void)
+win_schedule_update()
 {
   //if (kb_trace) printf("[%ld] win_schedule_update state %d (idl/blk/pnd)\n", mtime(), update_state);
 
@@ -1473,10 +1470,9 @@ another_font(struct fontfam * ff, int fontno)
 }
 
 void
-win_set_ime_open(bool open)
+(win_set_ime_open)(struct term* term_p, bool open)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   if (open != ime_open) {
     ime_open = open;
@@ -1673,8 +1669,9 @@ get_image_size(wstring fn, uint * _bw, uint * _bh)
   return true;
 }
 
+#define load_background_image_brush(...) (load_background_image_brush)(term_p, ##__VA_ARGS__)
 static void
-load_background_image_brush(HDC dc, wstring fn)
+(load_background_image_brush)(struct term* term_p, HDC dc, wstring fn)
 {
   GpStatus s;
 
@@ -1938,14 +1935,14 @@ win_flush_background(bool clearbg)
 #endif
 }
 
+#define get_bg_filename(...) (get_bg_filename)(term_p, ##__VA_ARGS__)
 /*
    Return background image filename in malloced string.
  */
 static wchar *
-get_bg_filename(void)
+(get_bg_filename)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   tiled = false;
   ratio = false;
@@ -2031,7 +2028,7 @@ get_bg_filename(void)
       bf = bfexp;
     }
     else if (*bf != '/' && !(*bf && bf[1] == ':')) {
-      char * fgd = foreground_cwd(term.child);
+      char * fgd = foreground_cwd();
       if (fgd) {
         char * bfexp = asform("%s/%s", fgd, bf);
         free(bf);
@@ -2058,8 +2055,9 @@ get_bg_filename(void)
   return bgfn;
 }
 
+#define load_background_brush(...) (load_background_brush)(term_p, ##__VA_ARGS__)
 static void
-load_background_brush(HDC dc)
+(load_background_brush)(struct term* term_p, HDC dc)
 {
   // we could try to hook into win_adapt_term_size to update the full 
   // screen background and reload the background on demand, 
@@ -2141,7 +2139,7 @@ load_background_brush(HDC dc)
 }
 
 bool
-fill_background(HDC dc, RECT * boxp)
+(fill_background)(struct term* term_p, HDC dc, RECT * boxp)
 {
   load_background_brush(dc);
   if (wallp) {
@@ -2159,7 +2157,7 @@ fill_background(HDC dc, RECT * boxp)
 #define dont_debug_aspect_ratio
 
 void
-scale_to_image_ratio()
+(scale_to_image_ratio)(struct term* term_p)
 {
 #if CYGWIN_VERSION_API_MINOR >= 74
   if (*cfg.background != '%')
@@ -2447,6 +2445,7 @@ old_rtf_bold_decolour(cattrflags attr, colour_i * pfgi, colour_i * pbgi)
   return (attr & ATTR_BOLD) && bold_thickens;
 }
 
+#define old_apply_attr_colour(...) (old_apply_attr_colour)(term_p, ##__VA_ARGS__)
 // Applies attributes to the fg/bg colours and returns the new cattr.
 //
 // "mode" maps to arbitrary sets of "things to do". Mostly these are just
@@ -2457,7 +2456,7 @@ old_rtf_bold_decolour(cattrflags attr, colour_i * pfgi, colour_i * pbgi)
 // so ATTR_BOLD bit will be turned off if further thickening should not happen.
 // Always returns true colour, except ACM_RTF* modes which only do the palette.
 static cattr
-old_apply_attr_colour(cattr a, attr_colour_mode mode)
+(old_apply_attr_colour)(struct term* term_p, cattr a, attr_colour_mode mode)
 {
   // indexed modifications
   bool do_reverse_i = mode & (ACM_RTF_PALETTE | ACM_RTF_GEN);
@@ -2538,12 +2537,12 @@ old_apply_attr_colour(cattr a, attr_colour_mode mode)
   return a;
 }
 
+#define apply_bold_colour(...) (apply_bold_colour)(term_p, ##__VA_ARGS__)
 // applies bold as colour if required, returns true if still needs thickening
 static bool
-apply_bold_colour(colour_i *pfgi)
+(apply_bold_colour)(struct term* term_p, colour_i *pfgi)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   // We use two bits to control colouring and thickening for three classes of
   // colours: ANSI (0-7), default, and other (8-256, true). We also reserve one
@@ -2606,7 +2605,7 @@ rtf_bold_decolour(cattrflags attr, colour_i * pfgi, colour_i * pbgi)
 // so ATTR_BOLD bit will be turned off if further thickening should not happen.
 // Always returns true colour, except ACM_RTF* modes which only do the palette.
 cattr
-apply_attr_colour(cattr a, attr_colour_mode mode)
+(apply_attr_colour)(struct term* term_p, cattr a, attr_colour_mode mode)
 {
   if (cfg.old_bold)
     return old_apply_attr_colour(a, mode);
@@ -2699,10 +2698,9 @@ apply_attr_colour(cattr a, attr_colour_mode mode)
    phase: overlay line display (italic right-to-left overhang handling)
  */
 void
-win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
+(win_text)(struct term* term_p, int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
 #ifdef debug_wscale
   if (attr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE))
@@ -2804,7 +2802,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
   }
 
   if (has_cursor) {
-    if (term_cursor_type(term_p) == CUR_BLOCK && (attr.attr & TATTR_ACTCURS))
+    if (term_cursor_type() == CUR_BLOCK && (attr.attr & TATTR_ACTCURS))
       default_bg = false;
 
     cursor_colour = colours[ime_open ? IME_CURSOR_COLOUR_I : CURSOR_COLOUR_I];
@@ -2826,7 +2824,7 @@ win_text(int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, usho
         cursor_colour = ccfg;
     }
 
-    if ((attr.attr & TATTR_ACTCURS) && term_cursor_type(term_p) == CUR_BLOCK) {
+    if ((attr.attr & TATTR_ACTCURS) && term_cursor_type() == CUR_BLOCK) {
       fg = colours[CURSOR_TEXT_COLOUR_I];
       if (too_close && colour_dist(cursor_colour, fg) < mindist)
         fg = bg;
@@ -3972,7 +3970,7 @@ draw:;
     printf("painting cursor_type '%c' cursor_on %d\n", "?b_l"[term_cursor_type()+1], term.cursor_on);
 #endif
     HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, _cc));
-    switch (term_cursor_type(win_active_terminal())) {
+    switch (term_cursor_type()) {
       when CUR_BLOCK:
         if (attr.attr & TATTR_PASCURS) {
           HBRUSH oldbrush = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
@@ -4542,10 +4540,9 @@ win_set_colour(colour_i i, colour c)
 }
 
 colour
-win_get_colour(colour_i i)
+(win_get_colour)(struct term* term_p, colour_i i)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   if (term.rvideo && CCL_DEFAULT(i))
     return colours[i ^ 2];  // [BOLD]_FG_COLOUR_I  <-->  [BOLD]_BG_COLOUR_I
@@ -4600,10 +4597,9 @@ win_reset_colours(void)
 
 
 void
-win_paint(void)
+(win_paint)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   PAINTSTRUCT p;
   dc = BeginPaint(wnd, &p);
@@ -4612,7 +4608,7 @@ win_paint(void)
   // to be consistent during with the visual state of things
   g_render_tab_height = win_tab_height();
 
-  term_invalidate(term_p,
+  term_invalidate(
     (p.rcPaint.left - PADDING) / cell_width,
     (p.rcPaint.top - PADDING) / cell_height,
     (p.rcPaint.right - PADDING - 1) / cell_width,
@@ -4621,8 +4617,8 @@ win_paint(void)
 
   //if (kb_trace) printf("[%ld] win_paint state %d (idl/blk/pnd)\n", mtime(), update_state);
   if (update_state != UPDATE_PENDING) {
-    term_paint(term_p);
-    winimgs_paint(term_p);
+    term_paint();
+    winimgs_paint();
   }
 
   win_paint_tabs(0, p.rcPaint.right - p.rcPaint.left);

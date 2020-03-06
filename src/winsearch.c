@@ -23,7 +23,8 @@ static HWND search_edit_wnd;
 static WNDPROC default_edit_proc;
 static HFONT search_font;
 
-static void win_hide_search(void);
+#define win_hide_search() (win_hide_search)(term_p)
+static void (win_hide_search)(struct term* term_p);
 
 #define SEARCHBARCLASS "SearchBar"
 
@@ -42,10 +43,11 @@ win_get_search_edit_wnd(void)
   return search_edit_wnd;
 }
 
+#define current_delta(...) (current_delta)(term_p, ##__VA_ARGS__)
 static int
-current_delta(struct term* term_p, bool adjust)
+(current_delta)(struct term* term_p, bool adjust)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.results.length == 0) {
     return 0;
@@ -82,54 +84,57 @@ current_delta(struct term* term_p, bool adjust)
   return delta;
 }
 
+#define scroll_to_result(...) (scroll_to_result)(term_p, ##__VA_ARGS__)
 static void
-scroll_to_result(struct term* term_p)
+(scroll_to_result)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.results.length == 0) {
     return;
   }
 
-  int delta = current_delta(term_p, true);
+  int delta = current_delta(true);
 
   // Scroll if we must!
   if (delta != 0) {
-    term_scroll(term_p, 0, delta);
+    term_scroll(0, delta);
   }
 }
 
+#define next_result(...) (next_result)(term_p, ##__VA_ARGS__)
 void
-next_result(struct term* term_p)
+(next_result)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.results.length == 0) {
     return;
   }
-  if (current_delta(term_p, false) == 0)
+  if (current_delta(false) == 0)
     term.results.current = (term.results.current + 1) % term.results.length;
-  scroll_to_result(term_p);
+  scroll_to_result();
 }
 
+#define prev_result(...) (prev_result)(term_p, ##__VA_ARGS__)
 void
-prev_result(struct term* term_p)
+(prev_result)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (term.results.length == 0) {
     return;
   }
-  if (current_delta(term_p, false) == 0)
+  if (current_delta(false) == 0)
     term.results.current = (term.results.current + term.results.length - 1) % term.results.length;
-  scroll_to_result(term_p);
+  scroll_to_result();
 }
 
 static LRESULT CALLBACK
 edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-  struct term* term_p = win_active_terminal();
-  
+  struct term *term_p = win_active_terminal();
+
   MSG mesg = {hwnd : hwnd, message : msg, wParam : wp, lParam : lp, time : 0, pt : {0, 0}};
   TranslateMessage(&mesg);
 
@@ -137,7 +142,7 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     when WM_KEYDOWN case_or WM_SYSKEYDOWN:
       switch (mesg.wParam) {
         when VK_ESCAPE:
-          term_clear_search(term_p);
+          term_clear_search();
           win_hide_search();
           win_schedule_update();
           return 0;
@@ -147,10 +152,10 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
           return 0;
         when VK_RETURN:
           if (GetKeyState(VK_SHIFT) < 0) {
-            prev_result(term_p);
+            prev_result();
           }
           else {
-            next_result(term_p);
+            next_result();
           }
           win_schedule_update();
           return 0;
@@ -174,8 +179,8 @@ edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 static LRESULT CALLBACK
 search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
   
   bool update = false;
   switch (msg) {
@@ -183,13 +188,13 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
       switch (HIWORD(wp)) {
         when BN_CLICKED: // Equivalent to STN_CLICKED
           if (lp == (long)search_prev_wnd) {
-            prev_result(term_p);
+            prev_result();
           }
           if (lp == (long)search_next_wnd) {
-            next_result(term_p);
+            next_result();
           }
           if (lp == (long)search_close_wnd) {
-            term_clear_search(term_p);
+            term_clear_search();
             win_hide_search();
             win_schedule_update();
           }
@@ -209,10 +214,10 @@ search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     int len = GetWindowTextLengthW(search_edit_wnd) + 1;
     wchar * buf = (wchar *)malloc(sizeof(wchar) * len);
     GetWindowTextW(search_edit_wnd, buf, len);
-    term_set_search(term_p, buf);
-    term_update_search(term_p);
+    term_set_search(buf);
+    term_update_search();
     win_schedule_update();
-	return 0;
+    return 0;
   }
 
   return CallWindowProc(DefWindowProc, hwnd, msg, wp, lp);
@@ -227,11 +232,11 @@ place_field(int * curpoi, int width, int * pospoi)
   }
 }
 
+#define win_toggle_search(...) (win_toggle_search)(term_p, ##__VA_ARGS__)
 static void
-win_toggle_search(bool show, bool focus)
+(win_toggle_search)(struct term* term_p, bool show, bool focus)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   RECT cr;
   GetClientRect(wnd, &cr);
@@ -388,10 +393,9 @@ win_toggle_search(bool show, bool focus)
 }
 
 void
-win_open_search(void)
+(win_open_search)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   if (!(term.results.query) && search_initialised) {
     SetWindowTextW(search_edit_wnd, W(""));
@@ -402,10 +406,9 @@ win_open_search(void)
 }
 
 static void
-win_hide_search(void)
+(win_hide_search)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   win_toggle_search(false, false);
   term.search_window_visible = false;
@@ -413,7 +416,7 @@ win_hide_search(void)
 }
 
 void
-win_update_search(void)
+(win_update_search)(struct term* term_p)
 {
   if (win_search_visible()) {
     win_toggle_search(true, false);
@@ -421,7 +424,7 @@ win_update_search(void)
 }
 
 void
-win_paint_exclude_search(HDC dc)
+(win_paint_exclude_search)(struct term* term_p, HDC dc)
 {
   if (!win_search_visible()) {
     return;
@@ -439,10 +442,9 @@ win_paint_exclude_search(HDC dc)
 }
 
 bool
-win_search_visible(void)
+(win_search_visible)(struct term* term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   return term.search_window_visible;
 }

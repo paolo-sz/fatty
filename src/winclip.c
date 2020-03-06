@@ -308,11 +308,11 @@ dewsl(wchar * wpath)
 }
 
 void
-win_open(wstring wpath, bool adjust_dir)
+(win_open)(struct term* term_p, wstring wpath, bool adjust_dir)
 // frees wpath
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
+  string &child_dir = term.child->dir;
     
   // unescape
   int wl = wcslen(wpath);
@@ -352,8 +352,8 @@ win_open(wstring wpath, bool adjust_dir)
       // current directory, so we can only consider the working directory 
       // explicitly communicated via the OSC 7 escape sequence here.
       if (*wpath != '/' && wcsncmp(wpath, W("~/"), 2) != 0) {
-        if (term.child->dir && *term.child->dir) {
-          wchar * cd = cs__mbstowcs(term.child->dir);
+        if (child_dir && *child_dir) {
+          wchar * cd = cs__mbstowcs(child_dir);
           cd = renewn(cd, wcslen(cd) + wcslen(wpath) + 2);
           cd[wcslen(cd)] = '/';
           wcscpy(&cd[wcslen(cd) + 1], wpath);
@@ -364,7 +364,7 @@ win_open(wstring wpath, bool adjust_dir)
 
       wpath = dewsl((wchar *)wpath);
     }
-    wstring conv_wpath = child_conv_path(term.child, wpath, adjust_dir);
+    wstring conv_wpath = child_conv_path(wpath, adjust_dir);
 #ifdef debug_wsl
     printf("open <%ls> <%ls>\n", wpath, conv_wpath);
 #endif
@@ -406,8 +406,9 @@ rgb_to_x256(uchar r, uchar g, uchar b)
     return color_err <= gray_err ? 16 + color_index() : 232 + gray_index;
 }
 
+#define apply_attr_colour_rtf(...) (apply_attr_colour_rtf)(term_p, ##__VA_ARGS__)
 static cattrflags
-apply_attr_colour_rtf(cattr ca, attr_colour_mode mode, int * pfgi, int * pbgi)
+(apply_attr_colour_rtf)(struct term* term_p, cattr ca, attr_colour_mode mode, int * pfgi, int * pbgi)
 {
   ca = apply_attr_colour(ca, mode);
   *pfgi = (ca.attr & ATTR_FGMASK) >> ATTR_FGSHIFT;
@@ -425,13 +426,13 @@ apply_attr_colour_rtf(cattr ca, attr_colour_mode mode, int * pfgi, int * pbgi)
 }
 
 void
-win_copy(const wchar *data, cattr *cattrs, int len)
+(win_copy)(struct term *term_p, const wchar *data, cattr *cattrs, int len)
 {
   win_copy_as(data, cattrs, len, 0);
 }
 
 void
-win_copy_as(const wchar *data, cattr *cattrs, int len, char what)
+(win_copy_as)(struct term *term_p, const wchar *data, cattr *cattrs, int len, char what)
 {
   HGLOBAL clipdata, clipdata2, clipdata3 = 0;
   int len2;
@@ -950,12 +951,12 @@ buf_path(wchar * wfn)
     free(fn);
 }
 
+#define paste_hdrop(...) (paste_hdrop)(term_p, ##__VA_ARGS__)
 static void
-paste_hdrop(HDROP drop)
+(paste_hdrop)(struct term* term_p, HDROP drop)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
-    
+  TERM_VAR_REF  
+  
 #if CYGWIN_VERSION_API_MINOR >= 222
   // Update Cygwin locale to terminal locale.
   cygwin_internal(CW_INT_SETLOCALE);
@@ -977,7 +978,7 @@ paste_hdrop(HDROP drop)
 
   if (!support_wsl && *cfg.drop_commands) {
     // try to determine foreground program
-    char * fg_prog = foreground_prog(term.child);
+    char * fg_prog = foreground_prog();
     if (fg_prog) {
       // match program base name
       char * drops = cs__wcstombs(cfg.drop_commands);
@@ -986,7 +987,7 @@ paste_hdrop(HDROP drop)
         buf[buf_pos] = 0;
         char * pastebuf = newn(char, strlen(paste) + strlen(buf) + 1);
         sprintf(pastebuf, paste, buf);
-        child_send(term.child, pastebuf, strlen(pastebuf));
+        child_send(pastebuf, strlen(pastebuf));
         free(pastebuf);
         free(drops);
         free(fg_prog);
@@ -999,18 +1000,18 @@ paste_hdrop(HDROP drop)
   }
 
   if (term.bracketed_paste)
-    child_write(term.child, "\e[200~", 6);
-  child_send(term.child, buf, buf_pos);
-
+    child_write("\e[200~", 6);
+  child_send(buf, buf_pos);
   free(buf);
   if (term.bracketed_paste)
-    child_write(term.child, "\e[201~", 6);
+    child_write("\e[201~", 6);
 }
 
+#define paste_path(...) (paste_path)(term_p, ##__VA_ARGS__)
 static void
-paste_path(struct term* term_p, HANDLE data)
+(paste_path)(struct term* term_p, HANDLE data)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF  
   
   wchar *s = (wchar *)GlobalLock(data);
   buf_init();
@@ -1018,44 +1019,46 @@ paste_path(struct term* term_p, HANDLE data)
   GlobalUnlock(data);
 
   if (term.bracketed_paste)
-    child_write(term.child, "\e[200~", 6);
-  child_send(term.child, buf, buf_pos);
+    child_write("\e[200~", 6);
+  child_send(buf, buf_pos);
   free(buf);
   if (term.bracketed_paste)
-    child_write(term.child, "\e[201~", 6);
+    child_write("\e[201~", 6);
 }
 
+#define paste_unicode_text(...) (paste_unicode_text)(term_p, ##__VA_ARGS__)
 static void
-paste_unicode_text(HANDLE data)
+(paste_unicode_text)(struct term *term_p, HANDLE data)
 {
   wchar *s = (wchar *)GlobalLock(data);
   uint l = wcslen(s);
-  term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
+  term_paste(s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
   GlobalUnlock(data);
 }
 
+#define paste_text(...) (paste_text)(term_p, ##__VA_ARGS__)
 static void
-paste_text(HANDLE data)
+(paste_text)(struct term *term_p, HANDLE data)
 {
   char *cs = (char *)GlobalLock(data);
   uint l = MultiByteToWideChar(CP_ACP, 0, cs, -1, 0, 0) - 1;
   wchar s[l];
   MultiByteToWideChar(CP_ACP, 0, cs, -1, s, l);
   GlobalUnlock(data);
-  term_paste(win_active_terminal(), s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
+  term_paste(s, l, (GetKeyState(VK_CONTROL) & 0x80) != 0);
 }
 
+#define do_win_paste(...) (do_win_paste)(term_p, ##__VA_ARGS__)
 static void
-do_win_paste(bool do_path)
+(do_win_paste)(struct term *term_p, bool do_path)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   if (!OpenClipboard(null))
     return;
 
   if (cfg.input_clears_selection)
-   term.selected = false;
+    term.selected = false;
 
   HGLOBAL data;
   if ((data = GetClipboardData(CF_HDROP))) {
@@ -1065,7 +1068,7 @@ do_win_paste(bool do_path)
   else if ((data = GetClipboardData(CF_UNICODETEXT))) {
     //printf("pasting CF_UNICODETEXT\n");
     if (do_path)
-      paste_path(term_p, data);
+      paste_path(data);
     else
       paste_unicode_text(data);
   }
@@ -1078,13 +1081,13 @@ do_win_paste(bool do_path)
 }
 
 void
-win_paste(void)
+(win_paste)(struct term *term_p)
 {
   do_win_paste(false);
 }
 
 void
-win_paste_path(void)
+(win_paste_path)(struct term *term_p)
 {
   do_win_paste(true);
 }
@@ -1188,6 +1191,8 @@ static __stdcall HRESULT
 dt_drop(IDropTarget *this_, IDataObject *obj,
         DWORD keys, POINTL pos, DWORD *effect_p)
 {
+  struct term *term_p = win_active_terminal();
+
   // check whether drag-and-drop target is the terminal window
   // not the Options menu or any of its controls
   POINT p = {.x = pos.x, .y = pos.y};

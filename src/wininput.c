@@ -41,10 +41,10 @@ struct function_def {
   string name;
   union {
     WPARAM cmd;
-    void (*fct)(void);
-    void (*fct_key)(uint key, mod_keys mods);
+    void (*fct)(struct term *term_p);
+    void (*fct_key)(struct term *term_p, uint key, mod_keys mods);
   };
-  uint (*fct_status)(void);
+  uint (*fct_status)(struct term *term_p);
 };
 
 static struct function_def * function_def(char * cmd);
@@ -314,7 +314,7 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
 #define dont_debug_modify_menu
 
 void
-win_update_menus(bool callback)
+(win_update_menus)(struct term *term_p, bool callback)
 {
   if (callback) {
     // invoked after WM_INITMENU
@@ -322,8 +322,7 @@ win_update_menus(bool callback)
   else
     return;
 
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   bool shorts = !term.shortcut_override;
   bool clip = shorts && cfg.clip_shortcuts;
@@ -594,7 +593,7 @@ win_update_menus(bool callback)
       wchar * label = _W(cmdp);
       uint status = 0;
       if (fudef && fudef->fct_status) {
-        status = fudef->fct_status();
+        status = fudef->fct_status(term_p);
         //EnableMenuItem(menu, idm_cmd + n, status);  // done by modify_menu
       }
       modify_menu(menu, idm_cmd + n, status, label, null);
@@ -745,8 +744,9 @@ win_init_menus(void)
   sysmenulen = GetMenuItemCount(sysmenu);
 }
 
+#define open_popup_menu(...) (open_popup_menu)(term_p, ##__VA_ARGS__)
 static void
-open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
+(open_popup_menu)(struct term *term_p, bool use_text_cursor, string menucfg, mod_keys mods)
 {
   /* Create a new context menu structure every time the menu is opened.
      This was a fruitless attempt to achieve its proper DPI scaling.
@@ -830,13 +830,13 @@ open_popup_menu(bool use_text_cursor, string menucfg, mod_keys mods)
 }
 
 void
-win_popup_menu(mod_keys mods)
+(win_popup_menu)(struct term *term_p, mod_keys mods)
 {
   open_popup_menu(false, null, mods);
 }
 
 bool
-win_title_menu(bool leftbut)
+(win_title_menu)(struct term *term_p, bool leftbut)
 {
   string title_menu = leftbut ? cfg.menu_title_ctrl_l : cfg.menu_title_ctrl_r;
   if (*title_menu) {
@@ -902,11 +902,11 @@ static bool is_tab_bar_area(int y) {
   return false;
 }
 
+#define update_mouse(...) (update_mouse)(term_p, ##__VA_ARGS__)
 static void
-update_mouse(mod_keys mods)
+(update_mouse)(struct term* term_p, mod_keys mods)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   bool new_app_mouse =
     (term.mouse_mode && !term.show_other_screen &&
@@ -915,7 +915,7 @@ update_mouse(mod_keys mods)
 }
 
 void
-win_update_mouse(void)
+(win_update_mouse)(struct term* term_p)
 { update_mouse(get_mods()); }
 
 void
@@ -925,7 +925,7 @@ win_capture_mouse(void)
 static bool mouse_showing = true;
 
 void
-win_show_mouse(void)
+(win_show_mouse)(struct term* term_p)
 {
   win_update_mouse();
   if (!mouse_showing) {
@@ -934,11 +934,11 @@ win_show_mouse(void)
   }
 }
 
+#define hide_mouse(...) (hide_mouse)(term_p, ##__VA_ARGS__)
 static void
-hide_mouse(void)
+(hide_mouse)(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   POINT p;
   if (term.hide_mouse && mouse_showing && GetCursorPos(&p) && WindowFromPoint(p) == wnd) {
@@ -947,11 +947,11 @@ hide_mouse(void)
   }
 }
 
+#define translate_pos(...) (translate_pos)(term_p, ##__VA_ARGS__)
 static pos
-translate_pos(int x, int y)
+(translate_pos)(struct term *term_p, int x, int y)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return (pos){
     y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
@@ -975,18 +975,18 @@ static mouse_button skip_release_token = (mouse_button)(-1);
 static uint last_skipped_time;
 static bool mouse_state = false;
 
+#define get_mouse_pos(...) (get_mouse_pos)(term_p, ##__VA_ARGS__)
 static pos
-get_mouse_pos(LPARAM lp)
+(get_mouse_pos)(struct term *term_p, LPARAM lp)
 {
   last_lp = lp;
   return translate_pos(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
 }
 
 void
-win_mouse_click(mouse_button b, LPARAM lp)
+(win_mouse_click)(struct term* term_p, mouse_button b, LPARAM lp)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   mouse_state = true;
   bool click_focus = click_focus_token;
@@ -1026,9 +1026,9 @@ win_mouse_click(mouse_button b, LPARAM lp)
   else {
     if (last_skipped && dblclick) {
       // recognize double click also in application mouse modes
-      term_mouse_click(term_p, b, mods, p, 1);
+      term_mouse_click(b, mods, p, 1);
     }
-    term_mouse_click(term_p, b, mods, p, count);
+    term_mouse_click(b, mods, p, count);
     last_skipped = false;
   }
   last_pos = (pos){INT_MIN, INT_MIN, false};
@@ -1054,7 +1054,7 @@ win_mouse_click(mouse_button b, LPARAM lp)
 }
 
 void
-win_mouse_release(mouse_button b, LPARAM lp)
+(win_mouse_release)(struct term *term_p, mouse_button b, LPARAM lp)
 {
   mouse_state = false;
 
@@ -1063,7 +1063,7 @@ win_mouse_release(mouse_button b, LPARAM lp)
     return;
   }
 
-  term_mouse_release(win_active_terminal(), b, get_mods(), get_mouse_pos(lp));
+  term_mouse_release(b, get_mods(), get_mouse_pos(lp));
   ReleaseCapture();
   switch (b) {
     when MBT_RIGHT:
@@ -1080,7 +1080,7 @@ win_mouse_release(mouse_button b, LPARAM lp)
 }
 
 void
-win_mouse_move(bool nc, LPARAM lp)
+(win_mouse_move)(struct term* term_p, bool nc, LPARAM lp)
 {
   if (lp == last_lp)
     return;
@@ -1097,31 +1097,31 @@ win_mouse_move(bool nc, LPARAM lp)
     uint diff = GetMessageTime() - last_skipped_time;
     //printf("focus move %d %d\n", dist, diff);
     if (dist * diff > 999) {
-      term_mouse_click(win_active_terminal(), last_button, last_mods, last_click_pos, 1);
+      term_mouse_click(last_button, last_mods, last_click_pos, 1);
       last_skipped = false;
       skip_release_token = (mouse_button)(-1);
     }
   }
 
   last_pos = p;
-  term_mouse_move(win_active_terminal(), get_mods(), p);
+  term_mouse_move(get_mods(), p);
 }
 
 void
-win_mouse_wheel(POINT wpos, bool horizontal, int delta)
+(win_mouse_wheel)(struct term *term_p, POINT wpos, bool horizontal, int delta)
 {
   pos tpos = translate_pos(wpos.x, wpos.y);
 
   int lines_per_notch;
   SystemParametersInfo(SPI_GETWHEELSCROLLLINES, 0, &lines_per_notch, 0);
 
-  term_mouse_wheel(win_active_terminal(), horizontal, delta, lines_per_notch, get_mods(), tpos);
+  term_mouse_wheel(horizontal, delta, lines_per_notch, get_mods(), tpos);
 }
 
 void
-win_get_locator_info(struct term *term_p, int *x, int *y, int *buttons, bool by_pixels)
+(win_get_locator_info)(struct term *term_p, int *x, int *y, int *buttons, bool by_pixels)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   POINT p = {-1, -1};
 
@@ -1156,11 +1156,11 @@ win_get_locator_info(struct term *term_p, int *x, int *y, int *buttons, bool by_
 
 /* Support functions */
 
+#define toggle_scrollbar(...) (toggle_scrollbar)(term_p, ##__VA_ARGS__)
 static void
-toggle_scrollbar(void)
+(toggle_scrollbar)(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   if (cfg.scrollbar) {
     term.show_scrollbar = !term.show_scrollbar;
@@ -1173,15 +1173,17 @@ static bool transparency_tuned;
 
 #define dont_debug_transparency
 
+#define cycle_transparency(...) (cycle_transparency)(term_p, ##__VA_ARGS__)
 static void
-cycle_transparency(void)
+(cycle_transparency)(struct term* term_p)
 {
   cfg.transparency = ((cfg.transparency + 16) / 16 * 16) % 128;
   win_update_transparency(false);
 }
 
+#define set_transparency(...) (set_transparency)(term_p, ##__VA_ARGS__)
 static void
-set_transparency(int t)
+(set_transparency)(struct term* term_p, int t)
 {
   if (t >= 128)
     t = 127;
@@ -1191,15 +1193,15 @@ set_transparency(int t)
   win_update_transparency(false);
 }
 
+#define cycle_pointer_style(...) (cycle_pointer_style)(term_p, ##__VA_ARGS__)
 static void
-cycle_pointer_style()
+(cycle_pointer_style)(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   cfg.cursor_type = (cfg.cursor_type + 1) % 3;
   term.cursor_invalid = true;
-  term_schedule_cblink(term_p);
+  term_schedule_cblink();
   win_update(false);
 }
 
@@ -1209,20 +1211,20 @@ cycle_pointer_style()
  */
 
 static void
-menu_text()
+menu_text(struct term *term_p)
 {
   open_popup_menu(true, null, get_mods());
 }
 
 static void
-menu_pointer()
+menu_pointer(struct term *term_p)
 {
   //win_popup_menu(get_mods());
   open_popup_menu(false, null, get_mods());
 }
 
 static void
-transparency_level()
+transparency_level(struct term *term_p)
 {
   if (!transparency_pending) {
     previous_transparency = cfg.transparency;
@@ -1234,7 +1236,7 @@ transparency_level()
 }
 
 static void
-newwin_begin(uint key, mod_keys mods)
+newwin_begin(__attribute__((unused))struct term* term_p, uint key, mod_keys mods)
 {
   if (key) {
     newwin_pending = true;
@@ -1249,19 +1251,19 @@ newwin_begin(uint key, mod_keys mods)
 }
 
 static void
-window_full()
+window_full(struct term *term_p)
 {
   win_maximise(2);
 }
 
 static void
-window_max()
+window_max(struct term *term_p)
 {
   win_maximise(1);
 }
 
 static void
-window_toggle_max()
+window_toggle_max(struct term *term_p)
 {
   if (IsZoomed(wnd))
     win_maximise(0);
@@ -1270,91 +1272,82 @@ window_toggle_max()
 }
 
 static void
-window_restore()
+window_restore(struct term *term_p)
 {
   win_maximise(0);
 }
 
 static void
-window_min()
+window_min(__attribute__((unused))struct term* term_p)
 {
   win_set_iconic(true);
 }
 
 void
-toggle_vt220()
+(toggle_vt220)(struct term* term_p)
 {
-  toggle_vt220_term(win_active_terminal());
-}
-
-void
-toggle_vt220_term(struct term* term_p)
-{
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   term.vt220_keys = !term.vt220_keys;
 }
 
 void
-toggle_auto_repeat()
+toggle_auto_repeat(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   term.auto_repeat = !term.auto_repeat;
 }
 
 void
-toggle_bidi()
+toggle_bidi(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   term.disable_bidi = !term.disable_bidi;
 }
 
-static void scroll_HOME()
+static void scroll_HOME(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_TOP, 0); }
-static void scroll_END()
+static void scroll_END(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_BOTTOM, 0); }
-static void scroll_PRIOR()
+static void scroll_PRIOR(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_PAGEUP, 0); }
-static void scroll_NEXT()
+static void scroll_NEXT(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_PAGEDOWN, 0); }
-static void scroll_UP()
+static void scroll_UP(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_LINEUP, 0); }
-static void scroll_DOWN()
+static void scroll_DOWN(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_LINEDOWN, 0); }
-static void scroll_LEFT()
+static void scroll_LEFT(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_PRIOR, 0); }
-static void scroll_RIGHT()
+static void scroll_RIGHT(__attribute__((unused))struct term* term_p)
   { SendMessage(wnd, WM_VSCROLL, SB_NEXT, 0); }
 
-static void switch_NEXT()
+static void switch_NEXT(__attribute__((unused))struct term* term_p)
   { win_switch(false, true); }
-static void switch_PREV()
+static void switch_PREV(__attribute__((unused))struct term* term_p)
   { win_switch(true, true); }
-static void switch_visible_NEXT()
+static void switch_visible_NEXT(__attribute__((unused))struct term* term_p)
   { win_switch(false, false); }
-static void switch_visible_PREV()
+static void switch_visible_PREV(__attribute__((unused))struct term* term_p)
   { win_switch(true, false); }
 
 static void
-nop()
+nop(__attribute__((unused))struct term* term_p)
 {
 }
 
 static uint
-mflags_copy()
+mflags_copy(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return term.selected ? MF_ENABLED : MF_GRAYED;
 }
 
 static uint
-mflags_paste()
+mflags_paste(__attribute__((unused))struct term *term_p)
 {
   return
     IsClipboardFormatAvailable(CF_TEXT) ||
@@ -1364,36 +1357,35 @@ mflags_paste()
 }
 
 static void
-lock_title()
+lock_title(__attribute__((unused))struct term* term_p)
 {
   title_settable = false;
 }
 
 static void
-super_down(uint key, mod_keys mods)
+super_down(__attribute__((unused))struct term *term_p, uint key, mod_keys mods)
 {
   super_key = key;
   (void)mods;
 }
 
 static void
-hyper_down(uint key, mod_keys mods)
+hyper_down(__attribute__((unused))struct term *term_p, uint key, mod_keys mods)
 {
   hyper_key = key;
   (void)mods;
 }
 
 static uint
-mflags_lock_title()
+mflags_lock_title(__attribute__((unused))struct term *term_p)
 {
   return title_settable ? MF_ENABLED : MF_GRAYED;
 }
 
 static uint
-mflags_defsize()
+mflags_defsize(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return
     IsZoomed(wnd) || term.cols != cfg.cols || term.rows != cfg.rows
@@ -1401,13 +1393,13 @@ mflags_defsize()
 }
 
 static uint
-mflags_fullscreen()
+mflags_fullscreen(__attribute__((unused))struct term *term_p)
 {
   return win_is_fullscreen ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
-mflags_zoomed()
+mflags_zoomed(__attribute__((unused))struct term *term_p)
 {
   return IsZoomed(wnd) ? MF_CHECKED: MF_UNCHECKED;
 }
@@ -1416,16 +1408,15 @@ mflags_zoomed()
 //mflags_flipscreen()
 //{
 //  struct term* term_p = win_active_terminal();
-//  struct term& term = *term_p;
+//  TERM_VAR_REF
 //    
-//  returnterm.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
+//  return term.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
 //}
 
 static uint
-mflags_scrollbar_outer()
+mflags_scrollbar_outer(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED
 #ifdef allow_disabling_scrollbar
@@ -1435,10 +1426,9 @@ mflags_scrollbar_outer()
 }
 
 static uint
-mflags_scrollbar_inner()
+mflags_scrollbar_inner(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   if (cfg.scrollbar)
     return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
@@ -1447,16 +1437,15 @@ mflags_scrollbar_inner()
 }
 
 static uint
-mflags_open()
+mflags_open(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return term.selected ? MF_ENABLED : MF_GRAYED;
 }
 
 static uint
-mflags_logging()
+mflags_logging(__attribute__((unused))struct term *term_p)
 {
   return ((logging || *cfg.log) ? MF_ENABLED : MF_GRAYED)
        | (logging ? MF_CHECKED : MF_UNCHECKED)
@@ -1464,34 +1453,31 @@ mflags_logging()
 }
 
 static uint
-mflags_char_info()
+mflags_char_info(__attribute__((unused))struct term *term_p)
 {
   return show_charinfo ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
-mflags_vt220()
+mflags_vt220(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return term.vt220_keys ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
-mflags_auto_repeat()
+mflags_auto_repeat(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return term.auto_repeat ? MF_CHECKED : MF_UNCHECKED;
 }
 
 static uint
-mflags_bidi()
+mflags_bidi(struct term *term_p)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  TERM_VAR_REF
     
   return (cfg.bidi == 0
          || (cfg.bidi == 1 && (term.on_alt_screen ^ term.show_other_screen))
@@ -1500,7 +1486,7 @@ mflags_bidi()
 }
 
 static uint
-mflags_options()
+mflags_options(__attribute__((unused))struct term *term_p)
 {
   return config_wnd ? MF_GRAYED : MF_ENABLED;
 }
@@ -1529,7 +1515,7 @@ static struct function_def cmd_defs[] = {
   {"win-toggle-max", {.fct = window_toggle_max}, mflags_zoomed},
   {"win-restore", {.fct = window_restore}, 0},
   {"win-icon", {.fct = window_min}, 0},
-  {"close", {.fct = win_close}, 0},
+  {"close", {.fct = (win_close)}, 0},
 
   {"new", {.fct_key = newwin_begin}, 0},  // deprecated
   {"new-key", {.fct_key = newwin_begin}, 0},
@@ -1539,8 +1525,8 @@ static struct function_def cmd_defs[] = {
 
   {"search", {IDM_SEARCH}, 0},
   {"scrollbar-outer", {IDM_SCROLLBAR}, mflags_scrollbar_outer},
-  {"scrollbar-inner", {.fct = toggle_scrollbar}, mflags_scrollbar_inner},
-  {"cycle-pointer-style", {.fct = cycle_pointer_style}, 0},
+  {"scrollbar-inner", {.fct = (toggle_scrollbar)}, mflags_scrollbar_inner},
+  {"cycle-pointer-style", {.fct = (cycle_pointer_style)}, 0},
   {"cycle-transparency-level", {.fct = transparency_level}, 0},
 
   {"copy", {IDM_COPY}, mflags_copy},
@@ -1550,7 +1536,7 @@ static struct function_def cmd_defs[] = {
   {"copy-html-format", {IDM_COPY_HFMT}, mflags_copy},
   {"copy-html-full", {IDM_COPY_HTML}, mflags_copy},
   {"paste", {IDM_PASTE}, mflags_paste},
-  {"paste-path", {.fct = win_paste_path}, mflags_paste},
+  {"paste-path", {.fct = (win_paste_path)}, mflags_paste},
   {"copy-paste", {IDM_COPASTE}, mflags_copy},
   {"select-all", {IDM_SELALL}, 0},
   {"clear-scrollback", {IDM_CLRSCRLBCK}, 0},
@@ -1563,8 +1549,8 @@ static struct function_def cmd_defs[] = {
   {"toggle-logging", {IDM_TOGLOG}, mflags_logging},
   {"toggle-char-info", {IDM_TOGCHARINFO}, mflags_char_info},
   {"export-html", {IDM_HTML}, 0},
-  {"print-screen", {.fct = print_screen}, 0},
-  {"toggle-vt220", {.fct = toggle_vt220}, mflags_vt220},
+  {"print-screen", {.fct = (print_screen)}, 0},
+  {"toggle-vt220", {.fct = (toggle_vt220)}, mflags_vt220},
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
 
@@ -1757,12 +1743,12 @@ win_key_nullify(uchar vk)
 
 #define dont_debug_def_keys 1
 
+#define pick_key_function(...) (pick_key_function)(term_p, ##__VA_ARGS__)
 static int
-pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mods, uint scancode)
+(pick_key_function)(struct term* term_p, wstring key_commands, char * tag, int n, uint key, mod_keys mods, uint scancode)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
-
+  TERM_VAR_REF  
+  
   char * ukey_commands = cs__wcstoutf(key_commands);
   char * cmdp = ukey_commands;
   char sepch = ';';
@@ -1826,7 +1812,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
       {
         int len = wcslen(fct) - 2;
         if (len > 0) {
-          child_sendw(term.child, &fct[1], wcslen(fct) - 2);
+          child_sendw(&fct[1], wcslen(fct) - 2);
           ret = true;
         }
       }
@@ -1841,10 +1827,10 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         if (cc[1] != ' ') {
           if (mods & MDK_ALT) {
             cc[0] = '\e';
-            child_send(term.child, cc, 2);
+            child_send(cc, 2);
           }
           else
-            child_send(term.child, &cc[1], 1);
+            child_send(&cc[1], 1);
           ret = true;
         }
       }
@@ -1852,7 +1838,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
         fct[wcslen(fct) - 1] = 0;
         char * cmd = cs__wcstombs(&fct[1]);
         if (*cmd) {
-          term_cmd(term_p, cmd);
+          term_cmd(cmd);
           ret = true;
         }
         free(cmd);
@@ -1860,7 +1846,7 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
       else if (sscanf (paramp, "%u%c", & code, &tmp_char) == 1) {
         char buf[33];
         int len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
-        child_send(term.child, buf, len);
+        child_send(buf, len);
         ret = true;
       }
       else if (!*paramp) {
@@ -1875,13 +1861,13 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
           if (fudef->cmd < 0xF000)
             send_syscommand(fudef->cmd);
           else
-            fudef->fct_key(key, mods);
+            fudef->fct_key(term_p, key, mods);
           ret = true;
         }
         else {
           // invalid definition (e.g. "A+Enter:foo;"), shall 
           // not cause any action (return true) but provide a feedback
-          win_bell(term_p, &cfg);
+          win_bell(&cfg);
           ret = true;
         }
       }
@@ -1909,13 +1895,13 @@ pick_key_function(wstring key_commands, char * tag, int n, uint key, mod_keys mo
 }
 
 void
-user_function(wstring commands, int n)
+(user_function)(struct term* term_p, wstring commands, int n)
 {
   pick_key_function(commands, 0, n, 0, (mod_keys)0, 0);
 }
 
 bool
-win_key_down(WPARAM wp, LPARAM lp)
+(win_key_down)(struct term* term_p, WPARAM wp, LPARAM lp)
 {
   uint key = wp;
   last_key = key;
@@ -1925,9 +1911,8 @@ win_key_down(WPARAM wp, LPARAM lp)
   else if (comp_state == COMP_CLEAR)
     comp_state = COMP_NONE;
 
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
-    
+  TERM_VAR_REF  
+  
   uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
   bool extended = HIWORD(lp) & KF_EXTENDED;
   bool repeat = HIWORD(lp) & KF_REPEAT;
@@ -2106,8 +2091,8 @@ win_key_down(WPARAM wp, LPARAM lp)
   if (selection_pending) {
     bool sel_adjust = false;
     //WPARAM scroll = 0;
-    int sbtop = -sblines(term_p);
-    int sbbot = term_last_nonempty_line(term_p);
+    int sbtop = -sblines();
+    int sbbot = term_last_nonempty_line();
     int oldisptop = term.disptop;
     //printf("y %d disptop %d sb %d..%d\n", term.sel_pos.y, term.disptop, sbtop, sbbot);
     switch (key) {
@@ -2128,37 +2113,37 @@ win_key_down(WPARAM wp, LPARAM lp)
       when VK_UP:
         if (term.sel_pos.y > sbtop) {
           if (term.sel_pos.y <= term.disptop)
-            term_scroll(term_p, 0, -1);
+            term_scroll(0, -1);
           term.sel_pos.y--;
           sel_adjust = true;
         }
       when VK_DOWN:
         if (term.sel_pos.y < sbbot) {
           if (term.sel_pos.y + 1 >= term.disptop + term.rows)
-            term_scroll(term_p, 0, +1);
+            term_scroll(0, +1);
           term.sel_pos.y++;
           sel_adjust = true;
         }
       when VK_PRIOR:
         //scroll = SB_PAGEUP;
-        term_scroll(term_p, 0, -max(1, term.rows - 1));
+        term_scroll(0, -max(1, term.rows - 1));
         term.sel_pos.y += term.disptop - oldisptop;
         sel_adjust = true;
       when VK_NEXT:
         //scroll = SB_PAGEDOWN;
-        term_scroll(term_p, 0, +max(1, term.rows - 1));
+        term_scroll(0, +max(1, term.rows - 1));
         term.sel_pos.y += term.disptop - oldisptop;
         sel_adjust = true;
       when VK_HOME:
         //scroll = SB_TOP;
-        term_scroll(term_p, +1, 0);
+        term_scroll(+1, 0);
         term.sel_pos.y += term.disptop - oldisptop;
         term.sel_pos.y = sbtop;
         term.sel_pos.x = 0;
         sel_adjust = true;
       when VK_END:
         //scroll = SB_BOTTOM;
-        term_scroll(term_p, -1, 0);
+        term_scroll(-1, 0);
         term.sel_pos.y += term.disptop - oldisptop;
         term.sel_pos.y = sbbot;
         if (sbbot < term.rows) {
@@ -2172,14 +2157,14 @@ win_key_down(WPARAM wp, LPARAM lp)
         }
         sel_adjust = true;
       when VK_INSERT case_or VK_RETURN:  // copy
-        term_copy(term_p);
+        term_copy();
         selection_pending = false;
       when VK_DELETE case_or VK_ESCAPE:  // abort
         selection_pending = false;
         break;
       default:
         //selection_pending = false;
-        win_bell(term_p, &cfg);
+        win_bell(&cfg);
     }
     //if (scroll) {
     //  if (!term.app_scrollbar)
@@ -2343,7 +2328,7 @@ win_key_down(WPARAM wp, LPARAM lp)
     // Copy&paste
     if (cfg.clip_shortcuts && key == VK_INSERT && mods && !alt) {
       if (ctrl)
-        term_copy(term_p);
+        term_copy();
       if (shift)
         win_paste();
       return true;
@@ -2383,8 +2368,8 @@ win_key_down(WPARAM wp, LPARAM lp)
         mods == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT))
        ) {
       switch (key) {
-        when 'A': term_select_all(term_p);
-        when 'C': term_copy(term_p);
+        when 'A': term_select_all();
+        when 'C': term_copy();
         when 'V': win_paste();
 //        when 'I': open_popup_menu(true, "ls", mods);
 //        when 'N': send_syscommand(IDM_NEW);
@@ -2392,7 +2377,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
-        when 'T': win_tab_create(term_p);
+        when 'T': win_tab_create();
         when 'W': win_tab_close(&term_p);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': if (!transparency_pending) {
@@ -2696,7 +2681,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       compose_buflen = 0;
       if (!found) {
         // unknown compose sequence
-        win_bell(win_active_terminal(), &cfg);
+        win_bell(&cfg);
         // continue without composition
       }
     }
@@ -2956,7 +2941,7 @@ win_key_down(WPARAM wp, LPARAM lp)
         return false;
     when VK_CANCEL:
       if (!strcmp(cfg.key_break, "_BRK_")) {
-        child_break(term.child);
+        child_break();
         return false;
       }
       if (!vk_special(cfg.key_break))
@@ -2991,16 +2976,16 @@ win_key_down(WPARAM wp, LPARAM lp)
     when VK_DELETE: edit_key(3, '.');
     when VK_PRIOR:
       if (shift && ctrl)
-        win_tab_move(term_p, -1);
+        win_tab_move(-1);
       else if (ctrl)
-        win_tab_change(term_p, -1);
+        win_tab_change(-1);
       else
         edit_key(5, '9');
     when VK_NEXT:
       if (shift && ctrl)
-        win_tab_move(term_p, +1);
+        win_tab_move(+1);
       else if (ctrl)
-        win_tab_change(term_p, +1);
+        win_tab_change(+1);
       else
         edit_key(6, '3');
     when VK_HOME:   term.vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
@@ -3043,7 +3028,7 @@ win_key_down(WPARAM wp, LPARAM lp)
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
       else if (shift && ctrl && key == 'T')
-        win_tab_create(term_p);
+        win_tab_create();
       else if (shift && ctrl && key == 'W')
         win_tab_close(&term_p);
       else if (term.modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
@@ -3092,12 +3077,12 @@ win_key_down(WPARAM wp, LPARAM lp)
   }
 
   hide_mouse();
-  term_cancel_paste(term_p);
+  term_cancel_paste();
 
   if (len) {
     //printf("[%ld] win_key_down %02X\n", mtime(), key); kb_trace = key;
     while (count--)
-      child_send(term.child, buf, len);
+      child_send(buf, len);
     compose_clear();
     // set token to enforce immediate display of keyboard echo;
     // we cannot win_update_now here; need to wait for the echo (child_proc)
@@ -3111,7 +3096,7 @@ win_key_down(WPARAM wp, LPARAM lp)
 }
 
 void
-win_csi_seq(struct child* child, char * pre, char * suf)
+(win_csi_seq)(struct child* child_p, char * pre, char * suf)
 {
   mod_keys mods = get_mods();
   auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
@@ -3120,22 +3105,21 @@ win_csi_seq(struct child* child, char * pre, char * suf)
   mods |= (mod_keys)(super * MDK_SUPER | _hyper * MDK_HYPER);
 
   if (mods)
-    child_printf(child, "\e[%s;%u%s", pre, mods + 1, suf);
+    child_printf("\e[%s;%u%s", pre, mods + 1, suf);
   else
-    child_printf(child, "\e[%s%s", pre, suf);
+    child_printf("\e[%s%s", pre, suf);
 }
 
 bool
-win_key_up(WPARAM wp, LPARAM lp)
+(win_key_up)(struct term *term_p, WPARAM wp, LPARAM lp)
 {
   uint key = wp;
 #ifdef debug_virtual_key_codes
   printf("  win_key_up %04X %s\n", key, vk_name(key));
 #endif
 
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
-
+  TERM_VAR_REF  
+  
   if (key == VK_CANCEL) {
     // in combination with Control, this may be the KEYUP event 
     // for VK_PAUSE or VK_SCROLL, so there actual state cannot be 
@@ -3229,7 +3213,7 @@ win_key_up(WPARAM wp, LPARAM lp)
       do
         buf[--pos] = alt_code;
       while (alt_code >>= 8);
-      child_send(term.child, buf + pos, sizeof buf - pos);
+      child_send(buf + pos, sizeof buf - pos);
       compose_clear();
     }
     else if (alt_code < 0x10000) {
@@ -3238,13 +3222,13 @@ win_key_up(WPARAM wp, LPARAM lp)
       if (wc < 0x20)
         MultiByteToWideChar(CP_OEMCP, MB_USEGLYPHCHARS,
                             (char *)wc_tmp, 1, &wc, 1);
-      child_sendw(term.child, &wc, 1);
+      child_sendw(&wc, 1);
       compose_clear();
     }
     else {
       xchar xc = alt_code;
       wchar tmp_wchar[] = {high_surrogate(xc), low_surrogate(xc)};
-      child_sendw(term.child, tmp_wchar, 2);
+      child_sendw(tmp_wchar, 2);
       compose_clear();
     }
   }

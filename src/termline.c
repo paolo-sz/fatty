@@ -786,9 +786,9 @@ resizeline(termline *line, int cols)
  * Get the number of lines in the scrollback.
  */
 int
-sblines(struct term* term_p)
+(sblines)(struct term* term_p)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   return term.on_alt_screen ^ term.show_other_screen ? 0 : term.sblines;
 }
@@ -798,9 +798,9 @@ sblines(struct term* term_p)
  * whether the y coordinate is non-negative or negative (respectively).
  */
 termline *
-fetch_line(struct term* term_p, int y)
+(fetch_line)(struct term* term_p, int y)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   termlines *lines = term.show_other_screen ? term.other_lines : term.lines;
 
@@ -833,15 +833,16 @@ release_line(termline *line)
 }
 
 
+#define term_bidi_cache_hit(...) (term_bidi_cache_hit)(term_p, ##__VA_ARGS__)
 /*
  * To prevent having to run the reasonably tricky bidi algorithm
  * too many times, we maintain a cache of the last lineful of data
  * fed to the algorithm on each line of the display.
  */
 static int
-term_bidi_cache_hit(struct term* term_p, int line, termchar *lbefore, ushort lattr, int width)
+(term_bidi_cache_hit)(struct term* term_p, int line, termchar *lbefore, ushort lattr, int width)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   int i;
 
@@ -867,12 +868,13 @@ term_bidi_cache_hit(struct term* term_p, int line, termchar *lbefore, ushort lat
   return true;  /* all termchars matched */
 }
 
+#define term_bidi_cache_store(...) (term_bidi_cache_store)(term_p, ##__VA_ARGS__)
 static void
-term_bidi_cache_store(struct term* term_p, int line, 
+(term_bidi_cache_store)(struct term* term_p, int line, 
                       termchar *lbefore, termchar *lafter, bidi_char *wcTo, 
                       ushort lattr, int width, int size, int bidisize)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
 #ifdef debug_bidi_cache
   printf("cache_store w %d s %d bs %d\n", width, size, bidisize);
@@ -955,9 +957,9 @@ void trace_bidi(char * tag, bidi_char * wc, int ib)
 #endif
 
 wchar *
-wcsline(struct term* term_p, termline * line)
+(wcsline)(struct term* term_p, termline * line)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   static wchar * wcs = 0;
   wcs = renewn(wcs, term.cols + 1);
@@ -1018,9 +1020,9 @@ getparabidi(termline * line)
  * term.post_bidi_cache[scr_y].*.
  */
 termchar *
-term_bidi_line(struct term* term_p, termline *line, int scr_y)
+(term_bidi_line)(struct term* term_p, termline *line, int scr_y)
 {
-  struct term& term = *term_p;
+  TERM_VAR_REF
   
   bool autodir = !(line->lattr & (LATTR_BIDISEL | LATTR_AUTOSEL));
   int level = (line->lattr & LATTR_BIDIRTL) ? 1 : 0;
@@ -1037,7 +1039,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
   // within a "paragraph" (in a wrapped continuation line), 
   // consult previous line (if there is one)
   bool prevseldir = false;
-  if (autodir && line->lattr & LATTR_WRAPCONTD && scr_y > -sblines(term_p)) {
+  if (autodir && line->lattr & LATTR_WRAPCONTD && scr_y > -sblines()) {
     // look backward to beginning of paragraph or an already determined line,
     // in case previous lines are not displayed (scrolled out)
     int y = scr_y - 1;
@@ -1045,7 +1047,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
     ushort parabidi = (ushort)-1;
     bool brk = false;
     do {
-      termline *prevline = fetch_line(term_p, term.disptop + y);
+      termline *prevline = fetch_line(term.disptop + y);
       //printf("back @%d %04X %.22ls auto %d lvl %d\n", y, prevline->lattr, wcsline(prevline), autodir, level);
       if (prevline->lattr & LATTR_WRAPPED) {
         paray = y;
@@ -1063,7 +1065,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
       if (brk)
         break;
       y--;
-    } while (y >= -sblines(term_p));
+    } while (y >= -sblines());
 
     // if a previously determined direction was found, use it for current line
     if (prevseldir) {
@@ -1100,7 +1102,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
       if (y >= term.rows)
         break;
 
-      succline = fetch_line(term_p, term.disptop + y);
+      succline = fetch_line(term.disptop + y);
       ushort lattr = succline->lattr;
       parabidi = getparabidi(succline);
       //printf("plus @%d %04X/%04X %.22ls auto %d lvl %d\n", y, lattr, parabidi, wcsline(succline), autodir, level);
@@ -1137,7 +1139,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
 
  /* Do Arabic shaping and bidi. */
 
-  if (!term_bidi_cache_hit(term_p, scr_y, line->chars, line->lattr, term.cols)) {
+  if (!term_bidi_cache_hit(scr_y, line->chars, line->lattr, term.cols)) {
 
     if (term.wcFromTo_size < term.cols) {
       term.wcFromTo_size = term.cols;
@@ -1288,8 +1290,8 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
         //printf("bidi @%d %04X %.22ls rtl %d auto %d lvl %d\n", scr_y, line->lattr, wcsline(line), rtl, autodir, level);
         termline * paraline = line;
         int paray = scr_y;
-        while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines(term_p)) {
-          paraline = fetch_line(term_p, --paray);
+        while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines()) {
+          paraline = fetch_line(--paray);
           bool brk = false;
           if (paraline->lattr & LATTR_WRAPPED) {
             paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
@@ -1369,7 +1371,7 @@ term_bidi_line(struct term* term_p, termline *line, int scr_y)
 
       ib++;
     }
-    term_bidi_cache_store(term_p, scr_y, line->chars, term.ltemp, term.wcTo,
+    term_bidi_cache_store(scr_y, line->chars, term.ltemp, term.wcTo,
                           line->lattr, term.cols, line->size, ib);
 #ifdef debug_bidi_cache
     for (int i = 0; i < term.cols; i++)

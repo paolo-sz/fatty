@@ -1579,6 +1579,8 @@ static control *font_sample, *font_list, *font_weights;
 void
 apply_config(bool save)
 {
+  struct term *term_p = win_active_terminal();
+
   // Record what's changed
   for (uint i = 0; i < lengthof(options); i++) {
     opt_type type = (opt_type)options[i].type;
@@ -1858,8 +1860,8 @@ add_file_resources(control *ctrl, wstring pattern, bool dirs)
 static void
 current_size_handler(control *unused(ctrl), int event)
 {
-  struct term* term_p = win_active_terminal();
-  struct term& term = *term_p;
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
     
   if (event == EVENT_ACTION) {
     new_cfg.cols = term.cols;
@@ -2080,6 +2082,9 @@ static struct {
 static void
 bell_handler(control *ctrl, int event)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
+
   switch (event) {
     when EVENT_REFRESH:
       dlg_listbox_clear(ctrl);
@@ -2109,7 +2114,7 @@ bell_handler(control *ctrl, int event)
     when EVENT_VALCHANGE case_or EVENT_SELCHANGE: {
       new_cfg.bell_type = dlg_listbox_getcur(ctrl) - 1;
 
-      win_bell(win_active_terminal(), &new_cfg);
+      win_bell(&new_cfg);
     }
   }
 }
@@ -2117,6 +2122,9 @@ bell_handler(control *ctrl, int event)
 static void
 bellfile_handler(control *ctrl, int event)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
+
   const wstring NONE = _W("◇ None (system sound) ◇");  // ♢◇
   const wstring CFG_NONE = W("");
   wstring bell_file = new_cfg.bell_file;
@@ -2135,12 +2143,12 @@ bellfile_handler(control *ctrl, int event)
 
     // add std dir prefix?
     new_cfg.bell_file = bell_file;
-    win_bell(win_active_terminal(), &new_cfg);
+    win_bell(&new_cfg);
   }
   else if (event == EVENT_DROP) {
     dlg_editbox_set_w(ctrl, dragndrop);
     wstrset(&new_cfg.bell_file, dragndrop);
-    win_bell(win_active_terminal(), &new_cfg);
+    win_bell(&new_cfg);
   }
 }
 
@@ -2247,6 +2255,9 @@ download_scheme(char * url)
 static void
 theme_handler(control *ctrl, int event)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
+
   //__ terminal theme / colour scheme
   const wstring NONE = _W("◇ None ◇");  // ♢◇
   const wstring CFG_NONE = W("");
@@ -2339,7 +2350,7 @@ theme_handler(control *ctrl, int event)
         free(sch);
       }
       else {
-        win_bell(win_active_terminal(), &new_cfg);  // Could not load web theme
+        win_bell(&new_cfg);  // Could not load web theme
         win_show_warning(_("Could not load web theme"));
       }
       free(url);
@@ -2357,6 +2368,9 @@ theme_handler(control *ctrl, int event)
 static void
 scheme_saver(control *ctrl, int event)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
+
   wstring theme_name = new_cfg.theme_file;
   if (event == EVENT_REFRESH) {
     enable_widget(ctrl,
@@ -2388,12 +2402,12 @@ scheme_saver(control *ctrl, int event)
             enable_widget(store_button, false);
           }
           else {
-            win_bell(win_active_terminal(), &new_cfg);  // Cannot write theme file
+            win_bell(&new_cfg);  // Cannot write theme file
             win_show_warning(_("Cannot write theme file"));
           }
         }
         else {
-          win_bell(win_active_terminal(), &new_cfg);  // Cannot store theme file
+          win_bell(&new_cfg);  // Cannot store theme file
           win_show_warning(_("Cannot store theme file"));
         }
       }
@@ -2403,13 +2417,18 @@ scheme_saver(control *ctrl, int event)
 static void
 bell_tester(control *unused(ctrl), int event)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF
+
   if (event == EVENT_ACTION)
-    win_bell(win_active_terminal(), &new_cfg);
+    win_bell(&new_cfg);
 }
 
 static void
 url_opener(control *ctrl, int event)
 {
+  struct term *term_p = win_active_terminal();
+
   if (event == EVENT_ACTION) {
     wstring url = (wstring)(ctrl->context);
     win_open(wcsdup(url), true);  // win_open frees its argument

@@ -262,8 +262,10 @@ extern void freeline(termline *);
 extern void clearline(termline *, termchar erase_char);
 extern void resizeline(termline *, int);
 
-extern int sblines(struct term* term_p);
-extern termline *fetch_line(struct term* term_p, int y);
+#define sblines(...) (sblines)(term_p, ##__VA_ARGS__)
+extern int (sblines)(struct term* term_p);
+#define fetch_line(...) (fetch_line)(term_p, ##__VA_ARGS__)
+extern termline *(fetch_line)(struct term* term_p, int y);
 extern void release_line(termline *);
 
 
@@ -474,6 +476,11 @@ typedef struct {
     ME_XTERM_CSI   // CSI > event ; x ; y M/m
   } mouse_enc_t;
 
+#define TERM_VAR_REF    \
+  struct term &term __attribute__((unused)) = *term_p;           \
+  struct child *child_p __attribute__((unused)) = null;            \
+  if (term_p) child_p = term.child;
+  
 struct term {
   // these used to be in term_cursor, thus affected by cursor restore
   bool decnrc_enabled;  /* DECNRCM: enable NRC */
@@ -651,42 +658,75 @@ struct term {
   int mode_stack_len;
 };
 
-extern void scroll_rect(struct term* term_p, int topline, int botline, int lines);
+#define scroll_rect(...) (scroll_rect)(term_p, ##__VA_ARGS__)
+extern void (scroll_rect)(struct term* term_p, int topline, int botline, int lines);
 
-extern void term_resize(struct term* term_p, int, int);
-extern void term_scroll(struct term* term_p, int, int);
-extern void term_reset(struct term* term_p, bool full);
+#define term_resize(...) (term_resize)(term_p, ##__VA_ARGS__)
+extern void (term_resize)(struct term* term_p, int, int);
+#define term_scroll(...) (term_scroll)(term_p, ##__VA_ARGS__)
+extern void (term_scroll)(struct term* term_p, int, int);
+#define term_reset(...) (term_reset)(term_p, ##__VA_ARGS__)
+extern void (term_reset)(struct term* term_p, bool full);
 extern void term_free(struct term* term_p);
-extern void term_clear_scrollback(struct term* term_p);
-extern void term_mouse_click(struct term* term_p, mouse_button, mod_keys, pos, int count);
-extern void term_mouse_release(struct term* term_p, mouse_button, mod_keys, pos);
-extern void term_mouse_move(struct term* term_p, mod_keys, pos);
-extern void term_mouse_wheel(struct term* term_p, bool horizontal, int delta, int lines_per_notch, mod_keys, pos);
-extern void term_select_all(struct term* term_p);
-extern void term_paint(struct term* term_p);
-extern void term_invalidate(struct term* term_p, int left, int top, int right, int bottom);
-extern void term_open(struct term* term_p);
-extern void term_copy(struct term* term_p);
-extern void term_copy_as(struct term* term_p, char what);
-extern void term_paste(struct term* term_p, wchar *, uint len, bool all);
-extern void term_send_paste(struct term* term_p);
-extern void term_cancel_paste(struct term* term_p);
-extern void term_cmd(struct term* term_p, char * cmdpat);
-extern void term_reconfig(struct term* term_p);
-extern void term_flip_screen(struct term* term_p);
-extern void term_reset_screen(struct term* term_p);
-extern void term_write(struct term* term_p, const char *, uint len);
-extern void term_flush(struct term* term_p);
-extern void term_set_focus(struct term* term_p, bool has_focus, bool may_report);
-extern int  term_cursor_type(struct term* term_p);
-extern void term_hide_cursor(struct term* term_p);
+#define term_clear_scrollback(...) (term_clear_scrollback)(term_p, ##__VA_ARGS__)
+extern void (term_clear_scrollback)(struct term* term_p);
+#define term_mouse_click(...) (term_mouse_click)(term_p, ##__VA_ARGS__)
+extern void (term_mouse_click)(struct term* term_p, mouse_button, mod_keys, pos, int count);
+#define term_mouse_release(...) (term_mouse_release)(term_p, ##__VA_ARGS__)
+extern void (term_mouse_release)(struct term* term_p, mouse_button, mod_keys, pos);
+#define term_mouse_move(...) (term_mouse_move)(term_p, ##__VA_ARGS__)
+extern void (term_mouse_move)(struct term* term_p, mod_keys, pos);
+#define term_mouse_wheel(...) (term_mouse_wheel)(term_p, ##__VA_ARGS__)
+extern void (term_mouse_wheel)(struct term* term_p, bool horizontal, int delta, int lines_per_notch, mod_keys, pos);
+#define term_select_all(...) (term_select_all)(term_p, ##__VA_ARGS__)
+extern void (term_select_all)(struct term* term_p);
+#define term_paint(...) (term_paint)(term_p, ##__VA_ARGS__)
+extern void (term_paint)(struct term* term_p);
+#define term_invalidate(...) (term_invalidate)(term_p, ##__VA_ARGS__)
+extern void (term_invalidate)(struct term* term_p, int left, int top, int right, int bottom);
+#define term_open(...) (term_open)(term_p, ##__VA_ARGS__)
+extern void (term_open)(struct term* term_p);
+#define term_copy(...) (term_copy)(term_p, ##__VA_ARGS__)
+extern void (term_copy)(struct term* term_p);
+#define term_copy_as(...) (term_copy_as)(term_p, ##__VA_ARGS__)
+extern void (term_copy_as)(struct term* term_p, char what);
+#define term_paste(...) (term_paste)(term_p, ##__VA_ARGS__)
+extern void (term_paste)(struct term* term_p, wchar *, uint len, bool all);
+#define term_send_paste(...) (term_send_paste)(term_p, ##__VA_ARGS__)
+extern void (term_send_paste)(struct term* term_p);
+#define term_cancel_paste(...) (term_cancel_paste)(term_p, ##__VA_ARGS__)
+extern void (term_cancel_paste)(struct term* term_p);
+#define term_cmd(...) (term_cmd)(term_p, ##__VA_ARGS__)
+extern void (term_cmd)(struct term* term_p, char * cmdpat);
+#define term_reconfig(...) (term_reconfig)(term_p, ##__VA_ARGS__)
+extern void (term_reconfig)(struct term* term_p);
+#define term_flip_screen(...) (term_flip_screen)(term_p, ##__VA_ARGS__)
+extern void (term_flip_screen)(struct term* term_p);
+#define term_reset_screen(...) (term_reset_screen)(term_p, ##__VA_ARGS__)
+extern void (term_reset_screen)(struct term* term_p);
+#define term_write(...) (term_write)(term_p, ##__VA_ARGS__)
+extern void (term_write)(struct term* term_p, const char *, uint len);
+#define term_flush(...) (term_flush)(term_p, ##__VA_ARGS__)
+extern void (term_flush)(struct term* term_p);
+#define term_set_focus(...) (term_set_focus)(term_p, ##__VA_ARGS__)
+extern void (term_set_focus)(struct term* term_p, bool has_focus, bool may_report);
+#define term_cursor_type(...) (term_cursor_type)(term_p, ##__VA_ARGS__)
+extern int (term_cursor_type)(struct term* term_p);
+#define term_hide_cursor(...) (term_hide_cursor)(term_p, ##__VA_ARGS__)
+extern void (term_hide_cursor)(struct term* term_p);
 
-extern void term_set_search(struct term* term_p, wchar * needle);
-extern void term_schedule_search_partial_update(struct term* term_p);
-extern void term_schedule_search_update(struct term* term_p);
-extern void term_update_search(struct term* term_p);
-extern void term_clear_results(struct term* term_p);
-extern void term_clear_search(struct term* term_p);
+#define term_set_search(...) (term_set_search)(term_p, ##__VA_ARGS__)
+extern void (term_set_search)(struct term* term_p, wchar * needle);
+#define term_schedule_search_partial_update(...) (term_schedule_search_partial_update)(term_p, ##__VA_ARGS__)
+extern void (term_schedule_search_partial_update)(struct term* term_p);
+#define term_schedule_search_update(...) (term_schedule_search_update)(term_p, ##__VA_ARGS__)
+extern void (term_schedule_search_update)(struct term* term_p);
+#define term_update_search(...) (term_update_search)(term_p, ##__VA_ARGS__)
+extern void (term_update_search)(struct term* term_p);
+#define term_clear_results(...) (term_clear_results)(term_p, ##__VA_ARGS__)
+extern void (term_clear_results)(struct term* term_p);
+#define term_clear_search(...) (term_clear_search)(term_p, ##__VA_ARGS__)
+extern void (term_clear_search)(struct term* term_p);
 
 extern uchar scriptfont(ucschar ch);
 
@@ -694,6 +734,7 @@ extern void clear_emoji_data(void);
 extern char * get_emoji_description(termchar *);
 
 
-extern void term_export_html(bool do_open);
+#define term_export_html(...) (term_export_html)(term_p, ##__VA_ARGS__)
+extern void (term_export_html)(struct term *term_p, bool do_open);
 
 #endif

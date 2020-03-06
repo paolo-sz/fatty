@@ -110,6 +110,10 @@ extern "C" {
       return tabs.at(active_tab).terminal.get();
   }
 
+  bool (is_active_terminal)(struct term *term_p) {
+    return (win_active_terminal() == term_p);
+  }
+
   int win_tab_count() {
     return tabs.size();
   }
@@ -118,11 +122,11 @@ extern "C" {
     return active_tab;
   }
   
-  static void update_window_state() {
+  static void update_window_state(struct term *term_p) {
       win_update_menus(false /*should this be true?*/);
       if (cfg.title_settable)
         SetWindowTextW(wnd, win_tab_get_title(active_tab));
-      win_adapt_term_size(false, false);
+      (win_adapt_term_size)(term_p, false, false);
   }
   
   static void set_active_tab(unsigned int index) {
@@ -135,29 +139,28 @@ extern "C" {
       SendMessage(tab_wnd, TCM_SETCURSEL, active_tab, 0);
       Tab* active = &tabs.at(active_tab);
       for (Tab& tab : tabs) {
-          term_set_focus(tab.terminal.get(), &tab == active, false);
+          (term_set_focus)(tab.terminal.get(), &tab == active, false);
       }
       active->info.attention = false;
       SetFocus(wnd);
       
       struct term* term_p = active->terminal.get();
-      struct term& term = *term_p;
-      term.results.update_type = DISABLE_UPDATE;
-      if (IsWindowVisible(win_get_search_wnd()) != term.search_window_visible) {
-        ShowWindow(win_get_search_wnd(), term.search_window_visible ? SW_SHOW : SW_HIDE);
+      term_p->results.update_type = DISABLE_UPDATE;
+      if (IsWindowVisible(win_get_search_wnd()) != term_p->search_window_visible) {
+        ShowWindow(win_get_search_wnd(), term_p->search_window_visible ? SW_SHOW : SW_HIDE);
       }
-      if (term.search_window_visible) {
-        if (term.results.query) {
-          SetWindowTextW(win_get_search_edit_wnd(), term.results.query);
+      if (term_p->search_window_visible) {
+        if (term_p->results.query) {
+          SetWindowTextW(win_get_search_edit_wnd(), term_p->results.query);
         }
         else {
           SetWindowTextW(win_get_search_edit_wnd(), L"");
         }
       }
   
-      update_window_state();
+      update_window_state(term_p);
       win_invalidate_all(false);
-      term.results.update_type = NO_UPDATE;
+      term_p->results.update_type = NO_UPDATE;
   }
   
   int tab_idx_by_term(struct term* term_p) {
@@ -166,7 +169,7 @@ extern "C" {
       return (match == tabs.end()) ? -1 : (match - tabs.begin());
   }
   
-  void win_tab_change(struct term* term_p, int change) {
+  void (win_tab_change)(struct term* term_p, int change) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       int dst_idx = tab_idx + change;
@@ -174,7 +177,7 @@ extern "C" {
       set_active_tab(dst_idx);
   }
 
-  void win_tab_move(struct term* term_p, int amount) {
+  void (win_tab_move)(struct term* term_p, int amount) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       int dst_idx = tab_idx + amount;
@@ -214,15 +217,15 @@ extern "C" {
       tabs.push_back(Tab());
       Tab& tab = tabs.back();
       tab.terminal->child = tab.chld.get();
-      term_reset(tab.terminal.get(), true);
+      (term_reset)(tab.terminal.get(), true);
       tab.terminal.get()->show_scrollbar = !!cfg.scrollbar;  // hotfix #597
-      term_resize(tab.terminal.get(), rows, cols);
+      (term_resize)(tab.terminal.get(), rows, cols);
       tab.chld->cmd = g_cmd;
       tab.chld->home = g_home;
       struct winsize wsz{rows, cols, width, height};
-      child_create(tab.chld.get(), tab.terminal.get(), g_argv, &wsz, cwd);
+      (child_create)(tab.chld.get(), tab.terminal.get(), g_argv, &wsz, cwd);
       wchar *ws = cs__mbstowcs(tie.pszText);
-      win_tab_set_title(tab.terminal.get(), ws);
+      (win_tab_set_title)(tab.terminal.get(), ws);
       free(ws);
   }
   
@@ -240,13 +243,11 @@ extern "C" {
       set_tab_bar_visibility(tabs.size() > 1);
   }
   
-  void win_tab_create(struct term* term_p) {
-      struct term& term = *term_p;
-  
+  void (win_tab_create)(struct term* term_p) {
       std::stringstream cwd_path;
-      cwd_path << "/proc/" << term.child->pid << "/cwd";
+      cwd_path << "/proc/" << term_p->child->pid << "/cwd";
       char* cwd = realpath(cwd_path.str().c_str(), 0);
-      newtab(term.rows, term.cols, term.cols * cell_width, term.rows * cell_height, cwd, nullptr);
+      newtab(term_p->rows, term_p->cols, term_p->cols * cell_width, term_p->rows * cell_height, cwd, nullptr);
       free(cwd);
       set_active_tab(tabs.size() - 1);
       set_tab_bar_visibility(tabs.size() > 1);
@@ -268,14 +269,14 @@ extern "C" {
       Tab& tab = tabs[tab_idx];
       struct term* terminal = tab.terminal.get();
       if (!terminal) return;
-      struct child *child = tab.chld.get();
-      if (!child) return;
-      pid_t pid = child->pid;
+      struct child *child_p = tab.chld.get();
+      if (!child_p) return;
+      pid_t pid = child_p->pid;
       if (!(pid)) return;
       remove_callbacks(terminal);
       unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
       SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
-      child_terminate(child);
+      child_terminate(child_p);
       tabs.erase(tabs.begin() + tab_idx);
       SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
       set_active_tab(new_active_tab);
@@ -307,7 +308,7 @@ extern "C" {
       }
   }
   
-  void win_tab_attention(struct term* term_p) {
+  void (win_tab_attention)(struct term* term_p) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
@@ -315,7 +316,7 @@ extern "C" {
       invalidate_tabs();
   }
   
-  void win_tab_set_title(struct term* term_p, wchar_t* title) {
+  void (win_tab_set_title)(struct term* term_p, wchar_t* title) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
@@ -327,7 +328,7 @@ extern "C" {
       tie.mask = TCIF_TEXT; 
       tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
       SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
-      if (term_p == win_active_terminal()) {
+      if ((is_active_terminal)(term_p)) {
         win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
       }
   }
@@ -363,15 +364,15 @@ extern "C" {
    * Title stack (implemented as fixed-size circular buffer)
    */
   void
-  win_tab_save_title(struct term* term_p)
+  (win_tab_save_title)(struct term* term_p)
   {
     win_tab_title_push(term_p);
   }
   
   void
-  win_tab_restore_title(struct term* term_p)
+  (win_tab_restore_title)(struct term* term_p)
   {
-    win_tab_set_title(term_p, win_tab_title_pop(term_p));
+    (win_tab_set_title)(term_p, win_tab_title_pop(term_p));
   }
   
   bool win_should_die() {
@@ -392,7 +393,7 @@ extern "C" {
   
       tab_bar_visible = b;
       g_render_tab_height = win_tab_height();
-      win_adapt_term_size(false, false);
+      (win_adapt_term_size)(win_active_terminal(), false, false);
       win_invalidate_all(false);
   }
   
@@ -420,7 +421,7 @@ extern "C" {
       ~SelectWObj() { DeleteObject(SelectObject(tdc, old)); }
   };
   
-  void win_paint_tabs(LPARAM lp, int width) {
+  void (win_paint_tabs)(struct term *term_p, LPARAM lp, int width) {
       RECT loc_tabrect, tabrect;
       unsigned int Index;
       HDC tab_dc;
@@ -560,7 +561,7 @@ extern "C" {
 
     switch (result) {
       when IDM_NEWTAB: {
-        win_tab_create(tabs[tab_idx].terminal.get());
+        (win_tab_create)(tabs[tab_idx].terminal.get());
       }
 
       when IDM_KILLTAB: {
@@ -568,11 +569,11 @@ extern "C" {
       }
 
       when IDM_MOVELEFT: {
-        win_tab_move(tabs[tab_idx].terminal.get(), -1);
+        (win_tab_move)(tabs[tab_idx].terminal.get(), -1);
       }
 
       when IDM_MOVERIGHT: {
-         win_tab_move(tabs[tab_idx].terminal.get(), 1);
+         (win_tab_move)(tabs[tab_idx].terminal.get(), 1);
       }
     }
   }
