@@ -2888,6 +2888,9 @@ static void
       push_mode(-1, win_get_ime());
     when CPAIR('<', 'r'):  /* TTIMERS: restore IME state (Tera Term) */
       win_set_ime(pop_mode(-1));
+    when CPAIR(' ', 't'):     /* DECSWBV: VT520 warning bell volume */
+      if (arg0 <= 8)
+        term.bell_vol = arg0;
   }
 }
 
