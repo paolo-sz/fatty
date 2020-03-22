@@ -40,6 +40,8 @@ extern void (win_get_locator_info)(struct term *term_p, int *x, int *y, int *but
 
 #define win_bell(...) (win_bell)(term_p, ##__VA_ARGS__)
 extern void (win_bell)(struct term* term_p, config *);
+#define win_margin_bell(...) (win_margin_bell)(term_p, ##__VA_ARGS__)
+extern void (win_margin_bell)(struct term* term_p, config *);
 
 extern void win_set_title(wchar *wtitle);
 #define win_copy_title(...) (win_copy_title)(term_p, ##__VA_ARGS__)

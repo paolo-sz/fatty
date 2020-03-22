@@ -481,6 +481,12 @@ typedef struct {
   struct child *child_p __attribute__((unused)) = null;            \
   if (term_p) child_p = term.child;
   
+typedef struct {
+  int vol;
+  int last_vol;
+  unsigned long last_bell;
+} term_bell;
+
 struct term {
   // these used to be in term_cursor, thus affected by cursor restore
   bool decnrc_enabled;  /* DECNRCM: enable NRC */
@@ -537,6 +543,10 @@ struct term {
   bool focus_reported;
   bool in_vbell;
 
+  term_bell bell, marginbell;
+  bool margin_bell;
+  bool ring_enabled;
+
   bool vt220_keys;
   bool shortcut_override;
   bool backspace_sends_bs;
@@ -547,7 +557,6 @@ struct term {
   bool app_cursor_keys;
   bool app_keypad;
   bool auto_repeat;
-  int bell_vol;
   bool bell_taskbar; // xterm: bellIsUrgent; switchable with CSI ? 1042 h/l
   bool bell_popup;   // xterm: popOnBell;    switchable with CSI ? 1043 h/l
   bool wheel_reporting_xterm; // xterm: alternateScroll

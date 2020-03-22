@@ -2683,6 +2683,9 @@ cattr
 
   // ACM_TERM does also search and cursor colours. for now we don't handle those
 
+  if (a.attr & TATTR_CLEAR)
+    bg = brighten(bg, fg, false);
+
   a.truefg = fg;
   a.truebg = bg;
   a.attr |= TRUE_COLOUR << ATTR_FGSHIFT | TRUE_COLOUR << ATTR_BGSHIFT;
@@ -4252,6 +4255,7 @@ win_char_width(xchar c, cattrflags attr)
     printf("enquired %04X %dpx cell %dpx\n", c, ibuf, cell_width);
 #endif
     ReleaseDC(wnd, dc);
+    //printf("win_char_width %04X -> %d\n", c, ibuf);
     return ibuf;
   }
 
@@ -4377,11 +4381,13 @@ win_char_width(xchar c, cattrflags attr)
         ff->cpcachelen[font4index]++;
       }
     }
+    //printf("win_char_width %04X -> %d\n", c, width);
     return width;
   }
 #endif
 
   ReleaseDC(wnd, dc);
+  //printf("win_char_width %04X -> %d\n", c, ibuf);
   return ibuf;
 }
 

@@ -285,6 +285,14 @@ term_cursor_reset(term_cursor *curs)
   curs->origin = false;
 }
 
+static void
+term_bell_reset(term_bell *bell)
+{
+  bell->vol = 8;  // not reset by xterm
+  bell->last_vol = bell->vol;
+  bell->last_bell = 0;
+}
+
 void
 (term_reset)(struct term* term_p, bool full)
 {
@@ -341,7 +349,10 @@ void
   if (full) {
     term.newtab = 1;  // set default tabs on resize
     term.rvideo = 0;  // not reset by xterm
-    term.bell_vol = 8;  // not reset by xterm
+    term_bell_reset(&term.bell);
+    term_bell_reset(&term.marginbell);
+    term.margin_bell = false;  // not reset by xterm
+    term.ring_enabled = false;
     term.bell_taskbar = cfg.bell_taskbar;  // not reset by xterm
     term.bell_popup = cfg.bell_popup;  // not reset by xterm
     term.mouse_mode = MM_NONE;
@@ -1505,7 +1516,6 @@ void
               )
       {
         line->chars[start.x] = term.erase_char;
-        line->chars[start.x].attr.attr |= TATTR_CLEAR;
         if (!start.x)
           clear_cc(line, -1);
       }
@@ -2306,6 +2316,36 @@ void
         printf("%04X w %d enw %02X\n", tchar, win_char_width(tchar, tattr.attr), (uint)(((tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE)) >> 24)));
 #endif
 
+     /* Visible space indication */
+      if (tchar == ' ') {
+        if (tattr.attr & TATTR_CLEAR) {
+          if (!(cfg.disp_clear & 8))
+            tattr.attr &= ~TATTR_CLEAR;
+          if (cfg.disp_clear & ~8) {
+            tchar = 0xB7; // ·0x00B7 ⋯0x22EF
+            if (cfg.disp_clear & 1)
+              tattr.attr |= ATTR_BOLD;
+            if (cfg.disp_clear & 2)
+              tattr.attr |= ATTR_DIM;
+            if ((cfg.disp_clear & 4) && cfg.underl_colour != (colour)-1) {
+              tattr.truefg = cfg.underl_colour;
+              tattr.attr |= TRUE_COLOUR << ATTR_FGSHIFT;
+            }
+          }
+        }
+        else if (cfg.disp_space) {
+          tchar = 0xB7; // ·0x00B7 ⋯0x22EF
+          if (cfg.disp_space & 1)
+            tattr.attr |= ATTR_BOLD;
+          if (cfg.disp_space & 2)
+            tattr.attr |= ATTR_DIM;
+          if ((cfg.disp_space & 4) && cfg.underl_colour != (colour)-1) {
+            tattr.truefg = cfg.underl_colour;
+            tattr.attr |= TRUE_COLOUR << ATTR_FGSHIFT;
+          }
+        }
+      }
+
      /* FULL-TERMCHAR */
       newchars[j].attr = tattr;
       newchars[j].chr = tchar;
@@ -2582,6 +2622,7 @@ void
       termchar *d = chars + j;
       cattr tattr = newchars[j].attr;
       wchar tchar = newchars[j].chr;
+
       // Note: newchars[j].cc_next is always 0; use chars[]
       xchar xtchar = tchar;
 #ifdef proper_non_BMP_classification

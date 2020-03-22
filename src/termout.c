@@ -153,6 +153,7 @@ static void
   *curs = term.saved_cursors[term.on_alt_screen];
   term.erase_char.attr = curs->attr;
   term.erase_char.attr.attr &= (ATTR_FGMASK | ATTR_BGMASK);
+  term.erase_char.attr.attr |= TATTR_CLEAR;
 
  /* Make sure the window hasn't shrunk since the save */
   if (curs->x >= term.cols)
@@ -754,6 +755,11 @@ static void
 
   auto put_char = [&](wchar c)
   {
+    if (term.ring_enabled && curs->x == term.marg_right + 1 - 8) {
+      win_margin_bell(&cfg);
+      term.ring_enabled = false;
+    }
+
     clear_cc(line, curs->x);
     line->chars[curs->x].chr = c;
     line->chars[curs->x].attr = curs->attr;
@@ -1750,6 +1756,7 @@ static void
   term.curs.attr = attr;
   term.erase_char.attr = attr;
   term.erase_char.attr.attr &= (ATTR_FGMASK | ATTR_BGMASK);
+  term.erase_char.attr.attr |= TATTR_CLEAR;
 }
 
 #define set_modes(...) (set_modes)(term_p, ##__VA_ARGS__)
@@ -1835,6 +1842,8 @@ static void
           term.deccolm_noclear = state;
         when 42: /* DECNRCM: national replacement character sets */
           term.decnrc_enabled = state;
+        when 44: /* turn on margin bell (xterm) */
+          term.margin_bell = state;
         when 67: /* DECBKM: backarrow key mode */
           term.backspace_sends_bs = state;
         when 69: /* DECLRMM/VT420 DECVSSM: enable left/right margins DECSLRM */
@@ -2050,6 +2059,8 @@ static int
         return 2 - term.deccolm_allowed;
       when 42: /* DECNRCM: national replacement character sets */
         return 2 - term.decnrc_enabled;
+      when 44: /* margin bell (xterm) */
+        return 2 - term.margin_bell;
       when 67: /* DECBKM: backarrow key mode */
         return 2 - term.backspace_sends_bs;
       when 69: /* DECLRMM: enable left and right margin mode DECSLRM */
@@ -2890,7 +2901,12 @@ static void
       win_set_ime(pop_mode(-1));
     when CPAIR(' ', 't'):     /* DECSWBV: VT520 warning bell volume */
       if (arg0 <= 8)
-        term.bell_vol = arg0;
+        term.bell.vol = arg0;
+    when CPAIR(' ', 'u'):     /* DECSMBV: VT520 margin bell volume */
+      if (!arg0)
+        term.marginbell.vol = 8;
+      else if (arg0 <= 8)
+        term.marginbell.vol = arg0;
   }
 }
 
@@ -4358,6 +4374,9 @@ static void
         }
     }
   }
+
+  if (term.ring_enabled && term.curs.y != oldy)
+    term.ring_enabled = false;
 
   if (cfg.ligatures_support > 1) {
     // refresh ligature rendering in old cursor line

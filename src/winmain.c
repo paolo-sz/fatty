@@ -1644,28 +1644,28 @@ flash_border()
   FlashWindowEx(&tmp_fi);
 }
 
+#define do_win_bell(...) (do_win_bell)(term_p, ##__VA_ARGS__)
 /*
  * Bell.
  */
 void
-(win_bell)(struct term* term_p, config * conf)
+(do_win_bell)(struct term* term_p, config * conf, bool margin_bell)
 {
   TERM_VAR_REF
   
   do_update();
 
-  static unsigned long last_bell = 0;
-  static int last_vol = 8;
+  term_bell * bellstate = margin_bell ? &term.marginbell : &term.bell;
   unsigned long now = mtime();
 
   if (conf->bell_type &&
-      (now - last_bell >= (unsigned long)conf->bell_interval
-       || term.bell_vol != last_vol
+      (now - bellstate->last_bell >= (unsigned long)conf->bell_interval
+       || bellstate->vol != bellstate->last_vol
       )
      )
   {
-    last_bell = now;
-    last_vol = term.bell_vol;
+    bellstate->last_bell = now;
+    bellstate->last_vol = bellstate->vol;
 
     wchar * bell_name = 0;
     auto set_bells = [&](char * belli)
@@ -1680,7 +1680,7 @@ void
         belli++;
       }
     };
-    switch (term.bell_vol) {
+    switch (bellstate->vol) {
       // no bell volume: 0 1
       // low bell volume: 2 3 4
       // high bell volume: 5 6 7 8
@@ -1729,7 +1729,7 @@ void
     if (bell_name && *bell_name && PlaySoundW(bell_name, NULL, SND_ASYNC | SND_FILENAME)) {
       // played
     }
-    else if (term.bell_vol <= 1) {
+    else if (bellstate->vol <= 1) {
       // muted
     }
     else if (conf->bell_freq)
@@ -1758,6 +1758,23 @@ void
   if (!term.has_focus)
     win_tab_attention();
 }
+
+void
+(win_bell)(struct term *term_p, config * conf)
+{
+  TERM_VAR_REF
+  
+  do_win_bell(conf, false);
+}
+
+void
+(win_margin_bell)(struct term *term_p, config * conf)
+{
+  TERM_VAR_REF
+  
+  do_win_bell(conf, true);
+}
+
 
 void
 win_invalidate_all(bool clearbg)
@@ -2762,6 +2779,7 @@ static struct {
         return 0;
 
     when WM_CHAR case_or WM_SYSCHAR: {
+      provide_input(wp);
       wchar tmp_wp = {(wchar)wp};
       child_sendw(&tmp_wp, 1);
       return 0;
@@ -2770,6 +2788,7 @@ static struct {
     when WM_MENUCHAR: {
       // this is sent after leaving the system menu with ESC 
       // and typing a key; insert the key and prevent the beep
+      provide_input(wp);
       wchar tmp_wp = {(wchar)wp};
       child_sendw(&tmp_wp, 1);
       return MNC_CLOSE << 16;
@@ -2817,6 +2836,7 @@ static struct {
         if (len > 0) {
           char buf[len];
           ImmGetCompositionStringW(imc, GCS_RESULTSTR, buf, len);
+          provide_input(*(wchar *)buf);
           child_sendw((wchar *)buf, len / 2);
         }
         return 1;

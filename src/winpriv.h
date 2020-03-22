@@ -110,6 +110,8 @@ extern void (win_mouse_wheel)(struct term *term_p, POINT wpos, bool horizontal, 
 extern void (win_mouse_move)(struct term* term_p, bool nc, LPARAM);
 
 extern void win_key_reset(void);
+#define provide_input(...) (provide_input)(term_p, ##__VA_ARGS__)
+extern void (provide_input)(struct term* term_p, wchar);
 #define win_key_down(...) (win_key_down)(term_p, ##__VA_ARGS__)
 extern bool (win_key_down)(struct term* term_p, WPARAM, LPARAM);
 #define win_key_up(...) (win_key_up)(term_p, ##__VA_ARGS__)
