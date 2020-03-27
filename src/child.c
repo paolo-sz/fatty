@@ -60,8 +60,7 @@ bool logging = false;
 #endif
 
 
-#define childerror(...) (childerror)(term_p, ##__VA_ARGS__)
-static void
+void
 (childerror)(struct term* term_p, char * action, bool from_fork, int errno_code, int code)
 {
 #if CYGWIN_VERSION_API_MINOR >= 66

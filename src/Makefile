@@ -150,6 +150,9 @@ CXXFLAGS += $(COMMONFLAGS)
 #$(BINDIR)/term%.o: term%.c
 #	$(CC) -c $(DEPOPT) $(CPPFLAGS) $(CFLAGS) $< -o $(BINDIR)/term$*.o
 
+$(BINDIR)/term.o: term.c emojibase.t emojiseqs.t
+	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/term.o
+
 $(BINDIR)/%.o: %.c
 	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
 
@@ -251,14 +254,24 @@ testbidi.exe:	testbidi.tc minibidi.c # BidiCharacterTest.txt BidiTest.txt
 
 unicode:	UnicodeData.txt Blocks.txt EastAsianWidth.txt
 
-full-emoji-list.html:
-	$(WGET) http://www.unicode.org/emoji/charts/$@
+#full-emoji-list.html:
+#	$(WGET) http://www.unicode.org/emoji/charts/$@
 
-univer = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.[0-9][^0-9]*,\1.\2,' -e t -e d Blocks.txt`
+univer = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.\([0-9]\)[^0-9]*,\1.\2.\3,' -e t -e d Blocks.txt`
 unibasever = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\..*,\1.0,' -e t -e d Blocks.txt`
 
-emoji-%.txt:	Blocks.txt
+# until 12.0:
+#emoji-%.txt:	Blocks.txt
+#	$(WGET) http://www.unicode.org/Public/emoji/$(unibasever)/$@
+# from 13.0:
+emoji-sequences.txt:	Blocks.txt
 	$(WGET) http://www.unicode.org/Public/emoji/$(unibasever)/$@
+emoji-zwj-sequences.txt:	Blocks.txt
+	$(WGET) http://www.unicode.org/Public/emoji/$(unibasever)/$@
+emoji-data.txt:	Blocks.txt
+	$(WGET) http://www.unicode.org/Public/$(univer)/ucd/emoji/$@
+emoji-variation-sequences.txt:	Blocks.txt
+	$(WGET) http://www.unicode.org/Public/$(univer)/ucd/emoji/$@
 
 unicodever = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.\([0-9]\)[^0-9]*,\1\2\3,' -e t -e d Blocks.txt`
 

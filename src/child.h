@@ -30,6 +30,8 @@ struct child
    struct term *&term_p __attribute__((unused)) = child_p->term; \
    struct term &term __attribute__((unused)) = *child_p->term;
 
+#define childerror(...) (childerror)(term_p, ##__VA_ARGS__)
+extern void (childerror)(struct term* term_p, char * action, bool from_fork, int errno_code, int code);
 #define child_update_charset(...) (child_update_charset)(child_p, ##__VA_ARGS__)
 extern void (child_update_charset)(struct child * child_p);
 #define child_create(...) (child_create)(child_p, term_p, ##__VA_ARGS__)

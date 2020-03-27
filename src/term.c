@@ -1691,19 +1691,28 @@ fallback:;
   char * fmt = const_cast<char *>("%04x");
   char * sep = const_cast<char *>("-");
   char * suf = const_cast<char *>(".png");
-  bool zwj = true;
-  bool sel = true;
+  bool zwj = true; // include 200D in filename
+  bool sel = true; // include FE0F in filename
   switch (style) {
+#ifdef unicode_cldr
+    when EMOJIS_CLDR:
+      pre = const_cast<char *>("/usr/share/unicode/cldr/emoji/emoji_");
+      sep = const_cast<char *>("_");
+      zwj = true;
+      sel = false;
+#endif
     when EMOJIS_NOTO:
       pre = const_cast<char *>("noto/emoji_u");
       sep = const_cast<char *>("_");
       zwj = true;
       sel = false;
-    when EMOJIS_ONE:
-      pre = const_cast<char *>("emojione/");
+    when EMOJIS_JOYPIXELS:
+      pre = const_cast<char *>("joypixels/");
       sep = const_cast<char *>("-");
       zwj = false;
       sel = false;
+    when EMOJIS_ONE:
+      pre = const_cast<char *>("emojione/");
     when EMOJIS_APPLE:
       pre = const_cast<char *>("apple/");
     when EMOJIS_GOOGLE:
