@@ -20,7 +20,6 @@ extern "C" {
 #include "print.h"
 #include "charset.h"
 #include "win.h"
-#include <math.h>  // round()
 
 #include <windows.h>  // registry handling
 
@@ -2214,7 +2213,7 @@ download_scheme(char * url)
 
   char * sch = null;
   char * urlsuf = strrchr(url, '.');
-  if (urlsuf && 0 == strcmp(urlsuf, ".itermcolors")) {
+  if (urlsuf && !strcmp(urlsuf, ".itermcolors")) {
     colour ansi_colours[16] = 
       {(colour)-1, (colour)-1, (colour)-1, (colour)-1, 
        (colour)-1, (colour)-1, (colour)-1, (colour)-1, 
@@ -2286,7 +2285,7 @@ download_scheme(char * url)
           entity = strstr(linebuf, "<real>");
           double val;
           if (entity && sscanf(entity, "<real>%lf<", &val) == 1 && val >= 0.0 && val <= 1.0) {
-            int ival = round(val * 255.0);
+            int ival = val * 255.0 + 0.5;
             switch (component) {
               when 0:  // red
                 *key = (*key & 0xFFFF00) | ival;

@@ -209,6 +209,7 @@ static HRESULT (WINAPI * pSetWindowCompositionAttribute)(HWND, void *) = 0;
 static BOOL (WINAPI * pSystemParametersInfo)(UINT, UINT, PVOID, UINT) = 0;
 
 static BOOLEAN (WINAPI * pShouldAppsUseDarkMode)(void) = 0; /* undocumented */
+static DWORD (WINAPI * pSetPreferredAppMode)(DWORD) = 0; /* undocumented */
 static HRESULT (WINAPI * pSetWindowTheme)(HWND, const wchar_t *, const wchar_t *) = 0;
 
 #define HTHEME HANDLE
@@ -258,8 +259,12 @@ load_dwm_funcs(void)
   if (uxtheme) {
     pShouldAppsUseDarkMode = 
       (BOOLEAN (*)())((void (*)(void))GetProcAddress(uxtheme, MAKEINTRESOURCEA(132))); /* ordinal */
+    pSetPreferredAppMode = 
+      (DWORD (*)(DWORD))((void (*)(void))GetProcAddress(uxtheme, MAKEINTRESOURCEA(135))); /* ordinal */
+      // this would be AllowDarkModeForApp before Windows build 18362
     pSetWindowTheme = 
       (HRESULT (*)(HWND, const wchar_t*, const wchar_t*))((void (*)(void))GetProcAddress(uxtheme, "SetWindowTheme"));
+
     pOpenThemeData =
       (void* (*)(HWND, LPCWSTR))((void (*)(void))GetProcAddress(uxtheme, "OpenThemeData"));
     pCloseThemeData =
@@ -1466,6 +1471,28 @@ static void
 
     //printf("SetWindowCompositionAttribute %d\n", policy.nAccentState);
     pSetWindowCompositionAttribute(wnd, &data);
+  }
+}
+
+void
+win_dark_mode(HWND w)
+{
+  if (pShouldAppsUseDarkMode) {
+    HIGHCONTRASTW hc;
+    hc.cbSize = sizeof hc;
+    pSystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0);
+    //printf("High Contrast scheme <%ls>\n", hc.lpszDefaultScheme);
+
+    if (!(hc.dwFlags & HCF_HIGHCONTRASTON) && pShouldAppsUseDarkMode()) {
+      pSetWindowTheme(w, W("DarkMode_Explorer"), NULL);
+
+      // set DWMWA_USE_IMMERSIVE_DARK_MODE; needed for titlebar
+      BOOL dark = 1;
+      if (S_OK != pDwmSetWindowAttribute(w, 20, &dark, sizeof dark)) {
+        // this would be the call before Windows build 18362
+        pDwmSetWindowAttribute(w, 19, &dark, sizeof dark);
+      }
+    }
   }
 }
 
@@ -4964,6 +4991,11 @@ main(int argc, char *argv[])
 #define printpos(tag, x, y, mon)
 #endif
 
+  // Dark mode support, prior to window creation
+  if (pSetPreferredAppMode) {
+    pSetPreferredAppMode(1); /* AllowDark */
+  }
+
   // Create initial window.
   wnd = CreateWindowExW(cfg.scrollbar < 0 ? WS_EX_LEFTSCROLLBAR : 0,
                         wclass, wtitle,
@@ -4973,24 +5005,7 @@ main(int argc, char *argv[])
   trace_winsize("createwindow");
 
   // Dark mode support
-  if (pShouldAppsUseDarkMode) {
-    HIGHCONTRASTW hc;
-    hc.cbSize = sizeof hc;
-    pSystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0);
-    //printf("High Contrast scheme <%ls>\n", hc.lpszDefaultScheme);
-
-    if (!(hc.dwFlags & HCF_HIGHCONTRASTON) && pShouldAppsUseDarkMode()) {
-      pSetWindowTheme(wnd, W("DarkMode_Explorer"), NULL);
-      BOOL dark = 1;
-
-#ifndef DWMWA_USE_IMMERSIVE_DARK_MODE
-#define DWMWA_USE_IMMERSIVE_DARK_MODE 19
-#endif
-
-      pDwmSetWindowAttribute(wnd, DWMWA_USE_IMMERSIVE_DARK_MODE,
-                             &dark, sizeof dark);
-    }
-  }
+  win_dark_mode(wnd);
 
   // Workaround for failing title parameter:
   if (pEnableNonClientDpiScaling)
@@ -5289,7 +5304,9 @@ main(int argc, char *argv[])
   HRESULT (WINAPI * pAddClipboardFormatListener)(HWND) =
     (HRESULT (*)(HWND))load_library_func("user32.dll", "AddClipboardFormatListener");
   if (pAddClipboardFormatListener) {
-    pAddClipboardFormatListener(wnd);
+    if (cfg.external_hotkeys < 4)
+      // send WM_CLIPBOARDUPDATE
+      pAddClipboardFormatListener(wnd);
   }
 
   win_synctabs(4);
