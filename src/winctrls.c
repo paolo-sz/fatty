@@ -15,6 +15,9 @@ extern "C" {
 #define _WTYPES_H
 #define _OLE2_H
 #include <commdlg.h>
+#ifdef darken_dialog_elements
+#include <commctrl.h>  // Subclass
+#endif
 
 
 /*
@@ -55,6 +58,21 @@ ctrlposinit(ctrlpos * cp, HWND wnd, int leftborder, int rightborder,
   cp->xoff = leftborder;
   cp->width -= leftborder + rightborder;
 }
+
+#ifdef darken_dialog_elements
+static LRESULT CALLBACK
+ctl_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR uid, DWORD_PTR data)
+{
+  (void)uid; (void)data;
+  switch (msg) {
+    //when WM_ERASEBKGND:
+      // makes things worse (flickering, invisible items)
+    //when 0x0090 or 0x00F1 or 0x00F4 or 0x0143 or 0x014B:
+      // these also occur
+  }
+  return DefSubclassProc(hwnd, msg, wp, lp);
+}
+#endif
 
 static HWND
 doctl(control * ctrl, 
@@ -99,6 +117,8 @@ doctl(control * ctrl,
 #ifdef darken_dialog_elements
     // apply dark mode to dialog buttons
     win_dark_mode(ctl);
+    // try to darken further elements
+    SetWindowSubclass(ctl, ctl_proc, 0, 0);
 #endif
 #ifdef debug_widgets
     printf("%8p %s %d '%s'\n", ctl, classname, exstyle, text);
