@@ -191,7 +191,7 @@ void child_proc() {
               kb_input = false;
               if (cfg.display_speedup)
                 // undocumented safeguard in case something goes wrong here
-                (win_update_now)(child_p->term);
+                (win_update_term)(child_p->term, false);
             }
             if (log_fd >= 0 && logging)
               write(log_fd, buf, len);
