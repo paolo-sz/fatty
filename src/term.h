@@ -476,7 +476,8 @@ typedef struct {
     ME_XTERM_CSI   // CSI > event ; x ; y M/m
   } mouse_enc_t;
 
-#define TERM_VAR_REF    \
+#define TERM_VAR_REF(check)    \
+  if (check) assert(term_p);   \
   struct term &term __attribute__((unused)) = *term_p;           \
   struct child *child_p __attribute__((unused)) = null;            \
   if (term_p) child_p = term.child;

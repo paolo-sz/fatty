@@ -21,7 +21,8 @@ struct child
   struct term* term;
 };
 
-#define CHILD_VAR_REF                  \
+#define CHILD_VAR_REF(check)                  \
+   if (check) assert(child_p);    \
    char *&home __attribute__((unused)) = child_p->home;          \
    char *&cmd __attribute__((unused)) = child_p->cmd;            \
    string &child_dir __attribute__((unused)) = child_p->dir;     \

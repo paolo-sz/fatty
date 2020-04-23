@@ -50,7 +50,7 @@ extern wchar * (wcsline)(struct term* term_p, termline * line);  // for debug ou
 static inline bool
 (term_selecting)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   return term.mouse_state < 0 && term.mouse_state >= MS_SEL_LINE;
 }

@@ -149,7 +149,7 @@ int line_scale;
 wchar
 (win_linedraw_char)(struct term* term_p, int i)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   int findex = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   if (findex > 10)
@@ -983,7 +983,13 @@ static bool ime_open = false;
 static int update_skipped = 0;
 int lines_scrolled = 0;
 
-static void do_update_cb(void* _) { (void)_; struct term *term_p = win_active_terminal(); do_update(); }
+static void do_update_cb(void* _) {
+  (void)_;
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
+  
+  do_update();
+}
 
 #define dont_debug_cursor 1
 
@@ -1192,7 +1198,7 @@ static void
     show_char_msg(cs);  // does free(cs);
   };
   
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   int line = term.curs.y - term.disptop;
   if (line < 0 || line >= term.rows) {
@@ -1217,7 +1223,7 @@ void
   printf("do_update cursor_on %d @%d,%d\n", term.cursor_on, term.curs.y, term.curs.x);
 #endif
 
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
@@ -1297,7 +1303,7 @@ void
 static void
 (sel_update)(struct term* term_p, bool update_sel_tip)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   static bool selection_tip_active = false;
   //printf("sel_update tok %d sel %d act %d\n", tip_token, term.selected, selection_tip_active);
@@ -1347,7 +1353,7 @@ static void
 static void
 (show_link)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   static int lasthoverlink = -1;
 
@@ -1472,7 +1478,7 @@ another_font(struct fontfam * ff, int fontno)
 void
 (win_set_ime_open)(struct term* term_p, bool open)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (open != ime_open) {
     ime_open = open;
@@ -1942,7 +1948,7 @@ win_flush_background(bool clearbg)
 static wchar *
 (get_bg_filename)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   tiled = false;
   ratio = false;
@@ -2542,7 +2548,7 @@ static cattr
 static bool
 (apply_bold_colour)(struct term* term_p, colour_i *pfgi)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   // We use two bits to control colouring and thickening for three classes of
   // colours: ANSI (0-7), default, and other (8-256, true). We also reserve one
@@ -2703,7 +2709,7 @@ cattr
 void
 (win_text)(struct term* term_p, int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
 #ifdef debug_wscale
   if (attr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE))
@@ -4567,7 +4573,7 @@ win_set_colour(colour_i i, colour c)
 colour
 (win_get_colour)(struct term* term_p, colour_i i)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (term.rvideo && CCL_DEFAULT(i))
     return colours[i ^ 2];  // [BOLD]_FG_COLOUR_I  <-->  [BOLD]_BG_COLOUR_I
@@ -4624,7 +4630,7 @@ win_reset_colours(void)
 void
 (win_paint)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   PAINTSTRUCT p;
   dc = BeginPaint(wnd, &p);

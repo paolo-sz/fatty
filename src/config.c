@@ -1591,6 +1591,7 @@ void
 apply_config(bool save)
 {
   struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
 
   // Record what's changed
   for (uint i = 0; i < lengthof(options); i++) {
@@ -1872,7 +1873,7 @@ static void
 current_size_handler(control *unused(ctrl), int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (event == EVENT_ACTION) {
     new_cfg.cols = term.cols;
@@ -2094,7 +2095,7 @@ static void
 bell_handler(control *ctrl, int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
 
   switch (event) {
     when EVENT_REFRESH:
@@ -2134,7 +2135,7 @@ static void
 bellfile_handler(control *ctrl, int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
 
   const wstring NONE = _W("◇ None (system sound) ◇");  // ♢◇
   const wstring CFG_NONE = W("");
@@ -2392,7 +2393,7 @@ static void
 theme_handler(control *ctrl, int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
 
   //__ terminal theme / colour scheme
   const wstring NONE = _W("◇ None ◇");  // ♢◇
@@ -2508,7 +2509,7 @@ static void
 scheme_saver(control *ctrl, int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
 
   wstring theme_name = new_cfg.theme_file;
   if (event == EVENT_REFRESH) {
@@ -2557,7 +2558,7 @@ static void
 bell_tester(control *unused(ctrl), int event)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
 
   if (event == EVENT_ACTION)
     win_bell(&new_cfg);
@@ -2567,6 +2568,7 @@ static void
 url_opener(control *ctrl, int event)
 {
   struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
 
   if (event == EVENT_ACTION) {
     wstring url = (wstring)(ctrl->context);

@@ -788,7 +788,7 @@ resizeline(termline *line, int cols)
 int
 (sblines)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   return term.on_alt_screen ^ term.show_other_screen ? 0 : term.sblines;
 }
@@ -800,7 +800,7 @@ int
 termline *
 (fetch_line)(struct term* term_p, int y)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   termlines *lines = term.show_other_screen ? term.other_lines : term.lines;
 
@@ -842,7 +842,7 @@ release_line(termline *line)
 static int
 (term_bidi_cache_hit)(struct term* term_p, int line, termchar *lbefore, ushort lattr, int width)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   int i;
 
@@ -874,7 +874,7 @@ static void
                       termchar *lbefore, termchar *lafter, bidi_char *wcTo, 
                       ushort lattr, int width, int size, int bidisize)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
 #ifdef debug_bidi_cache
   printf("cache_store w %d s %d bs %d\n", width, size, bidisize);
@@ -959,7 +959,7 @@ void trace_bidi(char * tag, bidi_char * wc, int ib)
 wchar *
 (wcsline)(struct term* term_p, termline * line)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   static wchar * wcs = 0;
   wcs = renewn(wcs, term.cols + 1);
@@ -1022,7 +1022,7 @@ getparabidi(termline * line)
 termchar *
 (term_bidi_line)(struct term* term_p, termline *line, int scr_y)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   bool autodir = !(line->lattr & (LATTR_BIDISEL | LATTR_AUTOSEL));
   int level = (line->lattr & LATTR_BIDIRTL) ? 1 : 0;

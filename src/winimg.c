@@ -510,7 +510,7 @@ winimg_destroy(imglist *img)
 void
 (winimgs_clear)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   // clear parser state
   sixel_parser_deinit((sixel_state_t*)(term.imgs.parser_state));
@@ -544,7 +544,7 @@ void
 static void
 (draw_img)(struct term* term_p, HDC dc, imglist * img)
 {
-    TERM_VAR_REF
+    TERM_VAR_REF(true)
     
 #if CYGWIN_VERSION_API_MINOR >= 74
     gdiplus_init();
@@ -650,7 +650,7 @@ static void
 void
 (winimgs_paint)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   imglist * img;
   RECT tmp_rect;

@@ -322,7 +322,7 @@ void
   else
     return;
 
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   bool shorts = !term.shortcut_override;
   bool clip = shorts && cfg.clip_shortcuts;
@@ -906,7 +906,7 @@ static bool is_tab_bar_area(int y) {
 static void
 (update_mouse)(struct term* term_p, mod_keys mods)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   bool new_app_mouse =
     (term.mouse_mode && !term.show_other_screen &&
@@ -938,7 +938,7 @@ void
 static void
 (hide_mouse)(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   POINT p;
   if (term.hide_mouse && mouse_showing && GetCursorPos(&p) && WindowFromPoint(p) == wnd) {
@@ -951,7 +951,7 @@ static void
 static pos
 (translate_pos)(struct term *term_p, int x, int y)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return (pos){
     y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
@@ -986,7 +986,7 @@ static pos
 void
 (win_mouse_click)(struct term* term_p, mouse_button b, LPARAM lp)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   mouse_state = true;
   bool click_focus = click_focus_token;
@@ -1121,7 +1121,7 @@ void
 void
 (win_get_locator_info)(struct term *term_p, int *x, int *y, int *buttons, bool by_pixels)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   POINT p = {-1, -1};
 
@@ -1160,7 +1160,7 @@ void
 static void
 (toggle_scrollbar)(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (cfg.scrollbar) {
     term.show_scrollbar = !term.show_scrollbar;
@@ -1197,7 +1197,7 @@ static void
 static void
 (cycle_pointer_style)(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   cfg.cursor_type = (cfg.cursor_type + 1) % 3;
   term.cursor_invalid = true;
@@ -1286,7 +1286,7 @@ window_min(__attribute__((unused))struct term* term_p)
 void
 (toggle_vt220)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   term.vt220_keys = !term.vt220_keys;
 }
@@ -1294,7 +1294,7 @@ void
 void
 toggle_auto_repeat(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   term.auto_repeat = !term.auto_repeat;
 }
@@ -1302,7 +1302,7 @@ toggle_auto_repeat(struct term *term_p)
 void
 toggle_bidi(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   term.disable_bidi = !term.disable_bidi;
 }
@@ -1341,7 +1341,7 @@ nop(__attribute__((unused))struct term* term_p)
 static uint
 mflags_copy(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return term.selected ? MF_ENABLED : MF_GRAYED;
 }
@@ -1385,7 +1385,7 @@ mflags_lock_title(__attribute__((unused))struct term *term_p)
 static uint
 mflags_defsize(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return
     IsZoomed(wnd) || term.cols != cfg.cols || term.rows != cfg.rows
@@ -1408,7 +1408,7 @@ mflags_zoomed(__attribute__((unused))struct term *term_p)
 //mflags_flipscreen()
 //{
 //  struct term* term_p = win_active_terminal();
-//  TERM_VAR_REF
+//  TERM_VAR_REF(true)
 //    
 //  return term.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
 //}
@@ -1416,7 +1416,7 @@ mflags_zoomed(__attribute__((unused))struct term *term_p)
 static uint
 mflags_scrollbar_outer(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED
 #ifdef allow_disabling_scrollbar
@@ -1428,7 +1428,7 @@ mflags_scrollbar_outer(struct term *term_p)
 static uint
 mflags_scrollbar_inner(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (cfg.scrollbar)
     return term.show_scrollbar ? MF_CHECKED : MF_UNCHECKED;
@@ -1439,7 +1439,7 @@ mflags_scrollbar_inner(struct term *term_p)
 static uint
 mflags_open(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return term.selected ? MF_ENABLED : MF_GRAYED;
 }
@@ -1461,7 +1461,7 @@ mflags_char_info(__attribute__((unused))struct term *term_p)
 static uint
 mflags_vt220(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return term.vt220_keys ? MF_CHECKED : MF_UNCHECKED;
 }
@@ -1469,7 +1469,7 @@ mflags_vt220(struct term *term_p)
 static uint
 mflags_auto_repeat(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return term.auto_repeat ? MF_CHECKED : MF_UNCHECKED;
 }
@@ -1477,7 +1477,7 @@ mflags_auto_repeat(struct term *term_p)
 static uint
 mflags_bidi(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   return (cfg.bidi == 0
          || (cfg.bidi == 1 && (term.on_alt_screen ^ term.show_other_screen))
@@ -1637,7 +1637,7 @@ win_key_reset(void)
 void
 (provide_input)(struct term *term_p, wchar c1)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (term.margin_bell && c1 != '\e')
     term.ring_enabled = true;
@@ -1759,7 +1759,7 @@ win_key_nullify(uchar vk)
 static int
 (pick_key_function)(struct term* term_p, wstring key_commands, char * tag, int n, uint key, mod_keys mods, uint scancode)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   char * ukey_commands = cs__wcstoutf(key_commands);
   char * cmdp = ukey_commands;
@@ -1927,7 +1927,7 @@ bool
   else if (comp_state == COMP_CLEAR)
     comp_state = COMP_NONE;
 
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
   bool extended = HIWORD(lp) & KF_EXTENDED;
@@ -3139,7 +3139,7 @@ bool
   printf("  win_key_up %02X %s\n", key, vk_name(key));
 #endif
 
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (key == VK_CANCEL) {
     // in combination with Control, this may be the KEYUP event 

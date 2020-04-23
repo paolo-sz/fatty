@@ -61,7 +61,7 @@ static string primary_da5 = "\e[?65;1;2;4;6;9;15;21;22;28;29c";
 static bool
 (term_push_cmd)(struct term* term_p, char c)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   uint new_size;
 
@@ -99,7 +99,7 @@ static bool
 static void
 (move)(struct term* term_p, int x, int y, int marg_clip)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
 
@@ -135,7 +135,7 @@ static void
 static void
 (save_cursor)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.saved_cursors[term.on_alt_screen] = term.curs;
 }
@@ -147,7 +147,7 @@ static void
 static void
 (restore_cursor)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   *curs = term.saved_cursors[term.on_alt_screen];
@@ -191,7 +191,7 @@ static void
 static void
 (insert_char)(struct term* term_p, int n)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.curs.x < term.marg_left || term.curs.x > term.marg_right)
     return;
@@ -244,7 +244,7 @@ illegal_rect_char(xchar chr)
 static void
 (attr_rect)(struct term* term_p, cattrflags add, cattrflags sub, cattrflags xor_, short y0, short x0, short y1, short x1)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("attr_rect %d,%d..%d,%d +%llX -%llX ^%llX\n", y0, x0, y1, x1, add, sub, xor);
   y0--; x0--; y1--; x1--;
@@ -296,7 +296,7 @@ static void
 static void
 (fill_rect)(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short x0, short y1, short x1)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("fill_rect %d,%d..%d,%d\n", y0, x0, y1, x1);
   if (chr == UCSWIDE || illegal_rect_char(chr))
@@ -367,7 +367,7 @@ static void
 static void
 (copy_rect)(struct term* term_p, short y0, short x0, short y1, short x1, short y2, short x2)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("copy_rect %d,%d..%d,%d -> %d,%d\n", y0, x0, y1, x1, y2, x2);
   y0--; x0--; y1--; x1--; y2--; x2--;
@@ -423,7 +423,7 @@ static void
 void
 (scroll_rect)(struct term* term_p, int topline, int botline, int lines)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("scroll_rect %d..%d %s%d\n", topline, botline, lines > 0 ? "+" : "", lines);
   int y0, y1, y2, e0, e1;
@@ -472,7 +472,7 @@ void
 static void
 (insdel_column)(struct term* term_p, int col, bool del, int n)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("insdel_column @%d %d marg %d..%d\n", col, n, term.marg_left, term.marg_right);
   int x0, x1, x2, e0, e1;
@@ -517,7 +517,7 @@ static void
 static uint
 (sum_rect)(struct term* term_p, short y0, short x0, short y1, short x1)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("sum_rect %d,%d..%d,%d\n", y0, x0, y1, x1);
 
@@ -573,7 +573,7 @@ static uint
 static void
 (write_bell)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (cfg.bell_flash)
     term_schedule_vbell(false, 0);
@@ -584,7 +584,7 @@ static void
 static void
 (write_backspace)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   if (curs->x == term.marg_left && curs->y == term.marg_top
@@ -614,7 +614,7 @@ static void
 static void
 (write_tab)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
 
@@ -643,7 +643,7 @@ static void
 static void
 (write_return)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.curs.wrapnext = false;
   if (term.curs.x < term.marg_left)
@@ -656,7 +656,7 @@ static void
 static void
 (write_linefeed)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   if (curs->x < term.marg_left || curs->x > term.marg_right)
@@ -704,7 +704,7 @@ cattr last_attr = {attr : ATTR_DEFAULT,
 static void
 (write_char)(struct term* term_p, wchar c, int width)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //if (kb_trace) printf("[%ld] write_char 'q'\n", mtime());
 
@@ -1016,7 +1016,7 @@ scriptfont(ucschar ch)
 static void
 (write_ucschar)(struct term* term_p, wchar hwc, wchar wc, int width)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   cattrflags attr = term.curs.attr.attr;
   ucschar c = hwc ? combine_surrogates(hwc, wc) : wc;
@@ -1049,7 +1049,7 @@ static void
 static void
 (write_error)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   // Write one of REPLACEMENT CHARACTER or, if that does not exist,
   // MEDIUM SHADE which looks appropriately erroneous.
@@ -1083,7 +1083,7 @@ contains(string s, int i)
 static bool
 (do_ctrl)(struct term* term_p, char c)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   switch (c) {
     when '\e':   /* ESC: Escape */
@@ -1136,7 +1136,7 @@ static bool
 static void
 (do_vt52)(struct term* term_p, uchar c)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   term.state = NORMAL;
@@ -1220,7 +1220,7 @@ static void
 static void
 (do_vt52_move)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.state = NORMAL;
   uchar y = term.cmd_buf[0];
@@ -1234,7 +1234,7 @@ static void
 static void
 (do_vt52_colour)(struct term* term_p, bool fg, uchar c)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.state = NORMAL;
   if (fg) {
@@ -1313,7 +1313,7 @@ static uchar esc_mod1 = 0;
 static void
 (do_esc)(struct term* term_p, uchar c)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   term.state = NORMAL;
@@ -1477,7 +1477,7 @@ static void
 static void
 (do_sgr)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
  /* Set Graphics Rendition. */
   uint argc = term.csi_argc;
@@ -1773,7 +1773,7 @@ static void
 static void
 (set_modes)(struct term* term_p, bool state)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   for (uint i = 0; i < term.csi_argc; i++) {
     uint arg = term.csi_argv[i];
@@ -2027,7 +2027,7 @@ static void
 static int
 (get_mode)(struct term* term_p, bool privatemode, int arg)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (privatemode) { /* DECRQM for DECSET/DECRST: DEC private mode */
     switch (arg) {
@@ -2179,7 +2179,7 @@ static int
 static void
 (push_mode)(struct term* term_p, int mode, int val)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   struct mode_entry *&mode_stack = term.mode_stack;
   int &mode_stack_len = term.mode_stack_len;
   
@@ -2196,7 +2196,7 @@ static void
 static int
 (pop_mode)(struct term* term_p, int mode)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   struct mode_entry *&mode_stack = term.mode_stack;
   int &mode_stack_len = term.mode_stack_len;
  
@@ -2255,7 +2255,7 @@ pop_attrs(cattr * _ca, cattrflags * _caflagsmask)
 static void
 (do_winop)(struct term* term_p)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   int arg1 = term.csi_argv[1], arg2 = term.csi_argv[2];
   if (*cfg.suppress_win && contains(cfg.suppress_win, term.csi_argv[0]))
@@ -2360,7 +2360,7 @@ static void
 static void
 (do_csi)(struct term* term_p, uchar c)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
   int arg0 = term.csi_argv[0], arg1 = term.csi_argv[1];
@@ -2924,7 +2924,7 @@ static void
 static void
 (fill_image_space)(struct term* term_p, imglist * img)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   cattrflags attr0 = term.curs.attr.attr;
   // refer SIXELCH cells to image for display/discard management
@@ -2967,7 +2967,7 @@ static void
 static void
 (do_dcs)(struct term* term_p)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   // Implemented:
   // DECRQSS (Request Status String)
@@ -3260,7 +3260,7 @@ static void
 static void
 (do_colour_osc)(struct term* term_p, bool has_index_arg, uint i, bool reset)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   char *s = term.cmd_buf;
   int index;
@@ -3314,7 +3314,7 @@ static void
  */
 static void (do_clipboard)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   char *s = term.cmd_buf;
   char *output;
@@ -3358,7 +3358,7 @@ static void (do_clipboard)(struct term* term_p)
 static void
 (do_cmd)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   char *s = term.cmd_buf;
   s[term.cmd_len] = 0;
@@ -3675,7 +3675,7 @@ static void
 void
 (term_print_finish)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.printing) {
     printer_write(term.printbuf, term.printbuf_pos);
@@ -3691,7 +3691,7 @@ void
 static void
 (term_do_write)(struct term* term_p, const char *buf, uint len)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   // Reset cursor blinking.
   term.cblinker = 1;
@@ -4408,7 +4408,7 @@ static void
 void
 (term_flush)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.suspbuf) {
     term_do_write(term.suspbuf, term.suspbuf_pos);
@@ -4422,7 +4422,7 @@ void
 void
 (term_write)(struct term* term_p, const char *buf, uint len)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
  /*
     During drag-selects, some people do not wish to process terminal output,

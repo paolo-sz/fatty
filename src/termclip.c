@@ -48,7 +48,7 @@ clip_addchar(clip_workbuf * b, wchar chr, cattr * ca)
 static clip_workbuf *
 (get_selection)(struct term* term_p, pos start, pos end, bool rect, bool allinline)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   int old_top_x = start.x;    /* needed for rect==1 */
   clip_workbuf *buf = newn(clip_workbuf, 1);
@@ -167,7 +167,7 @@ static clip_workbuf *
 void
 (term_copy_as)(struct term* term_p, char what)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (!term.selected)
     return;
@@ -186,7 +186,7 @@ void
 void
 (term_open)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (!term.selected)
     return;
@@ -230,7 +230,7 @@ contains(string s, wchar c)
 void
 (term_paste)(struct term* term_p, wchar *data, uint len, bool all)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   term_cancel_paste();
 
@@ -260,7 +260,7 @@ void
 void
 (term_cancel_paste)(struct term* term_p)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (term.paste_buffer) {
     free(term.paste_buffer);
@@ -273,7 +273,7 @@ void
 void
 (term_send_paste)(struct term* term_p)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   int i = term.paste_pos;
   /* We must not feed more than MAXPASTEMAX bytes into the pty in one chunk 
@@ -307,7 +307,7 @@ void
 void
 (term_select_all)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.sel_start = (pos){-sblines(), 0, false};
   term.sel_end = (pos){term_last_nonempty_line(), term.cols, true};
@@ -322,7 +322,7 @@ void
 static wchar *
 (term_get_text)(struct term* term_p, bool all, bool screen, bool command)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   pos start;
   pos end;
@@ -406,7 +406,7 @@ static wchar *
 void
 (term_cmd)(struct term* term_p, char * cmd)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   // provide scrollback buffer
   wchar * wsel = term_get_text(true, false, false);
@@ -482,7 +482,7 @@ void
 static char *
 (term_create_html)(struct term* term_p, FILE * hf, int level)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   char * hbuf = hf ? 0 : strdup("");
   auto
@@ -979,7 +979,7 @@ char *
 void
 (term_export_html)(struct term *term_p, bool do_open)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   struct timeval now;
   gettimeofday(& now, 0);
@@ -1013,7 +1013,7 @@ void
 void
 (print_screen)(struct term *term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (*cfg.printer == '*')
     printer_start_job(printer_get_default());

@@ -648,7 +648,7 @@ static int scroll_dif = 0;
 void
 (win_set_scrollview)(struct term* term_p, int pos, int len, int height)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   bool prev = term.app_scrollbar;
   term.app_scrollbar = pos;
@@ -996,7 +996,7 @@ win_synctabs(int level)
 static void
 (win_launch)(struct term* term_p, int n)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
   int x, y;
@@ -1384,7 +1384,7 @@ win_is_glass_available(void)
 static void
 (win_update_blur)(struct term* term_p, bool opaque)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
 // This feature is disabled in config.c as it does not seem to work,
 // see https://github.com/mintty/mintty/issues/501
@@ -1419,7 +1419,7 @@ static void
 static void
 (win_update_glass)(struct term* term_p, bool opaque)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   bool enabled =
     cfg.transparency == TR_GLASS && !win_is_fullscreen &&
@@ -1622,7 +1622,7 @@ win_fix_position(void)
 void
 (win_set_chars)(struct term* term_p, int rows, int cols)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   trace_resize(("--- win_set_chars %d×%d\n", rows, cols));
 
@@ -1681,7 +1681,7 @@ flash_border()
 void
 (do_win_bell)(struct term* term_p, config * conf, bool margin_bell)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   do_update();
 
@@ -1792,7 +1792,7 @@ void
 void
 (win_bell)(struct term *term_p, config * conf)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   do_win_bell(conf, false);
 }
@@ -1800,7 +1800,7 @@ void
 void
 (win_margin_bell)(struct term *term_p, config * conf)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   do_win_bell(conf, true);
 }
@@ -1848,7 +1848,7 @@ print_system_metrics(int dpi, string tag)
 static void
 (win_adjust_borders)(struct term* term_p, int t_width, int t_height)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(false)
     
   term_width = t_width;
   term_height = t_height;
@@ -1924,7 +1924,7 @@ void
   printf("\n");
 #endif
 
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (sync_size_with_font && !win_is_fullscreen) {
     // enforced win_set_chars(term.rows, term.cols):
@@ -2075,7 +2075,7 @@ static void
 void
 (win_update_transparency)(struct term* term_p, bool opaque)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   int trans = cfg.transparency;
   if (trans == TR_GLASS)
@@ -2096,7 +2096,7 @@ void
 void
 (win_update_scrollbar)(struct term* term_p, bool inner)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   // enforce outer scrollbar if switched on
   int scrollbar = term.show_scrollbar ? (cfg.scrollbar ?: !inner) : 0;
@@ -2141,7 +2141,7 @@ void
 void
 (win_font_cs_reconfig)(struct term* term_p, bool font_changed)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   bool old_ambig_wide = cs_ambig_wide;
   cs_reconfig();
@@ -2229,7 +2229,7 @@ confirm_exit(void)
 static bool
 confirm_tab_exit(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   if (!child_is_parent(term.child))
     return true;
@@ -2281,6 +2281,7 @@ win_tab_close(struct term** term_pp)
     if (!cfg.confirm_exit || confirm_tab_exit(*term_pp)) {
       win_tab_delete(*term_pp);
       *term_pp = win_active_terminal();
+      assert(term_pp);
     }
   } else {
     (win_close)(*term_pp);
@@ -2451,7 +2452,7 @@ static struct {
 #endif
 
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(false)
   
   switch (message) {
     when WM_NCCREATE:
@@ -2602,7 +2603,7 @@ static struct {
         when IDM_COPY_HFMT: term_copy_as('f');
         when IDM_COPY_HTML: term_copy_as('H');
         when IDM_COPASTE: term_copy(); win_paste();
-        when IDM_CLRSCRLBCK: term_clear_scrollback(); term.disptop = 0;
+        when IDM_CLRSCRLBCK: term_clear_scrollback(); assert(term_p); term.disptop = 0;
         when IDM_TOGLOG: toggle_logging();
         when IDM_HTML: term_export_html(GetKeyState(VK_SHIFT) & 0x80);
         when IDM_TOGCHARINFO: toggle_charinfo();
@@ -2644,6 +2645,7 @@ static struct {
           win_update_search();
         }
         when IDM_SCROLLBAR:
+          assert(term_p);
           term.show_scrollbar = !term.show_scrollbar;
           win_update_scrollbar(false);
         when IDM_SEARCH: win_open_search();
@@ -2680,6 +2682,7 @@ static struct {
 
     when WM_VSCROLL:
       //printf("WM_VSCROLL %d\n", LOWORD(wp));
+      assert(term_p);
       if (!term.app_scrollbar)
         switch (LOWORD(wp)) {
           when SB_LINEUP:   term_scroll(0, -1);
@@ -2752,6 +2755,7 @@ static struct {
           win_mouse_wheel(wpos, horizontal, delta);
         else if (!horizontal) {
           int hsb = win_has_scrollbar();
+          assert(term_p);
           if (hsb && term.app_scrollbar) {
             int wsb = GetSystemMetrics(SM_CXVSCROLL);
             if ((hsb > 0 && wpos.x >= width && wpos.x < width + wsb)
@@ -2832,6 +2836,7 @@ static struct {
       if (clipboard_token)
         clipboard_token = false;
       else {
+        assert(term_p);
         term.selected = false;
         win_update(false);
       }
@@ -3153,6 +3158,7 @@ static struct {
 #endif
         dpi = new_dpi;
 
+        assert(term_p);
         int y = term.rows, x = term.cols;
         SetWindowPos(wnd, 0, r->left, r->top, r->right - r->left, r->bottom - r->top,
                      SWP_NOZORDER | SWP_NOACTIVATE);
@@ -3203,6 +3209,7 @@ static struct {
           long height = (r->bottom - r->top) * 20 / 19;
           SetWindowPos(wnd, 0, r->left, r->top, width, height,
                        SWP_NOZORDER | SWP_NOOWNERZORDER | SWP_NOACTIVATE);
+          assert(term_p);
           int y = term.rows, x = term.cols;
           win_adapt_term_size(false, true);
           //?win_init_fonts(cfg.font.size);
@@ -3308,9 +3315,9 @@ void
 void
 (report_pos)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(false)
     
-  if (report_geom && !wnd && !term_p) {
+  if (report_geom && wnd && term_p) {
     int x, y;
     //win_get_pos(&x, &y);  // would not consider maximised/minimised
     WINDOWPLACEMENT placement;
@@ -3343,6 +3350,7 @@ void
 exit_fatty(int exit_val)
 {
   struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(false)
 
   report_pos();
 
@@ -5243,6 +5251,7 @@ main(int argc, char *argv[])
   }
 
   term_p = win_active_terminal();
+  TERM_VAR_REF(true)
 
   setenv("CHERE_INVOKING", "1", false);
   

@@ -35,7 +35,7 @@ get_char(termline *line, int x)
 static pos
 (sel_spread_word)(struct term* term_p, pos p, bool forward)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   pos ret_p = p;
   termline *line = fetch_line(p.y);
@@ -98,7 +98,7 @@ static pos
 static pos
 (sel_spread_half)(struct term* term_p, pos p, bool forward)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   switch (term.mouse_state) {
     when MS_SEL_CHAR: {
@@ -159,7 +159,7 @@ static pos
 static void
 (sel_spread)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.sel_start = sel_spread_half(term.sel_start, false);
   term.sel_end = sel_spread_half(term.sel_end, true);
@@ -170,7 +170,7 @@ static void
 static bool
 (hover_spread_empty)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   term.hover_start = sel_spread_word(term.hover_start, false);
   term.hover_end = sel_spread_word(term.hover_end, true);
@@ -183,7 +183,7 @@ static bool
 static void
 (sel_drag)(struct term* term_p, pos selpoint)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("sel_drag %d+%d/2 (anchor %d+%d/2)\n", selpoint.x, selpoint.r, term.sel_anchor.x, term.sel_anchor.r);
   term.selected = true;
@@ -235,7 +235,7 @@ static void
 static void
 (sel_extend)(struct term* term_p, pos selpoint)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("sel_extend %d+%d/2 (anchor %d+%d/2)\n", selpoint.x, selpoint.r, term.sel_anchor.x, term.sel_anchor.r);
   if (term.selected) {
@@ -285,7 +285,7 @@ typedef enum {
 static void
 (send_mouse_event)(struct term* term_p, mouse_action a, mouse_button b, mod_keys mods, pos p)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (term.mouse_mode == MM_LOCATOR) {
     // handle DECSLE: select locator events
@@ -399,7 +399,7 @@ static void
 static pos
 (box_pos)(struct term* term_p, pos p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   p.y = min(max(0, p.y), term.rows - 1);
   p.x = min(max(0, p.x), term.cols - 1);
@@ -410,7 +410,7 @@ static pos
 static pos
 (get_selpoint)(struct term* term_p, const pos p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   pos sp = { .y = p.y + term.disptop, .x = p.x, .r = p.r };
   termline *line = fetch_line(sp.y);
@@ -448,7 +448,7 @@ static pos
 static void
 (send_keys)(struct term* term_p, char *code, uint len, uint count)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (count) {
     uint size = len * count;
@@ -463,7 +463,7 @@ static void
 static bool
 (check_app_mouse)(struct term* term_p, mod_keys *mods_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.locator_1_enabled)
     return true;
@@ -477,7 +477,7 @@ static bool
 void
 (term_mouse_click)(struct term* term_p, mouse_button b, mod_keys mods, pos p, int count)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   if (term.hovering) {
     term.hovering = false;
@@ -572,7 +572,7 @@ void
 void
 (term_mouse_release)(struct term* term_p, mouse_button b, mod_keys mods, pos p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   int state = term.mouse_state;
   term.mouse_state = (mouse_state_t)0;
@@ -666,7 +666,7 @@ static void
 sel_scroll_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term_selecting() && term.sel_scroll) {
     term_scroll(0, term.sel_scroll);
@@ -679,7 +679,7 @@ sel_scroll_cb(void* data)
 void
 (term_mouse_move)(struct term* term_p, mod_keys mods, pos p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   //printf("mouse_move %d+%d/2\n", p.x, p.r);
   pos bp = box_pos(p);
@@ -737,7 +737,7 @@ void
 void
 (term_mouse_wheel)(struct term* term_p, bool horizontal, int delta, int lines_per_notch, mod_keys mods, pos p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.hovering) {
     term.hovering = false;

@@ -160,6 +160,7 @@ open_logfile(bool toggling)
         }
         else {
           struct term *term_p = win_active_terminal();
+          TERM_VAR_REF(true)
 
           childerror(msg, false, errno, 0);
           childerror(upath, false, 0, 0);
@@ -189,7 +190,7 @@ toggle_logging()
 void
 (child_update_charset)(struct child * child_p)
 {
-  CHILD_VAR_REF  
+  CHILD_VAR_REF(true)
   
 #ifdef IUTF8
   if (pty_fd >= 0) {
@@ -210,7 +211,7 @@ void
 (child_create)(struct child* child_p, struct term* term_in,
     char *argv[], struct winsize *winp, const char* path)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   trace_dir(asform("child_create: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
 
@@ -373,7 +374,7 @@ void
 void
 child_free(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (pty_fd >= 0)
     close(pty_fd);
@@ -383,7 +384,7 @@ child_free(struct child* child_p)
 bool
 child_is_alive(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
     return pid;
 }
@@ -391,7 +392,7 @@ child_is_alive(struct child* child_p)
 bool
 child_is_parent(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (!pid)
     return false;
@@ -552,7 +553,7 @@ grandchild_process_list(void)
 void
 (child_write)(struct child* child_p, const char *buf, uint len)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (pty_fd >= 0)
     write(pty_fd, buf, len);
@@ -564,7 +565,7 @@ void
 void
 (child_break)(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   int gid = tcgetpgrp(pty_fd);
   if (gid > 1) {
@@ -579,7 +580,7 @@ void
 void
 (child_printf)(struct child* child_p, const char *fmt, ...)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (pty_fd >= 0) {
     va_list va;
@@ -596,7 +597,7 @@ void
 void
 (child_send)(struct child* child_p, const char *buf, uint len)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   term_reset_screen();
   if (term.echoing)
@@ -616,7 +617,7 @@ void
 void
 (child_resize)(struct child* child_p, struct winsize *winp)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (pty_fd >= 0)
     ioctl(pty_fd, TIOCSWINSZ, winp);
@@ -626,7 +627,7 @@ void
 static int
 (foreground_pid)(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   return (pty_fd >= 0) ? tcgetpgrp(pty_fd) : 0;
 }
@@ -634,7 +635,7 @@ static int
 char *
 (foreground_cwd)(struct child* child_p)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   // if working dir is communicated interactively, use it
   if (child_dir && *child_dir)
@@ -689,7 +690,7 @@ char *
 void
 (user_command)(struct child* child_p, wstring commands, int n)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   if (*commands) {
     char * cmds = cs__wcstombs(commands);
@@ -755,7 +756,7 @@ void
 wstring
 (child_conv_path)(struct child* child_p, wstring wpath, bool adjust_dir)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   int wlen = wcslen(wpath);
   int len = wlen * cs_cur_max;
@@ -838,7 +839,7 @@ wstring
 void
 (child_set_fork_dir)(struct child* child_p, char * dir)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   strset(&child_dir, dir);
 }
@@ -877,7 +878,7 @@ setup_sync()
 static void
 (do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch)
 {
-  CHILD_VAR_REF
+  CHILD_VAR_REF(true)
 
   trace_dir(asform("do_child_fork: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
   setup_sync();

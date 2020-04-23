@@ -311,7 +311,7 @@ void
 (win_open)(struct term* term_p, wstring wpath, bool adjust_dir)
 // frees wpath
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   string &child_dir = term.child->dir;
     
   // unescape
@@ -962,7 +962,7 @@ buf_path(wchar * wfn, bool convert, bool quote)
 static void
 (paste_hdrop)(struct term* term_p, HDROP drop)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
 #if CYGWIN_VERSION_API_MINOR >= 222
   // Update Cygwin locale to terminal locale.
@@ -1034,7 +1034,7 @@ static void
 static void
 (paste_path)(struct term* term_p, HANDLE data)
 {
-  TERM_VAR_REF  
+  TERM_VAR_REF(true)
   
   wchar *s = (wchar *)GlobalLock(data);
   buf_init();
@@ -1075,7 +1075,7 @@ static void
 static void
 (do_win_paste)(struct term *term_p, bool do_path)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   //printf("OpenClipboard win_paste\n");
   if (!OpenClipboard(null))
@@ -1216,6 +1216,7 @@ dt_drop(IDropTarget *this_, IDataObject *obj,
         DWORD keys, POINTL pos, DWORD *effect_p)
 {
   struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
 
   // check whether drag-and-drop target is the terminal window
   // not the Options menu or any of its controls

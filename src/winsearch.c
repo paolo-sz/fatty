@@ -47,7 +47,7 @@ win_get_search_edit_wnd(void)
 static int
 (current_delta)(struct term* term_p, bool adjust)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.results.length == 0) {
     return 0;
@@ -88,7 +88,7 @@ static int
 static void
 (scroll_to_result)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.results.length == 0) {
     return;
@@ -106,7 +106,7 @@ static void
 void
 (next_result)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.results.length == 0) {
     return;
@@ -120,7 +120,7 @@ void
 void
 (prev_result)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (term.results.length == 0) {
     return;
@@ -134,6 +134,7 @@ static LRESULT CALLBACK
 edit_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
   struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
 
   MSG mesg = {hwnd : hwnd, message : msg, wParam : wp, lParam : lp, time : 0, pt : {0, 0}};
   TranslateMessage(&mesg);
@@ -182,7 +183,7 @@ static LRESULT CALLBACK
 search_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
   struct term *term_p = win_active_terminal();
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   bool update = false;
   switch (msg) {
@@ -253,7 +254,7 @@ place_field(int * curpoi, int width, int * pospoi)
 static void
 (win_toggle_search)(struct term* term_p, bool show, bool focus)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
     
   RECT cr;
   GetClientRect(wnd, &cr);
@@ -421,7 +422,7 @@ static void
 void
 (win_open_search)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   if (!(term.results.query) && search_initialised) {
     SetWindowTextW(search_edit_wnd, W(""));
@@ -434,7 +435,7 @@ void
 static void
 (win_hide_search)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   win_toggle_search(false, false);
   term.search_window_visible = false;
@@ -470,7 +471,7 @@ void
 bool
 (win_search_visible)(struct term* term_p)
 {
-  TERM_VAR_REF
+  TERM_VAR_REF(true)
   
   return term.search_window_visible;
 }
