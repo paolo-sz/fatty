@@ -5015,9 +5015,6 @@ main(int argc, char *argv[])
                         null, null, inst, null);
   trace_winsize("createwindow");
 
-  // Dark mode support
-  win_dark_mode(wnd);
-
   // Workaround for failing title parameter:
   if (pEnableNonClientDpiScaling)
     SetWindowTextW(wnd, wtitle);
@@ -5249,6 +5246,9 @@ main(int argc, char *argv[])
 
     win_tab_set_argv(argv);
   }
+
+  // Dark mode support
+  win_dark_mode(wnd);
 
   term_p = win_active_terminal();
   TERM_VAR_REF(true)
