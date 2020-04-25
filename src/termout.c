@@ -801,9 +801,6 @@ static void
     curs->wrapnext = false;
   }
 
-  if (term.insert && width > 0)
-    insert_char(width);
-
   bool single_width = false;
   if (cfg.charwidth >= 10 || cs_single_forced) {
     if (width > 1) {
@@ -814,6 +811,9 @@ static void
       single_width = true;
     }
   }
+
+  if (term.insert && width > 0)
+    insert_char(width);
 
   switch (width) {
     when 1:  // Normal character.
@@ -2401,6 +2401,9 @@ static void
         else
           child_printf("\e[>77;%u;0c", DECIMAL_VERSION);
       }
+    when CPAIR('>', 'q'):     /* Report terminal name and version */
+      if (!arg0)
+        child_printf("\eP>|%s %s\e\\", APPNAME, VERSION);
     when 'a':        /* HPR: move right N cols */
       move(curs->x + arg0_def1, curs->y, 1);
     when 'C':        /* CUF: Cursor right */
