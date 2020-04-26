@@ -426,8 +426,6 @@ extern "C" {
       unsigned int Index;
       HDC tab_dc;
       
-      GetWindowRect(tab_wnd, &loc_tabrect);
-
       if (!IsWindowVisible(tab_wnd) && tab_bar_visible) {
         HDC dc = GetDC(wnd);
         SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
@@ -452,6 +450,22 @@ extern "C" {
   
       if (lp == 0) return;
   
+      tab_dc = GetDC(tab_wnd);
+      const auto brush = CreateSolidBrush(cfg.tab_bg_colour);
+      GetWindowRect(tab_wnd, &tabrect);
+      SetRect(&loc_tabrect, 0, 0, 2, win_tab_height()); /* maybe this "2" could be retrieved from somewhere */
+      FillRect(tab_dc, &loc_tabrect, brush);
+      SetRect(&loc_tabrect, 0, 0, tabrect.right, 2); /* maybe this "2" could be retrieved from somewhere */
+      FillRect(tab_dc, &loc_tabrect, brush);
+      if (SendMessageW(tab_wnd, TCM_GETITEMRECT, tabs.size()-1, (LPARAM)&loc_tabrect)) {
+        if (loc_tabrect.right < tabrect.right) {
+          SetRect(&loc_tabrect, loc_tabrect.right, 0, tabrect.right, win_tab_height());
+          FillRect(tab_dc, &loc_tabrect, brush);
+        }
+      }
+      DeleteObject(brush);
+      ReleaseDC(tab_wnd, tab_dc);
+
       // bounding rectangle of current tab
       tabrect = ((DRAWITEMSTRUCT *)lp)->rcItem;
       
