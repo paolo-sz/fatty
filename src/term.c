@@ -1727,6 +1727,9 @@ fallback:;
       pre = const_cast<char *>("windows/");
     when EMOJIS_NONE:
       pre = const_cast<char *>("common/");
+    when EMOJIS_OPENMOJI:
+      pre = const_cast<char *>("openmoji/");
+      fmt = const_cast<char *>("%04X");
       break;
     default:
       return false;
