@@ -5024,6 +5024,8 @@ main(int argc, char *argv[])
                           0, 0, width, win_tab_height(), 
                           wnd, NULL, inst, NULL);
   TabCtrl_SetMinTabWidth(tab_wnd, 100);
+  const auto brush = CreateSolidBrush(cfg.tab_bg_colour);
+  SetClassLongPtrW(tab_wnd, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
 
   // Adapt window position (and maybe size) to special parameters
   // also select monitor if requested
