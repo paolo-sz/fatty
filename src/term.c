@@ -271,6 +271,7 @@ static void
 term_cursor_reset(term_cursor *curs)
 {
   curs->attr = CATTR_DEFAULT;
+  curs->width = 0;
   curs->gl = 0;
   curs->gr = 0;
   curs->oem_acs = 0;
@@ -535,54 +536,42 @@ void
     term.vt220_keys = vt220(new_cfg.term);
 }
 
-#define in_result(...) (in_result)(term_p, ##__VA_ARGS__)
-static bool
-(in_result)(struct term* term_p, pos abspos, result run)
-{
-  TERM_VAR_REF(true)
-  
-  return
-    (abspos.x + abspos.y * term.cols >= run.x + run.y * term.cols) &&
-    (abspos.x + abspos.y * term.cols <  run.x + run.y * term.cols + run.len);
-}
-
-#define in_results_recurse(...) (in_results_recurse)(term_p, ##__VA_ARGS__)
-static bool
-(in_results_recurse)(struct term* term_p, pos abspos, int lo, int hi)
-{
-  TERM_VAR_REF(true)
-  
-  if (hi - lo == 0) {
-    return false;
-  }
-  int mid = (lo + hi) / 2;
-  result run = term.results.results[mid];
-  if (run.x + run.y * term.cols > abspos.x + abspos.y * term.cols) {
-    return in_results_recurse(abspos, lo, mid);
-  } else if (run.x + run.y * term.cols + run.len <= abspos.x + abspos.y * term.cols) {
-    return in_results_recurse(abspos, mid + 1, hi);
-  }
-  return true;
-}
-
 #define in_results(...) (in_results)(term_p, ##__VA_ARGS__)
 static int
 (in_results)(struct term* term_p, pos scrpos)
 {
   TERM_VAR_REF(true)
   
-  if (term.results.length == 0) {
+  if (term.results.xquery_length == 0) {
     return 0;
   }
+  int idx = scrpos.x + (scrpos.y + term.sblines) * term.cols;
+  if (!(term.results.range_begin <= idx && idx < term.results.range_end)) {
+    term_search_expand(idx);
+  }
 
-  pos abspos = {
-    y : scrpos.y + term.sblines,
-    x : scrpos.x,
-    r : false
-  };
+  int b = 0;
+  int e = term.results.length;
+  while (b < e) {
+    int m = (b + e) / 2;
+    if (term.results.results[m].idx > idx) {
+      e = m;
+    } else {
+      b = m + 1;
+    }
+  }
 
-  int match = in_results_recurse(abspos, 0, term.results.length);
-  match += in_result(abspos, term.results.results[term.results.current]);
+  if (e <= 0) {
+    return 0;
+  }
+  result hit = term.results.results[e - 1];
+  if (idx >= hit.idx + hit.len) {
+    return 0;
+  }
+  int match = 1;
+  if (term.results.current.idx <= idx && idx < term.results.current.idx + term.results.current.len) {
+    match += 1;
+  }
   return match;
 }
 
@@ -600,19 +589,6 @@ static void
 
   term.results.results[term.results.length] = abspos;
   ++term.results.length;
-}
-
-#define results_partial_clear(...) (results_partial_clear)(term_p, ##__VA_ARGS__)
-static void
-(results_partial_clear)(struct term* term_p, int pos)
-{
-  TERM_VAR_REF(true)
-  
-  int i = term.results.length;
-  while (i > 0 && term.results.results[i - 1].y >= pos) {
-    --i;
-  }
-  term.results.length = i;
 }
 
 void
@@ -641,53 +617,6 @@ void
   term.results.xquery = xquery;
   term.results.xquery_length = xlen;
   term.results.update_type = FULL_UPDATE;
-}
-
-static void
-circbuf_init(circbuf * cb, int sz)
-{
-  cb->capacity = sz;
-  cb->length = 0;
-  cb->start = 0;
-  cb->buf = newn(termline*, sz);
-}
-
-static void
-circbuf_destroy(circbuf * cb)
-{
-  cb->capacity = 0;
-  cb->length = 0;
-  cb->start = 0;
-
-  // Free any termlines we have left.
-  for (int i = 0; i < cb->capacity; ++i) {
-    if (cb->buf[i] == NULL)
-      continue;
-    release_line(cb->buf[i]);
-  }
-  free(cb->buf);
-  cb->buf = NULL;
-}
-
-static void
-circbuf_push(circbuf * cb, termline * tl)
-{
-  int pos = (cb->start + cb->length) % cb->capacity;
-
-  if (cb->length < cb->capacity) {
-    ++cb->length;
-  } else {
-    ++cb->start;
-    release_line(cb->buf[pos]);
-  }
-  cb->buf[pos] = tl;
-}
-
-static termline *
-circbuf_get(circbuf * cb, int i)
-{
-  assert(i < cb->length);
-  return cb->buf[(cb->start + i) % cb->capacity];
 }
 
 #ifdef dynamic_casefolding
@@ -745,6 +674,14 @@ static struct {
 static uint
 case_fold(uint ch)
 {
+  // speedup ASCII
+  if (ch < 0x80) {
+    if (ch >= 'A' && ch <= 'Z')
+      return ch + 'a' - 'A';
+    else
+      return ch;
+  }
+
   // binary search in table
   int min = 0;
   int max = case_foldn - 1;
@@ -767,12 +704,9 @@ void
 {
   TERM_VAR_REF(true)
   
-  init_case_folding();
-
   if (term.results.update_type == DISABLE_UPDATE)
     return;
 
-  int update_type = term.results.update_type;
   if (term.results.update_type == NO_UPDATE)
     return;
   term.results.update_type = NO_UPDATE;
@@ -782,59 +716,52 @@ void
     return;
   }
 
-  circbuf cb;
-  // Allocate room for the circular buffer of termlines.
-  int lcurr = 0;
-  if (update_type == PARTIAL_UPDATE) {
-    // How much of the backscroll we need to update on a partial update?
-    // Do a ceil: (x + y - 1) / y
-    // On xquery_length - 1
-    int pstart = -((term.results.xquery_length + term.cols - 2) / term.cols) + term.sblines;
-    lcurr = lcurr > pstart ? lcurr:pstart;
-    results_partial_clear(lcurr);
-  } else {
-    term_clear_results();
-  }
-  int llen = term.results.xquery_length / term.cols + 1;
-  if (llen < 2)
-    llen = 2;
+  term_clear_results();
+  // The actual search happens inside in_results().
+}
 
-  circbuf_init(&cb, llen);
+#define do_search(...) (do_search)(term_p, ##__VA_ARGS__)
+// return search results contained by [begin, end)
+static void
+(do_search)(struct term* term_p, int begin, int end) {
+  TERM_VAR_REF(true)
+  
+  init_case_folding();
 
-  // Fill in our starting set of termlines.
-  for (int i = lcurr; i < term.rows + term.sblines && cb.length < cb.capacity; ++i) {
-    circbuf_push(&cb, fetch_line(i - term.sblines));
-  }
-
-  int cpos = term.cols * lcurr;
+  /* the position of current char */
+  int cpos = begin;
   /* the number of matched chars in the current run */
   int npos = 0;
   /* the number of matched cells in the current run (anpos >= npos) */
   int anpos = 0;
-  int end = term.cols * (term.rows + term.sblines);
 
   // Loop over every character and search for query.
+  termline * line = NULL;
+  int line_y = -1;
   while (cpos < end) {
     // Determine the current position.
     int x = (cpos % term.cols);
     int y = (cpos / term.cols);
-
-    // If our current position isn't in the buffer, add it in.
-    if (y - lcurr >= llen) {
-      circbuf_push(&cb, fetch_line(lcurr + llen - term.sblines));
-      ++lcurr;
+    if (line_y != y) {
+        // If our current position isn't in the termline, add it in.
+        if (line) {
+            release_line(line);
+        }
+        line = fetch_line(y - term.sblines);
+        line_y = y;
     }
-    termline * lll = circbuf_get(&cb, y - lcurr);
-    termchar * chr = lll->chars + x;
 
-    if (npos == 0 && cpos + term.results.xquery_length >= end)
+    if (npos == 0 && cpos + term.results.xquery_length >= end) {
+      // Not enough data to match.
       break;
+    }
 
+    termchar * chr = line->chars + x;
     xchar ch = chr->chr;
-    if ((ch & 0xFC00) == 0xD800 && chr->cc_next) {
+    if (is_high_surrogate(chr->chr) && chr->cc_next) {
       termchar * cc = chr + chr->cc_next;
-      if ((cc->chr & 0xFC00) == 0xDC00) {
-        ch = ((xchar) (ch - 0xD7C0) << 10) | (cc->chr & 0x03FF);
+      if (is_low_surrogate(cc->chr)) {
+        ch = combine_surrogates(chr->chr, cc->chr);
       }
     }
     xchar pat = term.results.xquery[npos];
@@ -856,15 +783,12 @@ void
     ++npos;
 
     if (npos >= term.results.xquery_length) {
-      int start = cpos - anpos + 1;
       result run = {
-        .x = start % term.cols,
-        .y = start / term.cols,
+        .idx = cpos - anpos + 1,
         .len = anpos
       };
-#ifdef debug_search
-      printf("%d, %d, %d\n", run.x, run.y, run.len);
-#endif
+      assert(begin <= run.idx && (run.idx + run.len) < end);
+      // Append result
       results_add(run);
       npos = 0;
       anpos = 0;
@@ -873,7 +797,269 @@ void
     ++cpos;
   }
 
-  circbuf_destroy(&cb);
+  // Clean up
+  if (line) {
+      release_line(line);
+  }
+}
+
+static void
+results_reverse(result *results, int len)
+{
+  for (int i = 0; i < len / 2; ++i) {
+    result t = results[i];
+    results[i] = results[len - i - 1];
+    results[len - i - 1] = t;
+  }
+}
+
+static int imax(int a, int b) { return a < b ? b : a; }
+static int imin(int a, int b) { return a < b ? a : b; }
+
+// Ensure idx is covered by [range_begin, range_end)
+void
+(term_search_expand)(struct term* term_p, int idx)
+{
+  TERM_VAR_REF(true)
+  
+  int max_idx = term.cols * (term.sblines + term.rows);
+  idx = imin(idx, max_idx - 1);
+  idx = imax(idx, 0);
+
+  // [range_1_begin, range_2_end) is the search region that covers [idx - look_around, idx + look_around)
+  int look_around = term.cols * term.rows;    // chosen arbitrarily
+  int pad = term.results.xquery_length * 2;   // the doubling is for UCSWIDE
+  int range_1_begin = imax(idx - look_around - pad, 0);
+  int range_2_end = imin(idx + look_around + pad, max_idx);
+
+  // Previous range is empty, expand to [idx - look_around, idx + look_around).
+  if (term.results.range_begin == term.results.range_end) {
+    assert(term.results.length == 0);
+    do_search(range_1_begin, range_2_end);
+    term.results.range_begin = imax(idx - look_around, 0);
+    term.results.range_end = imin(idx + look_around, max_idx);
+  }
+  // Expand range_begin, and append the results to term.results.results.
+  // (Actually the results should be prepended instead of appended, we'll fix that later.)
+  else if (idx < term.results.range_begin) {
+    int previous_len = term.results.length;
+    do_search(range_1_begin, term.results.range_begin);
+
+    // The results from the expanding of range_begin were misplaced, fix it!
+    int appended_len = term.results.length - previous_len;
+    if (appended_len > 0 && previous_len > 0) {
+      // <Previous_results> <Appended_results>
+      results_reverse(term.results.results, previous_len);
+      // <stluser_suoiverP> <Appended_results>
+      results_reverse(term.results.results + previous_len, appended_len);
+      // <stluser_suoiverP> <stluser_dedneppA>
+      results_reverse(term.results.results, previous_len + appended_len);
+      // <Appended_results> <Previous_results>
+    }
+
+    term.results.range_begin = imax(idx - look_around, 0);
+  }
+  // Expand range_end, and append the results to term.results.results.
+  else if (idx >= term.results.range_end) {
+    do_search(term.results.range_end, range_2_end);
+    term.results.range_end = imin(idx + look_around, max_idx);
+  }
+
+  if (term.results.length > 0) {
+    // Invariant: [range_begin, range_end) contains all results.
+    result first = term.results.results[0];
+    result last = term.results.results[term.results.length - 1];
+    term.results.range_begin = imin(term.results.range_begin, first.idx);
+    term.results.range_end = imax(term.results.range_end, last.idx + last.len);
+
+    // Mark the current result (first result) if we can.
+    if (term.results.current.len == 0 && term.results.range_begin == 0) {
+      term.results.current = first;
+    }
+  }
+
+  // Invariant: the results should be sorted and non-overlapping.
+  for (int i = 1; i < term.results.length; ++i) {
+    result prev = term.results.results[i - 1];
+    assert(prev.idx + prev.len <= term.results.results[i].idx);
+    (void)prev;
+  }
+  // Invariant: idx is covered by [range_begin, range_end).
+  assert(term.results.range_begin <= idx && idx < term.results.range_end);
+}
+
+#define results_find_ge(...) (results_find_ge)(term_p, ##__VA_ARGS__)
+static result
+(results_find_ge)(struct term* term_p, int idx)
+{
+  TERM_VAR_REF(true)
+  
+  int b = 0;
+  int e = term.results.length;
+  while (b < e) {
+    int m = (b + e) / 2;
+    if (term.results.results[m].idx < idx) {
+      b = m + 1;
+    } else {
+      e = m;
+    }
+  }
+
+  if (b < term.results.length) {
+    return term.results.results[b];
+  } else {
+    return (result) {0, 0};
+  }
+}
+
+#define results_find_le(...) (results_find_le)(term_p, ##__VA_ARGS__)
+static result
+(results_find_le)(struct term* term_p, int idx)
+{
+  TERM_VAR_REF(true)
+  
+  int b = 0;
+  int e = term.results.length;
+  while (b < e) {
+    int m = (b + e) / 2;
+    if (term.results.results[m].idx > idx) {
+      e = m;
+    } else {
+      b = m + 1;
+    }
+  }
+
+  if (e > 0) {
+    return term.results.results[e - 1];
+  } else {
+    return (result) {0, 0};
+  }
+}
+
+#ifdef debug_search
+static __inline__ uint64_t rdtsc(void)
+{
+  uint32_t hi, lo;
+  __asm__ __volatile__ ("rdtsc" : "=a"(lo), "=d"(hi));
+  return ((uint64_t)lo) | (((uint64_t)hi) << 32);
+}
+#endif
+
+result
+(term_search_next)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+#ifdef debug_search
+  uint64_t ts0 = rdtsc();
+#endif
+
+  result current = term.results.current;
+  int max_idx = term.cols * (term.sblines + term.rows);
+
+  // Search the region after current result.
+  // If the current result was not marked, then idx == 0,
+  // which means the upcoming search will return the first result in scrollback + screen.
+  int idx = current.idx + current.len;
+  int cycle_count = 0;
+  while (true) {
+    // Expand range_end to cover idx.
+    term_search_expand(idx);
+    // Check if the next result is covered.
+    result found = results_find_ge(idx);
+    if (found.len) {
+#ifdef debug_search
+      printf("term_search_next: cost: %lu\n", rdtsc() - ts0);
+#endif
+      return found;
+    }
+
+    // Not covered, advance idx to uncovered region.
+    idx = term.results.range_end;
+
+    if (idx >= max_idx) {
+      // End of screen reached.
+      if (current.len == 0) {
+        // We have searched [0, max_idx), and no results were found.
+        break;
+      } else {
+        // BUG! Crossing the boundary twice.
+        // If the current result is marked, we should have found a result.
+        assert(cycle_count == 0);
+        if (cycle_count > 0) {
+          break;
+        }
+      }
+      cycle_count++;
+
+      // Search from the beginning.
+      idx = 0;
+      if (term.results.range_begin != 0) {
+        // Clear results before the next expansion to avoid full search.
+        term_clear_results();
+        // term.results.current should be preserved.
+        term.results.current = current;
+      }
+    }
+  }
+
+  return (result) {0, 0};
+}
+
+result
+(term_search_prev)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  result current = term.results.current;
+  int max_idx = term.cols * (term.sblines + term.rows);
+  assert(max_idx > 0);
+
+  // Search the region before current result.
+  int idx = current.idx - 1;
+  if (idx < 0) {
+    idx = max_idx - 1;
+  }
+  int cycle_count = 0;
+  while (true) {
+    // Expand range_end to cover idx.
+    term_search_expand(idx);
+    // Check if the previous result is covered.
+    result found = results_find_le(idx);
+    if (found.len) {
+      return found;
+    }
+
+    // Not covered, fall back idx to uncovered region.
+    idx = term.results.range_begin - 1;
+
+    if (idx < 0) {
+      // Beginning of scrollback or screen reached.
+      if (current.len == 0) {
+        // We have searched [0, max_idx), and no results were found.
+        break;
+      } else {
+        // BUG! Crossing the boundary twice.
+        // If the current result is marked, we should have found a result.
+        assert(cycle_count == 0);
+        if (cycle_count > 0) {
+          break;
+        }
+      }
+      cycle_count++;
+
+      // Search from the end.
+      idx = max_idx - 1;
+      if (term.results.range_end != max_idx) {
+        // Clear results before the next expansion to avoid full search.
+        term_clear_results();
+        // term.results.current should be preserved.
+        term.results.current = current;
+      }
+    }
+  }
+
+  return (result) {0, 0};
 }
 
 void
@@ -881,20 +1067,7 @@ void
 {
   TERM_VAR_REF(true)
   
-  if (term.results.update_type != DISABLE_UPDATE)
-    term.results.update_type = FULL_UPDATE;
-}
-
-void
-(term_schedule_search_partial_update)(struct term* term_p)
-{
-  TERM_VAR_REF(true)
-  
-  if (term.results.update_type != DISABLE_UPDATE) {
-    if (term.results.update_type == NO_UPDATE) {
-      term.results.update_type = PARTIAL_UPDATE;
-    }
-  }
+  term.results.update_type = FULL_UPDATE;
 }
 
 void
@@ -903,7 +1076,8 @@ void
   TERM_VAR_REF(true)
   
   term.results.results = renewn(term.results.results, 16);
-  term.results.current = 0;
+  term.results.current = (result) {0, 0};
+  term.results.range_begin = term.results.range_end = 0;
   term.results.length = 0;
   term.results.capacity = 16;
 }
@@ -2016,6 +2190,18 @@ _win_text(int line, int tx, int ty, wchar *text, int len, cattr attr, cattr *tex
 
 #endif
 
+#define dont_debug_line
+
+#ifdef debug_line
+void trace_line(char * tag, termchar * chars)
+{
+  if (chars[0].chr > 0x80)
+    printf("[%s] %04X %04X %04X %04X %04X %04X\n", tag, chars[0].chr, chars[1].chr, chars[2].chr, chars[3].chr, chars[4].chr, chars[5].chr);
+}
+#else
+#define trace_line(tag, chars)	
+#endif
+
 void
 (term_paint)(struct term* term_p)
 {
@@ -2042,6 +2228,8 @@ void
     scrpos.y = i + term.disptop;
     termline *line = fetch_line(scrpos.y);
 
+    //trace_line("loop0", line->chars);
+
    /*
     * Pre-loop: identify emojis and emoji sequences.
     */
@@ -2052,7 +2240,7 @@ void
       cattr tattr = d->attr;
 
       if (j < term.cols - 1 && d[1].chr == UCSWIDE)
-        tattr.attr |= ATTR_WIDE;
+        tattr.attr |= TATTR_WIDE;
 
      /* Match emoji sequences
       * and replace by emoji indicators
@@ -2075,7 +2263,8 @@ void
           // check whether all emoji components have the same attributes
           bool equalattrs = true;
           for (int i = 1; i < e.len && equalattrs; i++) {
-# define IGNATTR (ATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING)
+# define IGNWIDTH TATTR_EXPAND | TATTR_NARROW | TATTR_SINGLE | TATTR_CLEAR
+# define IGNATTR (TATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING | IGNWIDTH)
             if ((d[i].attr.attr & ~IGNATTR) != (d->attr.attr & ~IGNATTR)
                || d[i].attr.truebg != d->attr.truebg
                )
@@ -2116,6 +2305,8 @@ void
       d->attr = tattr;
     }
 
+    //trace_line("loopb", line->chars);
+
    /* Do Arabic shaping and bidi. */
     termchar *chars = term_bidi_line(line, i);
     int *backward = chars ? term.post_bidi_cache[i].backward : 0;
@@ -2125,6 +2316,8 @@ void
     termline *displine = term.displines[i];
     termchar *dispchars = displine->chars;
     termchar newchars[term.cols];
+
+    //trace_line("loop1", chars);
 
    /*
     * First loop: work along the line deciding what we want
@@ -2143,7 +2336,7 @@ void
         tchar = '-';
 
       if (j < term.cols - 1 && d[1].chr == UCSWIDE)
-        tattr.attr |= ATTR_WIDE;
+        tattr.attr |= TATTR_WIDE;
 
      /* Video reversing things */
       bool selected =
@@ -2263,7 +2456,7 @@ void
         // special handling for geometric "Powerline" symbols
         tattr.attr |= TATTR_ZOOMFULL;
         if (cs_ambig_wide) {
-          tattr.attr |= ATTR_EXPAND;
+          tattr.attr |= TATTR_EXPAND;
         }
       }
 #ifdef ignore_private_use_for_auto_narrowing
@@ -2272,10 +2465,10 @@ void
       }
 #endif
       else if (tchar != dispchars[j].chr ||
-          tattr.attr != (dispchars[j].attr.attr & ~(ATTR_NARROW | DATTR_MASK))
+          tattr.attr != (dispchars[j].attr.attr & ~(TATTR_NARROW | DATTR_MASK))
               )
       {
-        if ((tattr.attr & ATTR_WIDE) == 0
+        if ((tattr.attr & TATTR_WIDE) == 0
             && win_char_width(tchar, tattr.attr) == 2
             // && !(line->lattr & LATTR_MODE) ? "do not tamper with graphics"
             // && is_ambigwide(tchar) ? but then they will be clipped...
@@ -2293,17 +2486,17 @@ void
            || (ch >= 0x1F000 && ch <= 0x1FAFF)
              )
           {
-            //tattr.attr |= ATTR_NARROW1; // ?
+            //tattr.attr |= TATTR_NARROW1; // ?
           }
           else
 #ifdef failed_attempt_to_tame_narrowing
             if (j + 1 < term.cols && chars[j + 1].chr != ' ')
 #endif
-            tattr.attr |= ATTR_NARROW;
+            tattr.attr |= TATTR_NARROW;
             //if (ch != 0x25CC)
-            //printf("char %lc U+%04X narrow %d ambig %d\n", ch, ch, !!(tattr.attr & ATTR_NARROW), is_ambigwide(ch));
+            //printf("char %lc U+%04X narrow %d ambig %d\n", ch, ch, !!(tattr.attr & TATTR_NARROW), is_ambigwide(ch));
         }
-        else if (tattr.attr & ATTR_WIDE
+        else if (tattr.attr & TATTR_WIDE
                  // guard character expanding properly to avoid 
                  // false hits as reported for CJK in #570,
                  // considering that Windows may report width 1 
@@ -2324,17 +2517,17 @@ void
                  && !(0x25A0 <= tchar && tchar <= 0x25FF)
                 )
         {
-          tattr.attr |= ATTR_EXPAND;
+          tattr.attr |= TATTR_EXPAND;
         }
       }
-      else if (dispchars[j].attr.attr & ATTR_NARROW) {
-        tattr.attr |= ATTR_NARROW;
+      else if (dispchars[j].attr.attr & TATTR_NARROW) {
+        tattr.attr |= TATTR_NARROW;
       }
 
 #define dont_debug_width_scaling
 #ifdef debug_width_scaling
-      if (tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE))
-        printf("%04X w %d enw %02X\n", tchar, win_char_width(tchar, tattr.attr), (uint)(((tattr.attr & (ATTR_EXPAND | ATTR_NARROW | ATTR_WIDE)) >> 24)));
+      if (tattr.attr & (TATTR_EXPAND | TATTR_NARROW | TATTR_WIDE))
+        printf("%04X w %d enw %02X\n", tchar, win_char_width(tchar, tattr.attr), (uint)(((tattr.attr & (TATTR_EXPAND | TATTR_NARROW | TATTR_WIDE)) >> 24)));
 #endif
 
      /* Visible space indication */
@@ -2392,8 +2585,13 @@ void
       int curs_x = term.curs.x;
       if (forward)
         curs_x = forward[curs_x];
+#ifdef support_triple_width
+      while (curs_x > 0 && chars[curs_x].chr == UCSWIDE)
+        curs_x--;
+#else
       if (curs_x > 0 && chars[curs_x].chr == UCSWIDE)
         curs_x--;
+#endif
 
      /* Determine cursor cell attributes. */
       newchars[curs_x].attr.attr |=
@@ -2408,6 +2606,9 @@ void
       if (newchars[curs_x].attr.attr != dispchars[curs_x].attr.attr)
         dispchars[curs_x].attr.attr |= ATTR_INVALID;
     }
+
+    //trace_line("loopn", newchars);
+    //trace_line("loopd", dispchars);
 
    /*
     * Now loop over the line again, noting where things have changed.
@@ -2573,7 +2774,7 @@ void
       if (attr.attr & TATTR_EMOJI) {
         int elen = attr.attr & ATTR_FGMASK;
         cattr eattr = attr;
-        eattr.attr &= ~(ATTR_WIDE | TATTR_COMBINING);
+        eattr.attr &= ~(TATTR_WIDE | TATTR_COMBINING);
         wchar esp[] = W("        ");
         if (elen) {
           if (!overlaying) {
@@ -2602,7 +2803,8 @@ void
             win_text(x, y, esp, elen, eattr, textattr, lattr, has_rtl, false, 1);
             flush_text();
           }
-#ifdef debug_emojis
+#if defined(debug_emojis) && debug_emojis > 3
+          // add background to some emojis
           eattr.attr &= ~(ATTR_BGMASK | ATTR_FGMASK);
           eattr.attr |= 6 << ATTR_BGSHIFT | 4;
           esp[0] = '0' + elen;
@@ -2616,8 +2818,8 @@ void
             emoji_show(x, y, *ee, elen, eattr, lattr);
           }
         }
-#ifdef debug_emojis
-        else {
+#if defined(debug_emojis) && debug_emojis > 3
+        else { // mark some emojis
           eattr.attr &= ~(ATTR_BGMASK | ATTR_FGMASK);
           eattr.attr |= 4 << ATTR_BGSHIFT | 6;
           esp[0] = '0';
@@ -2646,6 +2848,8 @@ void
       }
     };
 
+    //trace_line("loop3", newchars);
+
    /*
     * Third loop, for actual drawing.
     */
@@ -2653,6 +2857,11 @@ void
       termchar *d = chars + j;
       cattr tattr = newchars[j].attr;
       wchar tchar = newchars[j].chr;
+#ifdef support_triple_width
+      if (tchar == UCSWIDE) {
+        continue;
+      }
+#endif
 
       // Note: newchars[j].cc_next is always 0; use chars[]
       xchar xtchar = tchar;
@@ -2668,7 +2877,7 @@ void
       }
 #endif
 
-      if ((dispchars[j].attr.attr ^ tattr.attr) & ATTR_WIDE)
+      if ((dispchars[j].attr.attr ^ tattr.attr) & TATTR_WIDE)
         dirty_line = true;
 
 #ifdef debug_run
@@ -2683,7 +2892,7 @@ void
                     || (tattr.truebg != attr.truebg)
                     || (tattr.ulcolr != attr.ulcolr);
 
-      if (tchar != SIXELCH && (tattr.attr & ATTR_NARROW))
+      if (tchar != SIXELCH && (tattr.attr & TATTR_NARROW))
         trace_run("narrow"), break_run = true;
 
       if (tattr.attr & TATTR_EMOJI)
@@ -2832,7 +3041,7 @@ void
       }
 
      /* If it's a wide char step along to the next one. */
-      if ((tattr.attr & ATTR_WIDE) && ++j < term.cols) {
+      if ((tattr.attr & TATTR_WIDE) && ++j < term.cols) {
         d++;
        /*
         * By construction above, the cursor should not
@@ -2842,6 +3051,13 @@ void
         if (!termchars_equal(&dispchars[j], d))
           dirty_run = true;
         copy_termchar(displine, j, d);
+#ifdef support_triple_width
+#warning do not handle triple-width here
+        //while (dispchars[j].chr == UCSWIDE) {
+        //  j++;
+        //  start++;
+        //}
+#endif
       }
     }
     if (dirty_run && textlen)

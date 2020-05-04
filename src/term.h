@@ -123,18 +123,16 @@ enum char_attr_t {
   ATTR_BROKENUND  = 0x0000000800000000u,
   ATTR_ULCOLOUR   = 0x0020000000000000u,
 
+  ATTR_CURLYUND   = ATTR_UNDER | ATTR_DOUBLYUND,
+  UNDER_MASK      = ATTR_UNDER | ATTR_DOUBLYUND | ATTR_BROKENUND,
+
   ATTR_SHADOW     = 0x0000100000000000u,
   ATTR_OVERSTRIKE = 0x0000200000000000u,
   ATTR_SUBSCR     = 0x0000400000000000u,
   ATTR_SUPERSCR   = 0x0000800000000000u,
 
   ATTR_PROTECTED  = 0x20000000u,
-  ATTR_WIDE       = 0x40000000u,
-  ATTR_NARROW     = 0x80000000u,
-  ATTR_EXPAND     = 0x0000000100000000u,
   ATTR_FRAMED     = 0x0010000000000000u,
-
-  TATTR_EMOJI     = 0x1000000000000000u,
 
   GRAPH_MASK      = 0x00000F0000000000u,
   ATTR_GRAPH_SHIFT = 40,
@@ -142,8 +140,10 @@ enum char_attr_t {
   FONTFAM_MASK    = 0x000F000000000000u,
   ATTR_FONTFAM_SHIFT = 48,
 
-  ATTR_CURLYUND   = ATTR_UNDER | ATTR_DOUBLYUND,
-  UNDER_MASK      = ATTR_UNDER | ATTR_DOUBLYUND | ATTR_BROKENUND,
+  TATTR_WIDE       = 0x40000000u,
+  TATTR_NARROW     = 0x80000000u,
+  TATTR_EXPAND     = 0x0000000100000000u,
+  TATTR_EMOJI     = 0x1000000000000000u,
 
   TATTR_COMBINING = 0x0000000200000000u, /* combining characters */
   TATTR_COMBDOUBL = 0x0000000400000000u, /* combining double characters */
@@ -339,18 +339,26 @@ typedef struct {
 
 /* Searching */
 typedef struct {
-  int x;
-  int y;
+  // Index of a virtual array of scrollback + screen.
+  // y = idx / term.cols
+  // x = idx % term.rows
+  // y starts from the top most line (y = 0, the first line of scrollback or screen).
+  int idx;
+  // The length of a match, maybe larger than term.results.xquery_length because of UCSWIDE.
   int len;
 } result;
 
 typedef struct {
+  // The current active result, for prev/next button.
+  result current;
+  // An idx can be matched against term.results.results iff idx in [range_begin, range_end).
+  int range_begin, range_end;
   result * results;
   wchar * query;
   uint * xquery;
   int xquery_length;
+  // The capacity and length of results.
   int capacity;
-  int current;
   int length;
   int update_type;
 } termresults;
@@ -426,6 +434,7 @@ typedef struct {
   short x, y;
   bool wrapnext;
   cattr attr;
+  char width;  // handle explicit width attribute in termout.c
   bool origin;
   short gl, gr;
   term_cset csets[4];
@@ -738,6 +747,12 @@ extern void (term_update_search)(struct term* term_p);
 extern void (term_clear_results)(struct term* term_p);
 #define term_clear_search(...) (term_clear_search)(term_p, ##__VA_ARGS__)
 extern void (term_clear_search)(struct term* term_p);
+#define term_search_expand(...) (term_search_expand)(term_p, ##__VA_ARGS__)
+extern void (term_search_expand)(struct term* term_p, int idx);
+#define term_search_prev(...) (term_search_prev)(term_p, ##__VA_ARGS__)
+extern result (term_search_prev)(struct term* term_p);
+#define term_search_next(...) (term_search_next)(term_p, ##__VA_ARGS__)
+extern result (term_search_next)(struct term* term_p);
 
 extern uchar scriptfont(ucschar ch);
 

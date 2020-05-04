@@ -49,12 +49,11 @@ static int
 {
   TERM_VAR_REF(true)
   
-  if (term.results.length == 0) {
+  if (term.results.current.len == 0) {
     return 0;
   }
 
-  result * res = term.results.results + term.results.current;
-  int y = res->y - term.sblines;
+  int y = term.results.current.idx / term.cols - term.sblines;
   int delta = 0;
   if (y < term.disptop) {
     delta = y - term.disptop;
@@ -86,17 +85,20 @@ static int
 
 #define scroll_to_result(...) (scroll_to_result)(term_p, ##__VA_ARGS__)
 static void
-(scroll_to_result)(struct term* term_p)
-{
+(scroll_to_result)(struct term* term_p, result res) {
   TERM_VAR_REF(true)
   
-  if (term.results.length == 0) {
+  if (res.len == 0) {
     return;
   }
 
-  int delta = current_delta(true);
+  if (current_delta(false) == 0) {
+    // Update term.results.current iff the current result is in screen.
+    term.results.current = res;
+  }
 
   // Scroll if we must!
+  int delta = current_delta(true);
   if (delta != 0) {
     term_scroll(0, delta);
   }
@@ -108,12 +110,7 @@ void
 {
   TERM_VAR_REF(true)
   
-  if (term.results.length == 0) {
-    return;
-  }
-  if (current_delta(false) == 0)
-    term.results.current = (term.results.current + 1) % term.results.length;
-  scroll_to_result();
+  scroll_to_result(term_search_next());
 }
 
 #define prev_result(...) (prev_result)(term_p, ##__VA_ARGS__)
@@ -122,12 +119,7 @@ void
 {
   TERM_VAR_REF(true)
   
-  if (term.results.length == 0) {
-    return;
-  }
-  if (current_delta(false) == 0)
-    term.results.current = (term.results.current + term.results.length - 1) % term.results.length;
-  scroll_to_result();
+  scroll_to_result(term_search_prev());
 }
 
 static LRESULT CALLBACK

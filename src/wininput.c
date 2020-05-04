@@ -124,6 +124,16 @@ icon_bitmap(HICON hIcon)
 
 /* Menu handling */
 
+static inline void
+show_menu_info(HMENU menu)
+{
+  MENUINFO mi;
+  mi.cbSize = sizeof(MENUINFO);
+  mi.fMask = MIM_STYLE | MIM_BACKGROUND;
+  GetMenuInfo(menu, &mi);
+  printf("menuinfo style %04X brush %p\n", (uint)mi.dwStyle, mi.hbrBack);
+}
+
 static void
 append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, bool sysmenu)
 {
@@ -279,6 +289,7 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
 //static void
 //add_switcher(HMENU menu, bool vsep, bool hsep, bool use_win_icons)
 //{
+//  //printf("add_switcher vsep %d hsep %d\n", vsep, hsep);
 //  uint bar = vsep ? MF_MENUBARBREAK : 0;
 //  if (hsep)
 //    AppendMenuW(menu, MF_SEPARATOR, 0, 0);
@@ -297,6 +308,7 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
 //static bool
 //add_launcher(HMENU menu, bool vsep, bool hsep)
 //{
+//  //printf("add_launcher vsep %d hsep %d\n", vsep, hsep);
 //  if (*cfg.session_commands) {
 //    uint bar = vsep ? MF_MENUBARBREAK : 0;
 //    if (hsep)
@@ -629,6 +641,7 @@ void
 static bool
 add_user_commands(HMENU menu, bool vsep, bool hsep, wstring title, wstring commands, UINT_PTR idm_cmd)
 {
+  //printf("add_user_commands vsep %d hsep %d\n", vsep, hsep);
   if (*commands) {
     uint bar = vsep ? MF_MENUBARBREAK : 0;
     if (hsep)
@@ -748,6 +761,7 @@ win_init_menus(void)
 static void
 (open_popup_menu)(struct term *term_p, bool use_text_cursor, string menucfg, mod_keys mods)
 {
+  //printf("open_popup_menu txtcur %d <%s> %X\n", use_text_cursor, menucfg, mods);
   /* Create a new context menu structure every time the menu is opened.
      This was a fruitless attempt to achieve its proper DPI scaling.
      It also supports opening different menus (Ctrl+ for extended menu).
@@ -757,6 +771,7 @@ static void
     DestroyMenu(ctxmenu);
 
   ctxmenu = CreatePopupMenu();
+  //show_menu_info(ctxmenu);
 
   if (!menucfg) {
     if (mods & MDK_ALT)
@@ -773,6 +788,8 @@ static void
 //  bool wicons = strchr(menucfg, 'W');
   while (*menucfg) {
     if (*menucfg == '|')
+      // Windows mangles the menu style if the flag MF_MENUBARBREAK is used 
+      // as triggered by vsep...
       vsep = true;
     else if (!strchr(menucfg + 1, *menucfg)) {
       // suppress duplicates except separators
@@ -814,6 +831,7 @@ static void
     menucfg++;
   }
   win_update_menus(false);  // dispensable; also called via WM_INITMENU
+  //show_menu_info(ctxmenu);
 
   POINT p;
   if (use_text_cursor) {
@@ -860,7 +878,7 @@ static uint alt_code;
 static bool lctrl;  // Is left Ctrl pressed?
 static int lctrl_time;
 
-static mod_keys
+mod_keys
 get_mods(void)
 {
   auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };

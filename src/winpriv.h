@@ -109,6 +109,7 @@ extern void (win_mouse_wheel)(struct term *term_p, POINT wpos, bool horizontal, 
 #define win_mouse_move(...) (win_mouse_move)(term_p, ##__VA_ARGS__)
 extern void (win_mouse_move)(struct term* term_p, bool nc, LPARAM);
 
+extern mod_keys get_mods(void);
 extern void win_key_reset(void);
 #define provide_input(...) (provide_input)(term_p, ##__VA_ARGS__)
 extern void (provide_input)(struct term* term_p, wchar);

@@ -802,6 +802,41 @@ static void
   }
 
   bool single_width = false;
+
+  // adjust to explicit width attribute; not for combinings and low surrogates
+  if (curs->width && width > 0) {
+    //if ((c & 0xFFF) == 0x153) printf("%llX %d\n", curs->attr.attr, width);
+    if (curs->width == 1) {
+      if (!(width < 2 || (cs_ambig_wide && is_ambig(c))))
+        curs->attr.attr |= TATTR_CLEAR | TATTR_NARROW;
+      width = 1;
+    }
+    else if (curs->width == 11) {
+      if (width > 1) {
+        if (!(cs_ambig_wide && is_ambig(c))) {
+          single_width = true;
+          curs->attr.attr |= TATTR_SINGLE;
+        }
+        width = 1;
+      }
+    }
+    else if (curs->width == 2) {
+      if (width < 2) {
+        curs->attr.attr |= TATTR_EXPAND;
+        width = 2;
+      }
+    }
+#ifdef support_triple_width
+    else if (curs->width == 3) {
+      if (width < 2 || (cs_ambig_wide && is_ambig(c)))
+        curs->attr.attr |= TATTR_EXPAND;
+#define TATTR_TRIPLE 0x0080000000000000u
+      curs->attr.attr |= TATTR_TRIPLE;
+      width = 3;
+    }
+#endif
+  }
+
   if (cfg.charwidth >= 10 || cs_single_forced) {
     if (width > 1) {
       single_width = true;
@@ -856,11 +891,15 @@ static void
       }
       put_char(c);
       curs->x++;
-#ifdef support_triple_width
-      if (width > 2)
-        curs->x += width - 2;
-#endif
       put_char(UCSWIDE);
+#ifdef support_triple_width
+      if (width > 2) {
+        for (int i = 2; i < width; i++) {
+          curs->x++;
+          put_char(UCSWIDE);
+        }
+      }
+#endif
     when 0 case_or -1:  // Combining character or Low surrogate.
 #ifdef debug_surrogates
       printf("write_char %04X %2d %08llX\n", c, width, curs->attr.attr);
@@ -2917,6 +2956,23 @@ static void
         term.marginbell.vol = 8;
       else if (arg0 <= 8)
         term.marginbell.vol = arg0;
+    when CPAIR(' ', 'Z'): /* PEC: ECMA-48 Presentation Expand Or Contract */
+      if (!arg0)
+        curs->width = 0;
+      else if (arg0 == 1)   // expanded
+        curs->width = 2;
+      else if (arg0 == 2) { // condensed
+        if (arg1 == 2)      // single-cell zoomed down
+          curs->width = 11;
+        else
+          curs->width = 1;
+      }
+      else if (arg0 == 22)  // single-cell zoomed down
+        curs->width = 11;
+#ifdef support_triple_width
+      else if (arg0 == 3)   // triple-cell
+        curs->width = 3;
+#endif
   }
 }
 
@@ -3815,6 +3871,11 @@ static void
 #else
             int width = xcwidth(combine_surrogates(hwc, wc));
 #endif
+#ifdef support_triple_width
+            // do not handle triple-width here
+            //if (term.curs.width)
+            //  width = term.curs.width % 10;
+#endif
             write_ucschar(hwc, wc, width);
           }
           else
@@ -3861,7 +3922,7 @@ static void
         else if (term.wide_extra && wc >= 0x2000 && extrawide(wc)) {
           width = 2;
           if (win_char_width(wc, term.curs.attr.attr) < 2)
-            term.curs.attr.attr |= ATTR_EXPAND;
+            term.curs.attr.attr |= TATTR_EXPAND;
         }
         else
 #if HAS_LOCALES
@@ -3869,6 +3930,11 @@ static void
             width = xcwidth(wc);
           else
             width = wcwidth(wc);
+#ifdef support_triple_width
+          // do not handle triple-width here
+          //if (term.curs.width)
+          //  width = term.curs.width % 10;
+#endif
 # ifdef hide_isolate_marks
           // force bidi isolate marks to be zero-width;
           // however, this is inconsistent with locale width
@@ -3886,7 +3952,7 @@ static void
             // ensure symmetric handling of matching brackets
             && win_char_width(wc ^ 1, term.curs.attr.attr) < 2)
         {
-          term.curs.attr.attr |= ATTR_EXPAND;
+          term.curs.attr.attr |= TATTR_EXPAND;
         }
 
         auto NRC = [&](wchar * map) -> wchar
