@@ -11,6 +11,7 @@ extern "C" {
 #include "charset.h"
 
 #include "winpriv.h"  /* win_prefix_title, win_update_now */
+#include "appinfo.h"  /* APPNAME, VERSION */
 
 #include <pwd.h>
 #include <fcntl.h>
@@ -275,6 +276,9 @@ void
     signal(SIGTTOU, SIG_IGN);
 
     setenv("TERM", cfg.term, true);
+    // unreliable info about terminal application (#881)
+    setenv("TERM_PROGRAM", APPNAME, true);
+    setenv("TERM_PROGRAM_VERSION", VERSION, true);
 
     if (lang) {
       unsetenv("LC_ALL");
