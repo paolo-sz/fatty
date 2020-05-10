@@ -5100,6 +5100,60 @@ main(int argc, char *argv[])
   const auto brush = CreateSolidBrush(cfg.tab_bg_colour);
   SetClassLongPtrW(tab_wnd, GCLP_HBRBACKGROUND, (LONG_PTR)brush);
 
+  // INT16 to handle multi-monitor negative coordinates properly
+  INT16 sx = 0, sy = 0, sdx = 1, sdy = 1;
+  short si = 0;
+  {
+    if (getenv("FATTY_X")) {
+      sx = atoi(getenv("FATTY_X"));
+      unsetenv("FATTY_X");
+      si++;
+    }
+    if (getenv("FATTY_Y")) {
+      sy = atoi(getenv("FATTY_Y"));
+      unsetenv("FATTY_Y");
+      si++;
+    }
+    if (getenv("FATTY_DX")) {
+      sdx = atoi(getenv("FATTY_DX"));
+      unsetenv("FATTY_DX");
+      si++;
+    }
+    if (getenv("FATTY_DY")) {
+      sdy = atoi(getenv("FATTY_DY"));
+      unsetenv("FATTY_DY");
+      si++;
+    }
+  }
+
+  // Initialise the terminal.
+
+  // TODO: should refactor win_tab_init to just initialize tabs-system and
+  // create tabls with separate function (more general version of
+  // win_tab_create. Would be cleaner and no need for win_tab_set_argv etc
+
+  if (current_tab_size == 0) {
+    win_tab_init(home, cmd, argv, term_width, term_height, tablist_title[0]);
+  }
+  else {
+    for (int i = 0; i < current_tab_size; i++) {
+      if (tablist[i] != NULL) {
+        char *tabexec = tablist[i];
+        char *tab_argv[4] = { cmd, const_cast<char *>("-c"), tabexec, NULL };
+
+        win_tab_init(home, cmd, tab_argv, term_width, term_height, tablist_title[i]);
+      }
+    }
+
+    win_tab_set_argv(argv);
+  }
+
+  term_p = win_active_terminal();
+  TERM_VAR_REF(true)
+
+  // Dark mode support
+  win_dark_mode(wnd);
+
   // Adapt window position (and maybe size) to special parameters
   // also select monitor if requested
   if (center || right || bottom || left || top || maxwidth || maxheight
@@ -5251,29 +5305,6 @@ main(int argc, char *argv[])
   }
 
   {
-    // INT16 to handle multi-monitor negative coordinates properly
-    INT16 sx = 0, sy = 0, sdx = 1, sdy = 1;
-    short si = 0;
-    if (getenv("FATTY_X")) {
-      sx = atoi(getenv("FATTY_X"));
-      unsetenv("FATTY_X");
-      si++;
-    }
-    if (getenv("FATTY_Y")) {
-      sy = atoi(getenv("FATTY_Y"));
-      unsetenv("FATTY_Y");
-      si++;
-    }
-    if (getenv("FATTY_DX")) {
-      sdx = atoi(getenv("FATTY_DX"));
-      unsetenv("FATTY_DX");
-      si++;
-    }
-    if (getenv("FATTY_DY")) {
-      sdy = atoi(getenv("FATTY_DY"));
-      unsetenv("FATTY_DY");
-      si++;
-    }
     if (cfg.geom_sync) {
 #ifdef debug_tabs
       printf("[%8p] launched %d,%d %d,%d\n", wnd, sx, sy, sdx, sdy);
@@ -5299,34 +5330,6 @@ main(int argc, char *argv[])
     win_fix_position();
     trace_winsize("fix_pos");
   }
-
-  // Initialise the terminal.
-
-  // TODO: should refactor win_tab_init to just initialize tabs-system and
-  // create tabls with separate function (more general version of
-  // win_tab_create. Would be cleaner and no need for win_tab_set_argv etc
-
-  if (current_tab_size == 0) {
-    win_tab_init(home, cmd, argv, term_width, term_height, tablist_title[0]);
-  }
-  else {
-    for (int i = 0; i < current_tab_size; i++) {
-      if (tablist[i] != NULL) {
-        char *tabexec = tablist[i];
-        char *tab_argv[4] = { cmd, const_cast<char *>("-c"), tabexec, NULL };
-
-        win_tab_init(home, cmd, tab_argv, term_width, term_height, tablist_title[i]);
-      }
-    }
-
-    win_tab_set_argv(argv);
-  }
-
-  // Dark mode support
-  win_dark_mode(wnd);
-
-  term_p = win_active_terminal();
-  TERM_VAR_REF(true)
 
   setenv("CHERE_INVOKING", "1", false);
   
