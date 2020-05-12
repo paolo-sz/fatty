@@ -35,12 +35,12 @@ install:
 
 Then, in Cygwin terminal run following commands:
 
-    git clone https://github.com/juho-p/fatty.git
+    git clone https://github.com/paolo-sz/fatty.git
     cd fatty
     make
     cp src/fatty.exe /bin
   
-You can then try running it by typing `fatty`
+You can then try running it by typing `bin/fatty`
   
 Then you probably want to create shortcut to your Windows desktop to run fatty.
 After that, you have decent terminal with tabs for your Cygwin!
