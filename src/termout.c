@@ -225,19 +225,22 @@ static void
   }
 }
 
-static bool
-illegal_rect_char(xchar chr)
+static int
+charwidth(xchar chr)
 {
-  int width;
 #if HAS_LOCALES
   if (cfg.charwidth % 10)
-    width = xcwidth(chr);
+    return xcwidth(chr);
   else
-    width = wcwidth(chr);
+    if (chr > 0xFFFF) {
+      wchar tmp_wc[2] = {high_surrogate(chr), low_surrogate(chr)};
+      return wcswidth(tmp_wc, 2);
+    }
+    else
+      return wcwidth(chr);
 #else
-  width = xcwidth(chr);
+  return xcwidth(chr);
 #endif
-  return width != 1;
 }
 
 #define attr_rect(...) (attr_rect)(term_p, ##__VA_ARGS__)
@@ -292,6 +295,11 @@ static void
   }
 }
 
+//static void write_char(wchar c, int width);
+#define term_do_write(...) (term_do_write)(term_p, ##__VA_ARGS__)
+static void
+(term_do_write)(struct term* term_p, const char *buf, uint len);
+
 #define fill_rect(...) (fill_rect)(term_p, ##__VA_ARGS__)
 static void
 (fill_rect)(struct term* term_p, xchar chr, cattr attr, bool sel, short y0, short x0, short y1, short x1)
@@ -299,7 +307,8 @@ static void
   TERM_VAR_REF(true)
   
   //printf("fill_rect %d,%d..%d,%d\n", y0, x0, y1, x1);
-  if (chr == UCSWIDE || illegal_rect_char(chr))
+  int width = charwidth(chr);
+  if (chr == UCSWIDE || width < 1)
     return;
   wchar low = 0;
   if (chr > 0xFFFF) {
@@ -324,6 +333,65 @@ static void
   if (x1 >= term.cols)
     x1 = term.cols - 1;
   //printf("%d,%d..%d,%d\n", y0, x0, y1, x1);
+
+  //printf("gl %d gr %d csets %d %d %d %d /%d sup %d acs %d\n", term.curs.gl, term.curs.gr, term.curs.csets[0], term.curs.csets[1], term.curs.csets[2], term.curs.csets[3], term.curs.cset_single, term.curs.decsupp, term.curs.oem_acs);
+  if ((chr > ' ' && chr < 0x80 
+       && (term.curs.csets[term.curs.gl] != CSET_ASCII
+           ||
+           term.curs.cset_single != CSET_ASCII
+          )
+      )
+      ||
+      (chr >= 0x80 && chr < 0x100 
+       && ((term.curs.gr && term.curs.csets[term.curs.gr] != CSET_ASCII)
+           || term.curs.oem_acs
+          )
+      )
+      || (chr >= 0x2580 && chr <= 0x259F)
+     )
+  {
+    term_cursor csav = term.curs;
+    term.curs.attr = attr;
+#ifdef debug_FRA_special
+    // make this code branch visible
+    term.curs.attr.attr &= ~ATTR_FGMASK;
+    term.curs.attr.attr |= RED_I << ATTR_FGSHIFT;
+#endif
+    term.curs.width = 1;
+    if (!(width < 2 || (cs_ambig_wide && is_ambig(chr))))
+      term.curs.attr.attr |= TATTR_CLEAR | TATTR_NARROW;
+    term.state = NORMAL;
+
+    char * cbuf = 0;
+    if (chr > 0xFF) {
+      wchar wc[3] = {(wchar)chr, low, 0};
+      cbuf = cs__wcstombs(wc);
+    }
+    for (int y = y0; y <= y1; y++) {
+      term.curs.y = y;
+      for (int x = x0; x <= x1; x++) {
+        term.curs.x = x;
+        term.curs.cset_single = csav.cset_single;
+        if (chr > 0xFF) {
+          //write_char(chr, 1); // would skip NRCS handling in term_do_write
+          term_do_write(cbuf, strlen(cbuf));
+        }
+        else {
+          char c = chr;
+          term_do_write(&c, 1);
+        }
+      }
+    }
+    if (cbuf)
+      free(cbuf);
+
+    term.curs = csav;
+    term.curs.cset_single = CSET_ASCII;
+    return;
+  }
+
+  if (width > 1)
+    attr.attr |= TATTR_CLEAR | TATTR_NARROW;
 
   for (int y = y0; y <= y1; y++) {
     termline * l = term.lines[y];
@@ -410,7 +478,7 @@ static void
       copy_termchar(dst, x + x2 - x0, &src->chars[x]);
       //printf("copy %d:%d -> %d:%d\n", y, x, y + y2 - y0, x + x2 - x0);
       if ((x == x0 && src->chars[x].chr == UCSWIDE)
-       || (x == x1 && illegal_rect_char(src->chars[x].chr))
+       || (x == x1 && charwidth(src->chars[x].chr) != 1)
          )
       {
         clear_cc(dst, x);
@@ -2973,6 +3041,9 @@ static void
       else if (arg0 == 3)   // triple-cell
         curs->width = 3;
 #endif
+    when CPAIR('-', 'p'): /* DECARR: VT520 Select Auto Repeat Rate */
+      if (arg0 <= 30)
+        term.repeat_rate = arg0;
   }
 }
 
@@ -3746,7 +3817,6 @@ void
   }
 }
 
-#define term_do_write(...) (term_do_write)(term_p, ##__VA_ARGS__)
 static void
 (term_do_write)(struct term* term_p, const char *buf, uint len)
 {

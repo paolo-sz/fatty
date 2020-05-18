@@ -6,7 +6,7 @@
 #
 msgid ""
 msgstr ""
-"Project-Id-Version: fantty\n"
+"Project-Id-Version: fatty\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2020-02-21 18:54+0100\n"
 "PO-Revision-Date: 2020-05-07 13:12+0200\n"
@@ -952,7 +952,7 @@ msgstr "Do&daj u prilagođene boje"
 msgid "Options"
 msgstr "Opcije"
 
-#. __ Options: dialog title: "fantty <release> available (for download)"
+#. __ Options: dialog title: "fatty <release> available (for download)"
 #: windialog.c:245
 msgid "available"
 msgstr "dostupno"
@@ -1338,7 +1338,7 @@ msgstr "Ne postoji jamstvo, u mjeri u kojoj je zakonom dopušteno."
 #: appinfo.h:66
 msgid ""
 "Please report bugs or request enhancements through the issue tracker on the "
-"fantty project page located at\n"
+"fatty project page located at\n"
 "%s.\n"
 "See also the Wiki there for further hints, thanks and credits."
 msgstr ""

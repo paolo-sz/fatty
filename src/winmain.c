@@ -2892,6 +2892,22 @@ static struct {
       return 0;
     }
 
+    when WM_UNICHAR:
+      if (wp == UNICODE_NOCHAR)
+        return true;
+      else if (wp > 0xFFFF) {
+        provide_input(0xFFFF);
+        wchar tmp_wc[2] = {high_surrogate(wp), low_surrogate(wp)};
+        child_sendw(tmp_wc, 2);
+        return false;
+      }
+      else {
+        provide_input(wp);
+        wchar tmp_wp = {(wchar)wp};
+        child_sendw(&tmp_wp, 1);
+        return false;
+      }
+
     when WM_MENUCHAR: {
       // this is sent after leaving the system menu with ESC 
       // and typing a key; insert the key and prevent the beep
