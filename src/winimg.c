@@ -803,6 +803,7 @@ void
               HBRUSH br = CreateSolidBrush(bg);
               tmp_rect = {0, 0, xrgt, ybot};
               FillRect(hdc, &tmp_rect, br);
+              DeleteObject(br);
             }
             draw_img(hdc, img);
             BitBlt(dc, xlft, ytop, xrgt - xlft, ybot - ytop,
