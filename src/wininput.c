@@ -25,6 +25,7 @@ extern "C" {
 static HMENU ctxmenu = NULL;
 static HMENU sysmenu;
 static int sysmenulen;
+//static uint kb_select_key = 0;
 static uint super_key = 0;
 static uint hyper_key = 0;
 static uint newwin_key = 0;
@@ -1394,6 +1395,35 @@ hyper_down(__attribute__((unused))struct term *term_p, uint key, mod_keys mods)
   (void)mods;
 }
 
+#define kb_select(...) (kb_select)(term_p, ##__VA_ARGS__)
+static void
+(kb_select)(struct term* term_p, uint key, mod_keys mods)
+{
+  (void)mods;
+  (void)key;
+  // note kb_select_key for re-anchor handling?
+  //kb_select_key = key;
+
+  TERM_VAR_REF(true)
+  
+  // start and anchor keyboard selection
+  term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .r = 0};
+  term.sel_anchor = term.sel_pos;
+  term.sel_start = term.sel_pos;
+  term.sel_end = term.sel_pos;
+  term.sel_rect = mods & MDK_ALT;
+  selection_pending = true;
+}
+
+#define mflags_kb_select(...) (mflags_kb_select)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_kb_select)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+
+  return selection_pending;
+}
+
 static uint
 mflags_lock_title(__attribute__((unused))struct term *term_p)
 {
@@ -1574,6 +1604,7 @@ static struct function_def cmd_defs[] = {
 
   {"super", {.fct_key = super_down}, 0},
   {"hyper", {.fct_key = hyper_down}, 0},
+  {"kb-select", {.fct_key = kb_select}, mflags_kb_select},
 
   {"scroll_top", {.fct = scroll_HOME}, 0},
   {"scroll_end", {.fct = scroll_END}, 0},
@@ -1895,7 +1926,10 @@ static int
             send_syscommand(fudef->cmd);
           else
             fudef->fct_key(term_p, key, mods);
+
           ret = true;
+          // should we trigger ret = false if (fudef->fct_key == kb_select)
+          // so the case can be handled further in win_key_down ?
         }
         else {
           // invalid definition (e.g. "A+Enter:foo;"), shall 
@@ -1956,9 +1990,9 @@ bool
   printf("win_key_down %02X %s scan %d ext %d rpt %d/%d other %02X\n", key, vk_name(key), scancode, extended, repeat, count, HIWORD(lp) >> 8);
 #endif
 
-static int last_key_time = 0;
+static LONG last_key_time = 0;
 
-  int message_time = GetMessageTime();
+  LONG message_time = GetMessageTime();
   if (repeat) {
 #ifdef auto_repeat_cursor_keys_option
     switch (key) {
@@ -1967,12 +2001,16 @@ static int last_key_time = 0;
 #endif
     if (!term.auto_repeat)
       return true;
-    if (message_time > last_key_time &&
-        (1000 / (message_time - last_key_time) >= term.repeat_rate)
-       )
+    if (term.repeat_rate &&
+        message_time - last_key_time < 1000 / term.repeat_rate)
       return true;
   }
-  last_key_time = message_time;
+  if (repeat && term.repeat_rate &&
+      message_time - last_key_time < 2000 / term.repeat_rate)
+    /* Key repeat seems to be continued. */
+    last_key_time += 1000 / term.repeat_rate;
+  else
+    last_key_time = message_time;
 
   if (key == VK_PROCESSKEY) {
     MSG tmp_msg = {.hwnd = wnd, .message = WM_KEYDOWN, .wParam = wp, .lParam = lp, .time = 0, .pt = {0, 0}};
@@ -2141,7 +2179,8 @@ static int last_key_time = 0;
     int oldisptop = term.disptop;
     //printf("y %d disptop %d sb %d..%d\n", term.sel_pos.y, term.disptop, sbtop, sbbot);
     switch (key) {
-      when VK_CLEAR:  // recalibrate
+      when VK_CLEAR:
+        // re-anchor keyboard selection
         term.sel_anchor = term.sel_pos;
         term.sel_start = term.sel_pos;
         term.sel_end = term.sel_pos;
@@ -2459,6 +2498,7 @@ static int last_key_time = 0;
           when VK_LEFT:  scroll = SB_PRIOR;
           when VK_RIGHT: scroll = SB_NEXT;
           when VK_CLEAR:
+            // start and anchor keyboard selection
             term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .r = 0};
             term.sel_anchor = term.sel_pos;
             term.sel_start = term.sel_pos;

@@ -336,7 +336,7 @@ void
     term.app_keypad = false;  // xterm only with RIS
     term.app_control = 0;
     term.auto_repeat = cfg.auto_repeat;  // not supported by xterm
-    term.repeat_rate = 30;
+    term.repeat_rate = 0;
     term.attr_rect = false;
     term.deccolm_noclear = false;
   }
@@ -425,6 +425,7 @@ void
   term_schedule_tblink2();
   term_schedule_cblink();
   term_clear_scrollback();
+  term_schedule_search_update();
 
   win_reset_colours();
   
