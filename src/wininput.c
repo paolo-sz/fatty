@@ -1002,7 +1002,7 @@ static pos
   return translate_pos(GET_X_LPARAM(lp), GET_Y_LPARAM(lp));
 }
 
-void
+bool
 (win_mouse_click)(struct term* term_p, mouse_button b, LPARAM lp)
 {
   TERM_VAR_REF(true)
@@ -1017,7 +1017,7 @@ void
 
   SetFocus(wnd);  // in case focus was in search bar
 
-  if (is_tab_bar_area(GET_Y_LPARAM(lp))) return;
+  if (is_tab_bar_area(GET_Y_LPARAM(lp))) return false;
 
   mod_keys mods = get_mods();
   pos p = get_mouse_pos(lp);
@@ -1030,6 +1030,8 @@ void
     count = 1;
   //printf("mouse %d (focus %d skipped %d) ×%d\n", b, click_focus, last_skipped, count);
 
+  bool res = false;
+
   if (click_focus && b == MBT_LEFT && count == 1
       && // not in application mouse mode
          !(term.mouse_mode && term.report_focus &&
@@ -1041,13 +1043,14 @@ void
     last_skipped = true;
     last_skipped_time = t;
     skip_release_token = b;
+    res = true;
   }
   else {
     if (last_skipped && dblclick) {
       // recognize double click also in application mouse modes
       term_mouse_click(b, mods, p, 1);
     }
-    term_mouse_click(b, mods, p, count);
+    res = term_mouse_click(b, mods, p, count);
     last_skipped = false;
   }
   last_pos = (pos){INT_MIN, INT_MIN, false};
@@ -1070,6 +1073,8 @@ void
       break;
     default:;
   }
+
+  return res;
 }
 
 void
@@ -2024,7 +2029,7 @@ static LONG last_key_time = 0;
   GetKeyboardState(kbd);
   auto is_key_down = [&](uchar vk) -> bool { return kbd[vk] & 0x80; };
 #ifdef debug_virtual_key_codes
-  printf(" [%d %c%d] Shift %d:%d/%d Ctrl %d:%d/%d Alt %d:%d/%d\n",
+  printf("-- [%u %c%u] Shift %d:%d/%d Ctrl %d:%d/%d Alt %d:%d/%d\n",
          (int)GetMessageTime(), lctrl_time ? '+' : '=', (int)GetMessageTime() - lctrl_time,
          is_key_down(VK_SHIFT), is_key_down(VK_LSHIFT), is_key_down(VK_RSHIFT),
          is_key_down(VK_CONTROL), is_key_down(VK_LCONTROL), is_key_down(VK_RCONTROL),
@@ -2055,14 +2060,17 @@ static LONG last_key_time = 0;
   if (key == VK_CONTROL && !extended) {
     lctrl = true;
     lctrl_time = GetMessageTime();
+    //printf("lctrl (true) %d (%d)\n", lctrl, is_key_down(VK_LCONTROL));
   }
   else if (lctrl_time) {
     lctrl = !(key == VK_MENU && extended 
               && GetMessageTime() - lctrl_time <= cfg.ctrl_alt_delay_altgr);
     lctrl_time = 0;
+    //printf("lctrl (time) %d (%d)\n", lctrl, is_key_down(VK_LCONTROL));
   }
   else {
     lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
+    //printf("lctrl (else) %d (%d)\n", lctrl, is_key_down(VK_LCONTROL));
   }
 
   bool numlock = kbd[VK_NUMLOCK] & 1;
@@ -2074,7 +2082,12 @@ static LONG last_key_time = 0;
   bool rctrl = is_key_down(VK_RCONTROL);
   bool ctrl = lctrl | rctrl;
   bool ctrl_lalt_altgr = cfg.ctrl_alt_is_altgr & ctrl & lalt & !ralt;
-  bool altgr0 = ralt | ctrl_lalt_altgr;
+  //bool altgr0 = ralt | ctrl_lalt_altgr;
+  // Alt/AltGr detection and handling could do with a complete revision 
+  // from scratch; on the other hand, no unnecessary risk should be taken, 
+  // so another hack is added.
+  bool lctrl0 = is_key_down(VK_LCONTROL);
+  bool altgr0 = (ralt & lctrl0) | ctrl_lalt_altgr;
 
   bool external_hotkey = false;
   if (ralt && !scancode && cfg.external_hotkeys) {
@@ -2087,6 +2100,11 @@ static LONG last_key_time = 0;
   }
 
   bool altgr = ralt | ctrl_lalt_altgr;
+  // While this should more properly reflect the AltGr modifier state, 
+  // with the current implementation it has the opposite effect;
+  // it spoils Ctrl+AltGr with modify_other_keys mode.
+  //altgr = (ralt & lctrl0) | ctrl_lalt_altgr;
+
   bool win = (is_key_down(VK_LWIN) && key != VK_LWIN)
           || (is_key_down(VK_RWIN) && key != VK_RWIN);
   trace_alt("alt %d lalt %d ralt %d altgr %d\n", alt, lalt, ralt, altgr);
@@ -2834,8 +2852,8 @@ static LONG last_key_time = 0;
   };
 
   auto char_key = [&](void) -> bool {
-    trace_alt("char_key alt %d -> %d\n", alt, lalt & !ctrl_lalt_altgr);
     alt = lalt & !ctrl_lalt_altgr;
+    trace_alt("char_key alt %d (l %d r %d altgr %d)\n", alt, lalt, ralt, altgr);
 
     // Sync keyboard layout with our idea of AltGr.
     kbd[VK_CONTROL] = altgr ? 0x80 : 0;
@@ -2848,6 +2866,10 @@ static LONG last_key_time = 0;
     // Try the layout.
     if (layout())
       return true;
+
+    // This prevents AltGr from behaving like Alt in modify_other_keys mode.
+    if (!cfg.altgr_is_alt && altgr0)
+      return false;
 
     if (ralt) {
       // Try with RightAlt/AltGr key treated as Alt.
@@ -3100,7 +3122,7 @@ static LONG last_key_time = 0;
       bool check_menu = key == VK_SPACE && !term.shortcut_override
                         && cfg.window_shortcuts && alt && !altgr && !ctrl;
 #ifdef debug_key
-      printf("mods %d (modf %d comp %d)\n", mods, term.modify_other_keys, comp_state);
+      printf("-- mods %d alt %d altgr %d/%d ctrl %d lctrl %d/%d (modf %d comp %d)\n", mods, alt, altgr, altgr0, ctrl, lctrl, lctrl0, term.modify_other_keys, comp_state);
 #endif
       if (allow_shortcut && check_menu) {
         send_syscommand(SC_KEYMENU);
@@ -3108,7 +3130,8 @@ static LONG last_key_time = 0;
       }
       else if (altgr_key())
         trace_key("altgr");
-      else if (altgr && !term.modify_other_keys)
+      else if (!cfg.altgr_is_alt && altgr0 && !term.modify_other_keys)
+        // prevent AltGr from behaving like Alt
         trace_key("!altgr");
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");

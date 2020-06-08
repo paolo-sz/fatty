@@ -728,6 +728,10 @@ static void
 (do_search)(struct term* term_p, int begin, int end) {
   TERM_VAR_REF(true)
   
+  if (term.results.xquery_length == 0) {
+    return;
+  }
+
   init_case_folding();
 
   /* the position of current char */
@@ -789,7 +793,7 @@ static void
         .idx = cpos - anpos + 1,
         .len = anpos
       };
-      assert(begin <= run.idx && (run.idx + run.len) < end);
+      assert(begin <= run.idx && (run.idx + run.len) <= end);
       // Append result
       results_add(run);
       npos = 0;

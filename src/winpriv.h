@@ -101,7 +101,7 @@ extern void (user_function)(struct term* term_p, wstring commands, int n);
 #define win_show_mouse(...) (win_show_mouse)(term_p, ##__VA_ARGS__)
 extern void (win_show_mouse)(struct term* term_p);
 #define win_mouse_click(...) (win_mouse_click)(term_p, ##__VA_ARGS__)
-extern void (win_mouse_click)(struct term* term_p, mouse_button, LPARAM);
+extern bool (win_mouse_click)(struct term* term_p, mouse_button, LPARAM);
 #define win_mouse_release(...) (win_mouse_release)(term_p, ##__VA_ARGS__)
 extern void (win_mouse_release)(struct term *term_p, mouse_button, LPARAM);
 #define win_mouse_wheel(...) (win_mouse_wheel)(term_p, ##__VA_ARGS__)

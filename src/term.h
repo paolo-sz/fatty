@@ -692,7 +692,7 @@ extern void term_free(struct term* term_p);
 #define term_clear_scrollback(...) (term_clear_scrollback)(term_p, ##__VA_ARGS__)
 extern void (term_clear_scrollback)(struct term* term_p);
 #define term_mouse_click(...) (term_mouse_click)(term_p, ##__VA_ARGS__)
-extern void (term_mouse_click)(struct term* term_p, mouse_button, mod_keys, pos, int count);
+extern bool (term_mouse_click)(struct term* term_p, mouse_button, mod_keys, pos, int count);
 #define term_mouse_release(...) (term_mouse_release)(term_p, ##__VA_ARGS__)
 extern void (term_mouse_release)(struct term* term_p, mouse_button, mod_keys, pos);
 #define term_mouse_move(...) (term_mouse_move)(term_p, ##__VA_ARGS__)

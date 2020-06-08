@@ -519,17 +519,17 @@ static char *
   colour bold_colour = win_get_colour(BOLD_COLOUR_I);
   hprintf(hf,
     "<head>\n"
-    "  <meta name='generator' content='mintty'/>\n"
+    "  <meta name='generator' content='fatty'/>\n"
     "  <meta http-equiv='Content-Type' content='text/html; charset=UTF-8'/>\n"
-    "  <title>mintty screen dump</title>\n"
+    "  <title>fatty screen dump</title>\n"
     "  <link rel='stylesheet' type='text/css' href='xterm.css'/>\n"
-    "  <link rel='stylesheet' type='text/css' href='mintty.css'/>\n"
+    "  <link rel='stylesheet' type='text/css' href='fatty.css'/>\n"
     //"  <script type='text/javascript' language='JavaScript' src='emoji.js'></script>\n"
     "  <style type='text/css'>\n"
     "  #vt100 pre { font-family: inherit; margin: 0; padding: 0; }\n"
     );
   if (level >= 3)
-    hprintf(hf, "  body.mintty { margin: 0; padding: 0; }\n");
+    hprintf(hf, "  body.fatty { margin: 0; padding: 0; }\n");
   hprintf(hf, "  #vt100 span {\n");
   if (level >= 2) {
     // font needed in <span> for some tools (e.g. Powerpoint)

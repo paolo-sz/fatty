@@ -4,9 +4,9 @@
 #define APPNAME "FaTTY"
 #define WEBSITE "http://github.com/juho-p/fatty"
 
-#define MAJOR_VERSION  1
-#define MINOR_VERSION  7
-#define PATCH_NUMBER   0
+#define MAJOR_VERSION  3
+#define MINOR_VERSION  1
+#define PATCH_NUMBER   7
 #define BUILD_NUMBER   0
 
 // needed for res.rc

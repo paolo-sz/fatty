@@ -261,7 +261,7 @@ load_dwm_funcs(void)
     uint build = HIWORD(win_version);
     win_version = ((win_version & 0xff) << 8) | ((win_version >> 8) & 0xff);
     //printf("Windows %d.%d Build %d\n", win_version >> 8, win_version & 0xFF, build);
-    if (win_version > 0x0601 && build >= 17763) { // minimum version 1809
+    if (win_version >= 0x0A00 && build >= 17763) { // minimum version 1809
       pShouldAppsUseDarkMode = 
         (BOOLEAN (*)())((void (*)(void))GetProcAddress(uxtheme, MAKEINTRESOURCEA(132))); /* ordinal */
       pSetPreferredAppMode = 
@@ -1427,12 +1427,14 @@ static void
 {
   TERM_VAR_REF(true)
     
-  bool enabled =
-    cfg.transparency == TR_GLASS && !win_is_fullscreen &&
-    !(opaque && term.has_focus);
+  bool glass = !(opaque && term.has_focus)
+               //&& !win_is_fullscreen
+               && cfg.transparency == TR_GLASS
+               //&& cfg.glass // decouple glass mode from transparency setting
+               ;
 
   if (pDwmExtendFrameIntoClientArea) {
-    MARGINS tmp_m = {enabled ? -1 : 0, 0, 0, 0};
+    MARGINS tmp_m = {glass ? -1 : 0, 0, 0, 0};
     pDwmExtendFrameIntoClientArea(wnd, &tmp_m);
   }
 
@@ -1449,7 +1451,8 @@ static void
     };
     enum WindowCompositionAttribute
     {
-      WCA_ACCENT_POLICY = 19
+      WCA_ACCENT_POLICY = 19,
+      WCA_USEDARKMODECOLORS = 26, // does not yield the desired effect (#1005)
     };
     struct ACCENTPOLICY
     {
@@ -1467,7 +1470,7 @@ static void
       ULONG dataSize;
     };
     struct ACCENTPOLICY policy = {
-      enabled ? ACCENT_ENABLE_BLURBEHIND : ACCENT_DISABLED,
+      glass ? ACCENT_ENABLE_BLURBEHIND : ACCENT_DISABLED,
       0,
       0,
       0
@@ -2825,8 +2828,8 @@ static struct {
       if (in_client_area(wnd, lp)) {
         // clicked within "client area";
         // Windows sends the NC message nonetheless when Ctrl+Alt is held
-        win_mouse_click(MBT_LEFT, screentoclient(wnd, lp));
-        return 0;
+        if (win_mouse_click(MBT_LEFT, screentoclient(wnd, lp)))
+          return 0;
       }
       else
       if (wp == HTCAPTION && get_mods() == MDK_CTRL) {
@@ -2837,8 +2840,8 @@ static struct {
       if (in_client_area(wnd, lp)) {
         // clicked within "client area";
         // Windows sends the NC message nonetheless when Ctrl+Alt is held
-        win_mouse_click(MBT_RIGHT, screentoclient(wnd, lp));
-        return 0;
+        if (win_mouse_click(MBT_RIGHT, screentoclient(wnd, lp)))
+          return 0;
       }
       else
       if (wp == HTCAPTION && (cfg.geom_sync > 0 || get_mods() == MDK_CTRL)) {
@@ -2847,16 +2850,16 @@ static struct {
       }
     when WM_NCMBUTTONDOWN case_or WM_NCMBUTTONDBLCLK:
       if (in_client_area(wnd, lp)) {
-        win_mouse_click(MBT_MIDDLE, screentoclient(wnd, lp));
-        return 0;
+        if (win_mouse_click(MBT_MIDDLE, screentoclient(wnd, lp)))
+          return 0;
       }
     when WM_NCXBUTTONDOWN case_or WM_NCXBUTTONDBLCLK:
       if (in_client_area(wnd, lp))
         switch (HIWORD(wp)) {
-          when XBUTTON1: win_mouse_click(MBT_4, screentoclient(wnd, lp));
-                         return 0;
-          when XBUTTON2: win_mouse_click(MBT_5, screentoclient(wnd, lp));
-                         return 0;
+          when XBUTTON1: if (win_mouse_click(MBT_4, screentoclient(wnd, lp)))
+                           return 0;
+          when XBUTTON2: if (win_mouse_click(MBT_5, screentoclient(wnd, lp)))
+                           return 0;
         }
     when WM_NCLBUTTONUP:
       if (in_client_area(wnd, lp)) {
@@ -4416,7 +4419,7 @@ main(int argc, char *argv[])
   bool wdpresent = true;
   if (invoked_from_shortcut && sui.lpTitle) {
     shortcut = wcsdup(sui.lpTitle);
-    setenv("MINTTY_SHORTCUT", path_win_w_to_posix(shortcut), true);
+    setenv("FATTY_SHORTCUT", path_win_w_to_posix(shortcut), true);
     wchar * icon = get_shortcut_icon_location(sui.lpTitle, &wdpresent);
 # ifdef debuglog
     fprintf(mtlog, "icon <%ls>\n", icon); fflush(mtlog);
@@ -4740,6 +4743,11 @@ main(int argc, char *argv[])
   if (getenv("FATTY_MONITOR")) {
     monitor = atoi(getenv("FATTY_MONITOR"));
     unsetenv("FATTY_MONITOR");
+  }
+  int run_max = 0;
+  if (getenv("FATTY_MAXIMIZE")) {
+    run_max = atoi(getenv("FATTY_MAXIMIZE"));
+    unsetenv("FATTY_MAXIMIZE");
   }
 
   // if started from console, try to detach from caller's terminal (~daemonizing)
@@ -5395,8 +5403,9 @@ main(int argc, char *argv[])
   // Determine how to show the window.
   go_fullscr_on_max = (cfg.window == -1);
   default_size_token = true;  // prevent font zooming (#708)
-  int show_cmd = go_fullscr_on_max ? SW_SHOWMAXIMIZED : cfg.window;
+  int show_cmd = (go_fullscr_on_max || run_max) ? SW_SHOWMAXIMIZED : cfg.window;
   show_cmd = win_fix_taskbar_max(show_cmd);
+  // if (run_max == 2) win_maximise(2); // do that later to reduce flickering
 
   // Scale to background image aspect ratio if requested
   win_get_pixels(&ini_height, &ini_width, false);
@@ -5411,6 +5420,9 @@ main(int argc, char *argv[])
   // Finally show the window.
   ShowWindow(wnd, show_cmd);
   SetFocus(wnd);
+  // Cloning fullscreen window
+  if (run_max == 2)
+    win_maximise(2);
 
   // Set up clipboard notifications.
   HRESULT (WINAPI * pAddClipboardFormatListener)(HWND) =

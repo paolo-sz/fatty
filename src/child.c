@@ -997,6 +997,11 @@ static void
     // propagate shortcut-inherited icon
     if (icon_is_from_shortcut)
       setenv(const_cast<char *>("FATTY_ICON"), cs__wcstoutf(cfg.icon), true);
+    // provide environment to maximise window
+    if (win_is_fullscreen)
+      setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 2);
+    else if (IsZoomed(wnd))
+      setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 1);
 
     //setenv(const_cast<char *>("FATTY_CHILD"), "1", true);
 

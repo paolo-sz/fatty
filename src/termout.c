@@ -4340,10 +4340,12 @@ static void
           when ';':
             term.cmd_num = 0;
             term.state = CMD_STRING;
-          when '\a' case_or '\n' case_or '\r':
+          when '\a':
             term.state = NORMAL;
           when '\e':
             term.state = ESCAPE;
+          when '\n' case_or '\r':
+            term.state = IGNORE_STRING;
             break;
           default:
             term.state = IGNORE_STRING;
@@ -4363,7 +4365,7 @@ static void
           when '\e':
             term.state = CMD_ESCAPE;
           when '\n' case_or '\r':
-            term.state = NORMAL;
+            term.state = IGNORE_STRING;
             break;
           default:
             term.state = IGNORE_STRING;
@@ -4393,13 +4395,16 @@ static void
 
       when CMD_STRING:
         switch (c) {
-          when '\n' case_or '\r':
-            term.state = NORMAL;
           when '\a':
             do_cmd();
             term.state = NORMAL;
           when '\e':
             term.state = CMD_ESCAPE;
+          when '\n' case_or '\r':
+            // accept new lines in OSC strings
+            if (term.cmd_num != 1337)
+              term_push_cmd(c);
+            // else ignore new lines in base64-encoded images
             break;
           default:
             term_push_cmd(c);
@@ -4407,10 +4412,13 @@ static void
 
       when IGNORE_STRING:
         switch (c) {
-          when '\n' case_or '\r' case_or '\a':
+          when '\a':
             term.state = NORMAL;
           when '\e':
             term.state = ESCAPE;
+          when '\n' or '\r':
+            // keep IGNORE_STRING
+            ;
         }
 
       when DCS_START:
