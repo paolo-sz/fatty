@@ -242,6 +242,7 @@ strage_read(temp_strage_t *strage, unsigned char *p, size_t size)
 
 
 #define dont_debug_img_list
+#define dont_debug_img_disp
 
 static uint
 winimg_len(imglist *img)
@@ -264,7 +265,9 @@ winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
 #endif
 
   static int _imgi = 0;
-  //printf("winimg_new %d @%d\n", _imgi, top);
+#ifdef debug_img_disp
+  printf("winimg_new %d @%d:%d\n", _imgi, left, top);
+#endif
   img->imgi = _imgi++;
 
   img->pixels = pixels;
@@ -664,11 +667,14 @@ void
 
   HDC dc = GetDC(wnd);
 
+#ifdef pre_clip
+  // this does not appear to be necessary
   RECT rc;
   GetClientRect(wnd, &rc);
   IntersectClipRect(dc, rc.left + PADDING, rc.top + PADDING,
                     rc.left + PADDING + term.cols * cell_width,
                     rc.top + PADDING + term.rows * cell_height);
+#endif
 
   imglist * prev = 0;
   for (img = term.imgs.first; img;) {
@@ -694,7 +700,7 @@ void
 #ifdef debug_img_list
         printf("paint: check img %p v@%d s@%d\n", img, img->top, top);
 #endif
-        // create DC handle if it is not initialized, or resume from hibernate
+        // create img DC handle if not initialized, or resume from hibernate
         winimg_lazyinit(img);
 
         // check all cells of image area;
@@ -712,9 +718,13 @@ void
             bool clip_flag = false;
             if (dchar->chr != SIXELCH)
               clip_flag = true;
-            else if (img->imgi - dchar->attr.imgi >= 0)
+            else if (img->imgi - dchar->attr.imgi >= 0) {
               // need to keep newer image, as sync may take a while
+#ifdef debug_img_disp
+            printf("paint: dirty (%d) %d:%d %d >= %d\n", disp_flag, y, x, img->imgi, dchar->attr.imgi);
+#endif
               disp_flag = true;
+            }
             // if cell is overlaid by selection or cursor, exclude
             if (dchar->attr.attr & (TATTR_RESULT | TATTR_CURRESULT | TATTR_MARKED | TATTR_CURMARKED))
               clip_flag = true;
@@ -743,7 +753,10 @@ void
           // better background handling implemented below; this version 
           // would expose artefacts if a transparent image is scrolled
         }
-        else {
+        else if (disp_flag) {
+#ifdef debug_img_disp
+          printf("paint: clear background\n");
+#endif
           // determine image size for padding
           int iwidth;
           int iheight;
@@ -811,12 +824,16 @@ void
             DeleteObject(hbm);
             DeleteDC(hdc);
           }
-          else
+          else {
             StretchBlt(dc,
                        left * cell_width + PADDING, top * cell_height + PADDING,
                        img->width * cell_width, img->height * cell_height,
                        (HDC)(img->hdc),
                        0, 0, img->pixelwidth, img->pixelheight, SRCCOPY);
+          }
+          // restore clipping region
+          ReleaseDC(wnd, dc);
+          dc = GetDC(wnd);
         }
         else if (top < 0 || top + img->height > term.rows) {
           // we did not check the scrolled-out image part, 
