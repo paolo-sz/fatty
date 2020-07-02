@@ -1305,7 +1305,7 @@ win_get_scrpos(int *xp, int *yp, bool with_borders)
   *yp += fr.top - vy;
   if (with_borders) {
     *xp += GetSystemMetrics(SM_CXSIZEFRAME) + PADDING;
-    *yp += GetSystemMetrics(SM_CYSIZEFRAME) + GetSystemMetrics(SM_CYCAPTION) + PADDING;
+    *yp += GetSystemMetrics(SM_CYSIZEFRAME) + GetSystemMetrics(SM_CYCAPTION) + OFFSET + PADDING;
   }
 }
 
@@ -1338,7 +1338,7 @@ void
   else {
     GetClientRect(wnd, &r);
     int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
-    *height_p = r.bottom - r.top - 2 * PADDING - sy
+    *height_p = r.bottom - r.top - 2 * PADDING - OFFSET - sy
               //- extra_height
               ;
     *width_p = r.right - r.left - 2 * PADDING
@@ -1355,7 +1355,7 @@ win_get_screen_chars(int *rows_p, int *cols_p)
   MONITORINFO mi;
   get_my_monitor_info(&mi);
   RECT fr = mi.rcMonitor;
-  *rows_p = (fr.bottom - fr.top - 2 * PADDING) / cell_height;
+  *rows_p = (fr.bottom - fr.top - 2 * PADDING - OFFSET) / cell_height;
   *cols_p = (fr.right - fr.left - 2 * PADDING) / cell_width;
 }
 
@@ -1370,7 +1370,7 @@ void
   int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
   SetWindowPos(wnd, null, 0, 0,
                width + extra_width + 2 * PADDING,
-               height + extra_height + 2 * PADDING + sy,
+               height + extra_height + OFFSET + 2 * PADDING + sy,
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOMOVE | SWP_NOZORDER);
 }
 
@@ -1861,7 +1861,7 @@ static void
     
   term_width = t_width;
   term_height = t_height;
-  RECT cr = {0, 0, term_width + 2 * PADDING, term_height + 2 * PADDING};
+  RECT cr = {0, 0, term_width + 2 * PADDING, term_height + OFFSET + 2 * PADDING};
   RECT wr = cr;
   window_style = WS_OVERLAPPEDWINDOW;
   if (border_style) {
@@ -1958,7 +1958,7 @@ void
     norm_extra_height = extra_height;
   }
   int term_width = client_width - 2 * PADDING;
-  int term_height = client_height - 2 * PADDING - g_render_tab_height;
+  int term_height = client_height - 2 * PADDING - OFFSET - g_render_tab_height;
 
   if (!sync_size_with_font && win_search_visible()) {
     term_height -= SEARCHBAR_HEIGHT;
@@ -2423,6 +2423,7 @@ show_iconwarn(wchar * winmsg)
  */
 
 #define dont_debug_messages
+#define dont_debug_only_input_messages
 #define dont_debug_only_focus_messages
 #define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
@@ -2445,7 +2446,7 @@ static bool
   ScreenToClient(wnd, &wpos);
   int height, width;
   win_get_pixels(&height, &width, false);
-  height += 2 * PADDING;
+  height += OFFSET + 2 * PADDING;
   width += 2 * PADDING;
   return wpos.y >= 0 && wpos.y < height && wpos.x >= 0 && wpos.x < width;
 }
@@ -2475,12 +2476,14 @@ static struct {
      )
 # ifdef debug_only_sizepos_messages
     if (strstr(wm_name, "POSCH") || strstr(wm_name, "SIZ"))
-# else
+# endif
 # ifdef debug_only_focus_messages
     if (strstr(wm_name, "ACTIVATE") || strstr(wm_name, "FOCUS"))
 # endif
+# ifdef debug_only_input_messages
+    if (strstr(wm_name, "MOUSE") || strstr(wm_name, "BUTTON") || strstr(wm_name, "CURSOR") || strstr(wm_name, "KEY"))
 # endif
-    printf("[%d]->%8p %04X %s (%04X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
+    printf("[%d]->%8p %04X %s (%08X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
   struct term *term_p = win_active_terminal();
@@ -2778,7 +2781,7 @@ static struct {
       ScreenToClient(wnd, &wpos);
       int height, width;
       win_get_pixels(&height, &width, false);
-      height += 2 * PADDING;
+      height += OFFSET + 2 * PADDING;
       width += 2 * PADDING;
       int delta = GET_WHEEL_DELTA_WPARAM(wp);  // positive means up or right
       //printf("%d %d %d %d %d\n", wpos.y, wpos.x, height, width, delta);
@@ -3085,7 +3088,7 @@ static struct {
       */
       LPRECT r = (LPRECT) lp;
       int width = r->right - r->left - extra_width - 2 * PADDING;
-      int height = r->bottom - r->top - extra_height - 2 * PADDING - g_render_tab_height;
+      int height = r->bottom - r->top - extra_height - 2 * PADDING - OFFSET - g_render_tab_height;
       int cols = max(1, (int)((float)width / cell_width + 0.5));
       int rows = max(1, (int)((float)height / cell_height + 0.5));
 
@@ -3426,7 +3429,7 @@ void
     int cols = term.cols;
     int rows = term.rows;
     cols = (placement.rcNormalPosition.right - placement.rcNormalPosition.left - norm_extra_width - 2 * PADDING) / cell_width;
-    rows = (placement.rcNormalPosition.bottom - placement.rcNormalPosition.top - norm_extra_height - 2 * PADDING) / cell_height;
+    rows = (placement.rcNormalPosition.bottom - placement.rcNormalPosition.top - norm_extra_height - 2 * PADDING - OFFSET) / cell_height;
 
     printf("%s", main_argv[0]);
     printf(*report_geom == 'o' ? " -o Columns=%d -o Rows=%d" : " -s %d,%d", cols, rows);
@@ -3846,6 +3849,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
   }
 }
 
+#ifdef not_used
 bool
 wexists(wstring fn)
 {
@@ -3855,6 +3859,7 @@ wexists(wstring fn)
   FindClose(hFind);
   return ok;
 }
+#endif
 
 bool
 waccess(wstring fn, int amode)

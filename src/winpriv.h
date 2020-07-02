@@ -31,6 +31,7 @@ extern int cell_width, cell_height;  // includes spacing
 extern bool font_ambig_wide;
 extern int line_scale;
 extern int PADDING;
+extern int OFFSET;
 extern bool show_charinfo;
 extern void toggle_charinfo(void);
 #define toggle_vt220(...) (toggle_vt220)(term_p, ##__VA_ARGS__)

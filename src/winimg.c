@@ -243,6 +243,7 @@ strage_read(temp_strage_t *strage, unsigned char *p, size_t size)
 
 #define dont_debug_img_list
 #define dont_debug_img_disp
+#define dont_debug_img_over
 
 static uint
 winimg_len(imglist *img)
@@ -257,11 +258,11 @@ winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
            int crop_x, int crop_y, int crop_width, int crop_height)
 {
   imglist *img = (imglist *)malloc(sizeof(imglist));
-  //printf("winimg alloc %d -> %p\n", (int)sizeof(imglist), img);
+  //printf("winimg alloc %d -> [%d]\n", (int)sizeof(imglist), img->imgi);
   if (!img)
     return false;
 #ifdef debug_img_list
-  printf("winimg_new %p->%p l %d t %d w %d h %d\n", img, pixels, left, top, width, height);
+  printf("winimg_new [%d]->%p l %d t %d w %d h %d\n", img->imgi, pixels, left, top, width, height);
 #endif
 
   static int _imgi = 0;
@@ -280,6 +281,7 @@ winimg_new(imglist **ppimg, char * id, unsigned char * pixels, uint len,
   img->pixelwidth = pixelwidth;
   img->pixelheight = pixelheight;
   img->next = NULL;
+  img->prev = NULL;
   img->strage = NULL;
 
   img->len = len;
@@ -440,14 +442,14 @@ winimg_lazyinit(imglist *img)
       uint size = winimg_len(img);
       if (img->pixels) {
         CopyMemory(pixels, img->pixels, size);
-        //printf("winimg_lazyinit free pixels %p->%p\n", img, img->pixels);
+        //printf("winimg_lazyinit free pixels [%d]->%p\n", img->imgi, img->pixels);
         free(img->pixels);
       } else {
         // resume from hibernation
         assert(img->strage);
         strage_read(img->strage, pixels, size);
       }
-      //printf("winimg_lazyinit img->pixels = pixels %p->%p\n", img, pixels);
+      //printf("winimg_lazyinit img->pixels = pixels [%d]->%p\n", img->imgi, pixels);
       img->pixels = pixels;
     }
   }
@@ -467,7 +469,7 @@ winimg_hibernate(imglist *img)
     return;
 
   temp_strage_t *strage = strage_create();
-  //printf("winimg_hibernate %p->%p to %p\n", img, img->pixels, strage);
+  //printf("winimg_hibernate [%d]->%p to %p\n", img->imgi, img->pixels, strage);
   if (!strage)
     return;
 
@@ -570,7 +572,7 @@ static void
     int width = img->pixelwidth;
     int height = img->pixelheight;
     left += PADDING;
-    top += PADDING;
+    top += OFFSET + PADDING;
 
     int coord_transformed = 0;
     XFORM old_xform;
@@ -662,30 +664,44 @@ void
   while (tempfile_num > TEMPFILE_MAX_NUM && term.imgs.first) {
     img = term.imgs.first;
     term.imgs.first = term.imgs.first->next;
+    term.imgs.first->prev = NULL;
     winimg_destroy(img);
   }
 
   HDC dc = GetDC(wnd);
 
-#ifdef pre_clip
-  // this does not appear to be necessary
+  // clip off padding area, avoiding image artefacts when scrolling
   RECT rc;
   GetClientRect(wnd, &rc);
-  IntersectClipRect(dc, rc.left + PADDING, rc.top + PADDING,
+  IntersectClipRect(dc, rc.left + PADDING, rc.top + OFFSET + PADDING,
                     rc.left + PADDING + term.cols * cell_width,
-                    rc.top + PADDING + term.rows * cell_height);
-#endif
+                    rc.top + OFFSET + PADDING + term.rows * cell_height);
 
-  imglist * prev = 0;
-  for (img = term.imgs.first; img;) {
+  // prepare detection of overwritten images for garbage collection
+  bool drawn[term.rows * term.cols];
+  memset(drawn, 0, sizeof drawn);
+
+  // tame the flickering by backward traversal together with global clipping
+  bool backward_img_traversal = true;
+  img = backward_img_traversal ? term.imgs.last : term.imgs.first;
+  imglist * next;
+#ifdef debug_img_over
+  printf("--------------- imglist loop\n");
+#endif
+  for (; img; img = next) {
+    next = backward_img_traversal ? img->prev : img->next;
+
     imglist * destrimg = 0;
 
     if (img->top + img->height - term.virtuallines < - term.sblines) {
       // if the image is out of scrollback, collect it
+      destrimg = img;
 #ifdef debug_img_list
       printf("paint: destroy @%d h %d virt %lld sb %d\n", img->top, img->height, term.virtuallines, term.sblines);
 #endif
-      destrimg = img;
+#ifdef debug_img_over
+      printf("@%d:%d destroy out [%d]\n", img->top - term.virtuallines - term.disptop, img->left, img->imgi);
+#endif
     } else {
       int left = img->left;
       int top = img->top - term.virtuallines - term.disptop;
@@ -693,12 +709,15 @@ void
         // if the image is scrolled out, serialize it into a temp file
 #ifdef debug_img_list
         if (img->hdc)
-          printf("paint: hibernate img %p v@%d s@%d\n", img, img->top, top);
+          printf("paint: hibernate img [%d] v@%d s@%d\n", img->imgi, img->top, top);
 #endif
         winimg_hibernate(img);
+#ifdef debug_img_over
+        printf("@%d:%d hiber [%d]\n", top, left, img->imgi);
+#endif
       } else {
 #ifdef debug_img_list
-        printf("paint: check img %p v@%d s@%d\n", img, img->top, top);
+        printf("paint: check img [%d] v@%d s@%d\n", img->imgi, img->top, top);
 #endif
         // create img DC handle if not initialized, or resume from hibernate
         winimg_lazyinit(img);
@@ -716,14 +735,16 @@ void
             // if sixel image is overwritten by characters,
             // exclude the area from the clipping rect.
             bool clip_flag = false;
-            if (dchar->chr != SIXELCH)
+            if (dchar->chr != SIXELCH) {
               clip_flag = true;
-            else if (img->imgi - dchar->attr.imgi >= 0) {
-              // need to keep newer image, as sync may take a while
-#ifdef debug_img_disp
-            printf("paint: dirty (%d) %d:%d %d >= %d\n", disp_flag, y, x, img->imgi, dchar->attr.imgi);
-#endif
+              drawn[y * term.cols + x] = true;
+            }
+            else if (!drawn[y * term.cols + x]) {
               disp_flag = true;
+              drawn[y * term.cols + x] = true;
+#ifdef debug_img_disp
+              printf("paint: dirty (%d) %d:%d %d >= %d\n", disp_flag, y, x, img->imgi, dchar->attr.imgi);
+#endif
             }
             // if cell is overlaid by selection or cursor, exclude
             if (dchar->attr.attr & (TATTR_RESULT | TATTR_CURRESULT | TATTR_MARKED | TATTR_CURMARKED))
@@ -737,16 +758,19 @@ void
             if (clip_flag)
               ExcludeClipRect(dc,
                               x * wide_factor * cell_width + PADDING,
-                              y * cell_height + PADDING,
+                              y * cell_height + OFFSET + PADDING,
                               (x + 1) * wide_factor * cell_width + PADDING,
-                              (y + 1) * cell_height + PADDING);
+                              (y + 1) * cell_height + OFFSET + PADDING);
           }
         }
+#ifdef debug_img_over
+        printf("@%d:%d disp [%sm%d[m [%d]\n", top, left, disp_flag ? "" : "41", disp_flag, img->imgi);
+#endif
 
         // fill image area background (in case it's smaller or transparent)
         // calculate area for padding
-        int ytop = max(0, top) * cell_height + PADDING;
-        int ybot = min(top + img->height, term.rows) * cell_height + PADDING;
+        int ytop = max(0, top) * cell_height + OFFSET + PADDING;
+        int ybot = min(top + img->height, term.rows) * cell_height + OFFSET + PADDING;
         int xlft = left * cell_width + PADDING;
         int xrgt = min(left + img->width, term.cols) * cell_width + PADDING;
         if (img->len) {
@@ -770,7 +794,7 @@ void
             iwidth = img->cwidth * cell_width * img->width / img->pixelwidth;
             iheight = img->cheight * cell_height * img->height / img->pixelheight;
           }
-          int ibot = max(0, top * cell_height + iheight) + PADDING;
+          int ibot = max(0, top * cell_height + iheight) + OFFSET + PADDING;
           // fill either background image or colour
           if (*cfg.background) {
             tmp_rect = {xlft + iwidth, ytop, xrgt, ibot};
@@ -823,17 +847,25 @@ void
                        hdc, xlft, ytop, SRCCOPY);
             DeleteObject(hbm);
             DeleteDC(hdc);
+            ExcludeClipRect(dc, xlft, ytop, xrgt, ybot);
           }
           else {
             StretchBlt(dc,
-                       left * cell_width + PADDING, top * cell_height + PADDING,
+                       left * cell_width + PADDING, top * cell_height + OFFSET + PADDING,
                        img->width * cell_width, img->height * cell_height,
                        (HDC)(img->hdc),
                        0, 0, img->pixelwidth, img->pixelheight, SRCCOPY);
+            ExcludeClipRect(dc,
+                       left * cell_width + PADDING, top * cell_height + OFFSET + PADDING,
+                       left * cell_width + PADDING + img->width * cell_width,
+                       top * cell_height + OFFSET + PADDING + img->height * cell_height
+                       );
           }
-          // restore clipping region
-          ReleaseDC(wnd, dc);
-          dc = GetDC(wnd);
+          if (!backward_img_traversal) {
+            // restore clipping region
+            ReleaseDC(wnd, dc);
+            dc = GetDC(wnd);
+          }
         }
         else if (top < 0 || top + img->height > term.rows) {
           // we did not check the scrolled-out image part, 
@@ -841,29 +873,29 @@ void
         }
         else {
           //destroy and remove
+          destrimg = img;
 #ifdef debug_img_list
           printf("paint: destroy @%d h %d virt %lld sb %d\n", img->top, img->height, term.virtuallines, term.sblines);
 #endif
-          destrimg = img;
+#ifdef debug_img_over
+          printf("@%d:%d destroy over [%d]\n", top, left, img->imgi);
+#endif
         }
       }
     }
 
     // proceed to next image in list; destroy current if requested
     if (destrimg) {
-      if (img == term.imgs.first)
+      if (img->next)
+        img->next->prev = img->prev;
+      else
+        term.imgs.last = img->prev;
+      if (img->prev)
+        img->prev->next = img->next;
+      else
         term.imgs.first = img->next;
-      if (prev)
-        prev->next = img->next;
-      if (img == term.imgs.last)
-        term.imgs.last = prev;
 
-      img = img->next;
       winimg_destroy(destrimg);
-    }
-    else {
-      prev = img;
-      img = img->next;
     }
   }
 
@@ -930,7 +962,7 @@ win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int ele
   }
 
   int col = PADDING + x * cell_width;
-  int row = PADDING + y * cell_height;
+  int row = OFFSET + PADDING + y * cell_height;
   if ((lattr & LATTR_MODE) >= LATTR_BOT)
     row -= cell_height;
   int w = elen * cell_width;

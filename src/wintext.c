@@ -109,6 +109,7 @@ static int font_height;
 int cell_width, cell_height;
 // border padding:
 int PADDING = 1;
+int OFFSET = 0;
 // width mode
 bool font_ambig_wide;
 
@@ -1278,7 +1279,7 @@ void
   // so we should arrange to have one.)
   if (term.has_focus) {
     int x = term.curs.x * cell_width + PADDING;
-    int y = (term.curs.y - term.disptop) * cell_height + PADDING;
+    int y = (term.curs.y - term.disptop) * cell_height + OFFSET + PADDING;
     SetCaretPos(x, y);
     if (ime_open) {
       COMPOSITIONFORM cf = {dwStyle : CFS_POINT, ptCurrentPos : {x, y}, rcArea : {0, 0, 0, 0}};
@@ -1329,7 +1330,7 @@ static void
     int y = wr.top
           + ((style & WS_THICKFRAME) ? GetSystemMetrics(SM_CYSIZEFRAME) : 0)
           + ((style & WS_CAPTION) ? GetSystemMetrics(SM_CYCAPTION) : 0)
-          + PADDING + last_pos.y * cell_height;
+          + OFFSET + PADDING + last_pos.y * cell_height;
 #ifdef debug_selection_show_size 
     cfg.selection_show_size = cfg.selection_show_size % 12 + 1;
 #endif
@@ -1742,7 +1743,7 @@ static void
         int sy = win_search_visible() ? SEARCHBAR_HEIGHT : 0;
         printf("%dx%d (%dx%d) -> %dx%d\n", (int)h, (int)w, bh, bw, xh, xw);
         // rescale window to aspect ratio of background image
-        win_set_pixels(xh - 2 * PADDING - sy, xw - 2 * PADDING);
+        win_set_pixels(xh - 2 * PADDING - OFFSET - sy, xw - 2 * PADDING);
         // WARNING: rescaling asynchronously at this point makes 
         // terminal geometry (term.rows, term.cols) inconsistent with 
         // running operations and may crash mintty; 
@@ -2212,7 +2213,7 @@ void
   printf("  %dx%d (%dx%d) -> %dx%d\n", (int)w, (int)h, bw, bh, xw, xh);
 #endif
   // rescale window to aspect ratio of background image
-  win_set_pixels(xh - 2 * PADDING - sy, xw - 2 * PADDING);
+  win_set_pixels(xh - 2 * PADDING - OFFSET - sy, xw - 2 * PADDING);
 #endif
 }
 
@@ -2776,7 +2777,7 @@ void
 
  /* Convert to window coordinates */
   int x = tx * char_width + PADDING;
-  int y = ty * cell_height + PADDING + g_render_tab_height;
+  int y = ty * cell_height + OFFSET + PADDING + g_render_tab_height;
 
 #ifdef support_triple_width
 #define TATTR_TRIPLE 0x0080000000000000u
@@ -2855,7 +2856,7 @@ void
         fg = bg;
       bg = cursor_colour;
 #ifdef debug_cursor
-      printf("set cursor (colour %06X) @(row %d col %d) cursor_on %d\n", bg, (y - PADDING) / cell_height, (x - PADDING) / char_width, term.cursor_on);
+      printf("set cursor (colour %06X) @(row %d col %d) cursor_on %d\n", bg, (y - PADDING - OFFSET) / cell_height, (x - PADDING) / char_width, term.cursor_on);
 #endif
     }
   }
@@ -4650,9 +4651,9 @@ void
 
   term_invalidate(
     (p.rcPaint.left - PADDING) / cell_width,
-    (p.rcPaint.top - PADDING) / cell_height,
+    (p.rcPaint.top - PADDING - OFFSET) / cell_height,
     (p.rcPaint.right - PADDING - 1) / cell_width,
-    (p.rcPaint.bottom - PADDING - 1) / cell_height
+    (p.rcPaint.bottom - PADDING - OFFSET - 1) / cell_height
   );
 
   //if (kb_trace) printf("[%ld] win_paint state %d (idl/blk/pnd)\n", mtime(), update_state);
@@ -4672,9 +4673,9 @@ void
 #endif
       (p.fErase
        || p.rcPaint.left < PADDING
-       || p.rcPaint.top < PADDING
+       || p.rcPaint.top < OFFSET + PADDING
        || p.rcPaint.right >= PADDING + cell_width * term.cols
-       || p.rcPaint.bottom >= PADDING + cell_height * term.rows
+       || p.rcPaint.bottom >= OFFSET + PADDING + cell_height * term.rows
       )
      )
   {
@@ -4695,9 +4696,9 @@ void
     IntersectClipRect(dc, p.rcPaint.left, p.rcPaint.top, p.rcPaint.right,
                       p.rcPaint.bottom);
 
-    ExcludeClipRect(dc, PADDING, PADDING,
+    ExcludeClipRect(dc, PADDING, OFFSET + PADDING,
                     PADDING + cell_width * term.cols,
-                    PADDING + g_render_tab_height + cell_height * term.rows);
+                    OFFSET + PADDING + g_render_tab_height + cell_height * term.rows);
 
     Rectangle(dc, p.rcPaint.left, p.rcPaint.top,
                   p.rcPaint.right, p.rcPaint.bottom);

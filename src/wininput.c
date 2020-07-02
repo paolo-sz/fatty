@@ -973,7 +973,7 @@ static pos
   TERM_VAR_REF(true)
     
   return (pos){
-    y : (int)floorf((y - PADDING - win_tab_height()) / (float)cell_height),
+    y : (int)floorf((y - PADDING - OFFSET - win_tab_height()) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
     r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)
@@ -1157,10 +1157,10 @@ void
         p.x -= PADDING;
       if (p.x >= term.cols * cell_width)
         p.x = term.cols * cell_width - 1;
-      if (p.y < PADDING)
+      if (p.y < OFFSET + PADDING)
         p.y = 0;
       else
-        p.y -= PADDING;
+        p.y -= OFFSET + PADDING;
       if (p.y >= term.rows * cell_height)
         p.y = term.rows * cell_height - 1;
 
