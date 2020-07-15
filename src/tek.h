@@ -31,6 +31,7 @@ extern void tek_alt(bool);
 extern void tek_copy(void);
 #define tek_clear(...) (tek_clear)(term_p, ##__VA_ARGS__)
 extern void (tek_clear)(struct term* term_p);
+extern void tek_set_font(wchar * fn);
 
 #define tek_move_to(...) (tek_move_to)(term_p, ##__VA_ARGS__)
 extern void (tek_move_to)(struct term* term_p, int y, int x);

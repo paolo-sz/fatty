@@ -23,6 +23,7 @@ static short tek_y, tek_x;
 static short gin_y, gin_x;
 static uchar lastfont = 0;
 static int lastwidth = -1;
+static wchar * tek_dyn_font = 0;
 
 static int beam_glow = 1;
 static int thru_glow = 5;
@@ -516,13 +517,21 @@ get_font_quality(void)
   return tmp[(int)cfg.font_smoothing];
 }
 
+void
+tek_set_font(wchar * fn)
+{
+  if (tek_dyn_font)
+    free(tek_dyn_font);
+  tek_dyn_font = fn;
+}
+
 static void
 init_font(short f)
 {
   if (tekfonts[f].f)
     DeleteObject(tekfonts[f].f);
 
-  wstring fn = *cfg.tek_font ? cfg.tek_font : cfg.font.name;
+  wstring fn = tek_dyn_font ?: *cfg.tek_font ? cfg.tek_font : cfg.font.name;
   tekfonts[f].f = CreateFontW(
                   - tekfonts[f].hei, - tekfonts[f].wid, 
                   0, 0, FW_NORMAL, 0, 0, 0,
@@ -901,14 +910,14 @@ void
     }
   }
 
-  // cursor ▐ or fill rectangle; ❚ spiddly; █▒▓ do not work unclipped
-  if (lastfont < 4) {
+  // text cursor
+  if (lastfont < 4 && term.cblinker) {
     if (cc != fg)
       out_flush(hdc);
     fg = cc;
     struct tekchar tekchar_tmp;
     tekchar_tmp.type = 0;
-    tekchar_tmp.c = 0x2590;
+    tekchar_tmp.c = 0x2588;  // ▐ half ❚ spiddly █▒▓
     tekchar_tmp.w = 1;
     tekchar_tmp.font = lastfont;
     out_char(hdc, &tekchar_tmp);
