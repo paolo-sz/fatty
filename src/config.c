@@ -44,6 +44,11 @@ const config default_cfg = {
   bold_colour : (colour)-1,
   bg_colour : 0x000000,
   cursor_colour : 0xBFBFBF,
+  tek_fg_colour : (colour)-1,
+  tek_bg_colour : (colour)-1,
+  tek_cursor_colour : (colour)-1,
+  tek_write_thru_colour : (colour)-1,
+  tek_glow : 1,
   underl_colour : (colour)-1,
   hover_colour : (colour)-1,
   disp_space : 0,
@@ -91,6 +96,7 @@ const config default_cfg = {
   locale : "",
   charset : "",
   fontmenu : -1,
+  tek_font : W(""),
   // Keys
   backspace_sends_bs : CERASE == '\b',
   delete_sends_del : false,
@@ -189,6 +195,7 @@ const config default_cfg = {
   suspbuf_max : 8080,
   trim_selection : true,
   charwidth : 0,
+  printable_controls : 0,
   char_narrowing : 75,
   emojis : 0,
   emoji_placement : 0,
@@ -281,6 +288,11 @@ options[] = {
   // Looks
   {"BoldColour", OPT_COLOUR, offcfg(bold_colour)},
   {"CursorColour", OPT_COLOUR, offcfg(cursor_colour)},
+  {"TekForegroundColour", OPT_COLOUR, offcfg(tek_fg_colour)},
+  {"TekBackgroundColour", OPT_COLOUR, offcfg(tek_bg_colour)},
+  {"TekCursorColour", OPT_COLOUR, offcfg(tek_cursor_colour)},
+  {"TekWriteThruColour", OPT_COLOUR, offcfg(tek_write_thru_colour)},
+  {"TekGlow", OPT_INT, offcfg(tek_glow)},
   {"UnderlineColour", OPT_COLOUR, offcfg(underl_colour)},
   {"DispSpace", OPT_INT, offcfg(disp_space)},
   {"DispClear", OPT_INT, offcfg(disp_clear)},
@@ -346,6 +358,7 @@ options[] = {
   {"Font9Weight", OPT_INT, offcfg(fontfams[9].weight)},
   {"Font10", OPT_WSTRING, offcfg(fontfams[10].name)},
   {"Font10Weight", OPT_INT, offcfg(fontfams[10].weight)},
+  {"TekFont", OPT_WSTRING, offcfg(tek_font)},
 
   // Keys
   {"BackspaceSendsBS", OPT_BOOL, offcfg(backspace_sends_bs)},
@@ -458,6 +471,7 @@ options[] = {
   {"SuspendWhileSelecting", OPT_INT, offcfg(suspbuf_max)},
   {"TrimSelection", OPT_BOOL, offcfg(trim_selection)},
   {"Charwidth", OPT_CHARWIDTH, offcfg(charwidth)},
+  {"PrintableControls", OPT_INT, offcfg(printable_controls)},
   {"CharNarrowing", OPT_INT, offcfg(char_narrowing)},
   {"Emojis", OPT_EMOJIS, offcfg(emojis)},
   {"EmojiPlacement", OPT_EMOJI_PLACEMENT, offcfg(emoji_placement)},
@@ -1821,35 +1835,42 @@ about_handler(control *unused(ctrl), int event)
 }
 
 
-static void
-add_file_resources(control *ctrl, wstring pattern, bool dirs)
-{
-  wstring suf = wcsrchr(pattern, L'.');
-  int sufl = suf ? wcslen(suf) : 0;
+#if CYGWIN_VERSION_API_MINOR < 74
+#define use_findfile
+#else
+#include <dirent.h>
+#endif
 
+static void
+add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
+{
   init_config_dirs();
-  WIN32_FIND_DATAW ffd;
-  HANDLE hFind = NULL;
-  int ok = false;
+
   for (int i = last_config_dir; i >= 0; i--) {
+#ifdef use_findfile
+    wstring suf = wcsrchr(pattern, L'.');
+    int sufl = suf ? wcslen(suf) : 0;
+
     wchar * rcpat = path_posix_to_win_w(config_dirs[i]);
     int len = wcslen(rcpat);
     rcpat = renewn(rcpat, len + wcslen(pattern) + 2);
     rcpat[len++] = L'/';
     wcscpy(&rcpat[len], pattern);
+    //printf("<%s> -> <%ls>\n", config_dirs[i], rcpat);
 
-    hFind = FindFirstFileW(rcpat, &ffd);
-    ok = hFind != INVALID_HANDLE_VALUE;
+    WIN32_FIND_DATAW ffd;
+    HANDLE hFind = FindFirstFileW(rcpat, &ffd);
+    int ok = hFind != INVALID_HANDLE_VALUE;
     free(rcpat);
     if (ok) {
       while (ok) {
-        if (dirs && (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
+        if (list_dirs && (ffd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)) {
           if (ffd.cFileName[0] != '.' && !!wcscmp(ffd.cFileName, W("common")))
             // exclude the [0-7] links left over by the `getemojis` script
             if (wcslen(ffd.cFileName) > 1)
               dlg_listbox_add_w(ctrl, ffd.cFileName);
         }
-        else if (!dirs) {
+        else if (!list_dirs) {
           //LARGE_INTEGER filesize = {.LowPart = ffd.nFileSizeLow, .HighPart = ffd.nFileSizeHigh};
           //long s = filesize.QuadPart;
 
@@ -1870,6 +1891,44 @@ add_file_resources(control *ctrl, wstring pattern, bool dirs)
       // empty valid dir
       //break;
     }
+#else
+    char * pat = cs__wcstombs(pattern);
+    char * patsuf = strrchr(pat, '.');
+    char * patbase = strrchr(pat, '/');
+    if (patbase)
+      *patbase = 0;
+    char * rcpat = asform("%s/%s", config_dirs[i], pat);
+    //printf("<%s> -> <%s>\n", config_dirs[i], rcpat);
+
+    DIR * dir = opendir(rcpat);
+    free(rcpat);
+    if (dir) {
+      struct dirent * direntry;
+      while ((direntry = readdir (dir)) != 0) {
+        if (patsuf && !strstr(direntry->d_name, patsuf))
+          continue;
+
+        if (list_dirs && direntry->d_type == DT_DIR) {
+          if (direntry->d_name[0] != '.' && !!strcmp(direntry->d_name, "common"))
+            // exclude the [0-7] links left over by the `getemojis` script
+            if (strlen(direntry->d_name) > 1)
+              dlg_listbox_add(ctrl, direntry->d_name);
+        }
+        else if (!list_dirs) {
+          // strip suffix
+          int len = strlen(direntry->d_name);
+          if (direntry->d_name[0] != '.' && direntry->d_name[len - 1] != '~') {
+            char * dotsuf = strrchr(direntry->d_name, '.');
+            if (dotsuf)
+              *dotsuf = 0;
+            dlg_listbox_add(ctrl, direntry->d_name);
+          }
+        }
+      }
+      closedir(dir);
+    }
+    free(pat);
+#endif
   }
 }
 

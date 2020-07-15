@@ -16,6 +16,7 @@ extern "C" {
 
 #include "charset.h"
 #include "child.h"
+#include "tek.h"
 
 #include <math.h>
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
@@ -543,6 +544,10 @@ void
     alt_fn ? const_cast<wchar *>(W("Alt+F8")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+R")) : null
   );
 
+  modify_menu(ctxmenu, IDM_PAGE, 0, const_cast<wchar *>(W("PAGE")),
+    null
+  );
+
   uint defsize_enabled =
     IsZoomed(wnd) || term.cols != cfg.cols || term.rows != cfg.rows
     ? MF_ENABLED : MF_GRAYED;
@@ -705,6 +710,8 @@ win_init_ctxmenu(bool extended_menu, bool with_user_commands)
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_TOGVT220KB, 0);
   }
   AppendMenuW(ctxmenu, MF_ENABLED, IDM_RESET, 0);
+  if (tek_mode)
+    AppendMenuW(ctxmenu, MF_ENABLED, IDM_PAGE, 0);
   if (extended_menu) {
     //__ Context menu: clear scrollback buffer (lines scrolled off the window)
     AppendMenuW(ctxmenu, MF_ENABLED, IDM_CLRSCRLBCK, _W("Clear Scrollback"));
@@ -1106,6 +1113,13 @@ void
 void
 (win_mouse_move)(struct term* term_p, bool nc, LPARAM lp)
 {
+  if (tek_mode == TEKMODE_GIN) {
+    int y = GET_Y_LPARAM(lp) - PADDING - OFFSET;
+    int x = GET_X_LPARAM(lp) - PADDING;
+    tek_move_to(y, x);
+    return;
+  }
+
   if (lp == last_lp)
     return;
 
@@ -1596,6 +1610,7 @@ static struct function_def cmd_defs[] = {
   {"copy-title", {IDM_COPYTITLE}, 0},
   {"lock-title", {.fct = lock_title}, mflags_lock_title},
   {"reset", {IDM_RESET}, 0},
+  {"page", {IDM_PAGE}, 0},
   {"break", {IDM_BREAK}, 0},
   //{"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
   {"open", {IDM_OPEN}, mflags_open},
@@ -2297,6 +2312,24 @@ static LONG last_key_time = 0;
     else
       term.selected = false;
     return true;
+  }
+  if (tek_mode == TEKMODE_GIN) {
+    int step = (mods & MDK_SHIFT) ? 40 : (mods & MDK_CTRL) ? 1 : 4;
+    switch (key) {
+      when VK_HOME : tek_move_by(step, -step);
+      when VK_UP   : tek_move_by(step, 0);
+      when VK_PRIOR: tek_move_by(step, step);
+      when VK_LEFT : tek_move_by(0, -step);
+      when VK_CLEAR: tek_move_by(0, 0);
+      when VK_RIGHT: tek_move_by(0, step);
+      when VK_END  : tek_move_by(-step, -step);
+      when VK_DOWN : tek_move_by(-step, 0);
+      when VK_NEXT : tek_move_by(-step, step);
+      break;
+      default: step = 0;
+    }
+    if (step)
+      return true;
   }
 
   bool allow_shortcut = true;
@@ -3197,6 +3230,8 @@ static LONG last_key_time = 0;
     // we cannot win_update_now here; need to wait for the echo (child_proc)
     kb_input = true;
     //printf("[%ld] win_key sent %02X\n", mtime(), key); kb_trace = key;
+    if (tek_mode == TEKMODE_GIN)
+      tek_send_address();
   }
   else if (comp_state == COMP_PENDING)
     comp_state = COMP_ACTIVE;

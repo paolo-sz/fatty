@@ -22,6 +22,7 @@ extern "C" {
 #include "print.h"
 #include "sixel.h"
 #include "winimg.h"
+#include "tek.h"
 #include "base64.h"
 #include "unicodever.t"
 
@@ -776,11 +777,16 @@ static void
   
   //if (kb_trace) printf("[%ld] write_char 'q'\n", mtime());
 
+  if (tek_mode) {
+    tek_write(c, width);
+    return;
+  }
+
   if (!c)
     return;
 
-  term_cursor *curs = &term.curs;
-  termline *line = term.lines[curs->y];
+  term_cursor * curs = &term.curs;
+  termline * line = term.lines[curs->y];
 
   // support non-BMP for the REP function;
   // this is a hack, it would be cleaner to fold the term_write block
@@ -1185,6 +1191,123 @@ contains(string s, int i)
   return false;
 }
 
+static state_t prev_state = (state_t)0;
+
+#define tek_esc(...) (tek_esc)(term_p, ##__VA_ARGS__)
+/* Process Tek mode ESC control */
+static void
+(tek_esc)(struct term* term_p, char c)
+{
+  TERM_VAR_REF(true)
+  
+  if (prev_state)
+    term.state = prev_state;
+  else
+    term.state = NORMAL;
+
+  switch (c) {
+    when '\e':   /* stay in ESC state */
+      term.state = TEK_ESCAPE;
+    when '\n':   /* LF: stay in ESC state */
+      term.state = TEK_ESCAPE;
+    when 0 case_or '\r':   /* stay in ESC state */
+      term.state = TEK_ESCAPE;
+    when '\a':   /* BEL: Bell */
+      write_bell();
+    when '\b' case_or '\t' or '\v':     /* BS or HT or VT */
+      tek_write(c, -2);
+    when CTRL('L'):   /* FF: Alpha mode, clear screen */
+      tek_mode = TEKMODE_ALPHA;
+      term.state = NORMAL;
+      tek_bypass = false;
+      tek_clear();
+    when CTRL('E'):   /* ENQ: terminal type query */
+      tek_bypass = true;
+      tek_enq();
+    when CTRL('N'):   /* LS1: Locking-shift one */
+      tek_alt(true);
+    when CTRL('O'):   /* LS0: Locking-shift zero */
+      tek_alt(false);
+    when CTRL('W'):   /* ETB: Make Copy */
+      tek_copy();
+      tek_bypass = false;
+    when CTRL('X'):   /* CAN: Set Bypass */
+      tek_bypass = true;
+    when CTRL('Z'):   /* SUB: Gin mode */
+      tek_mode = TEKMODE_GIN;
+      tek_gin();
+      term.state = NORMAL;
+      tek_bypass = true;
+    when 0x1C:   /* FS: Special Plot mode */
+      tek_mode = TEKMODE_SPECIAL_PLOT;
+      term.state = TEK_ADDRESS0;
+    when 0x1D:   /* GS: Graph mode */
+      tek_mode = TEKMODE_GRAPH0;
+      term.state = TEK_ADDRESS0;
+    when 0x1E:   /* RS: Incremental Plot mode */
+      tek_mode = TEKMODE_INCREMENTAL_PLOT;
+      term.state = TEK_INCREMENTAL;
+    when 0x1F:   /* US: Normal mode */
+      tek_mode = TEKMODE_ALPHA;
+      term.state = NORMAL;
+    when '`' ... 'g':  /* Normal mode */
+      tek_beam(false, false, c & 7);
+    when 'h' ... 'o':  /* Defocused mode */
+      tek_beam(true, false, c & 7);
+    when 'p' ... 'w':  /* Write-Thru mode */
+      tek_beam(false, true, c & 7);
+    when '8' ... ';':
+      tek_font(c - '8');
+    when CTRL('C'):
+      tek_mode = TEKMODE_OFF;
+      win_invalidate_all(false);
+  }
+}
+
+#define tek_ctrl(...) (tek_ctrl)(term_p, ##__VA_ARGS__)
+/* Process Tek mode control character */
+static void
+(tek_ctrl)(struct term* term_p, char c)
+{
+  TERM_VAR_REF(true)
+  
+  if (term.state == TEK_ADDRESS0 || term.state == TEK_ADDRESS)
+    prev_state = term.state;
+
+  switch (c) {
+    when '\e':   /* ESC: Escape */
+      prev_state = term.state;
+      term.state = TEK_ESCAPE;
+    when '\a':   /* BEL: Bell */
+      write_bell();
+      tek_bypass = false;
+    when '\b' or '\t' or '\v':     /* BS or HT or VT */
+      if (tek_mode == TEKMODE_ALPHA)
+        tek_write(c, -2);
+    when '\n':   /* LF: Line feed */
+      tek_bypass = false;
+      tek_write(c, -2);
+    when '\r':   /* CR: Carriage return */
+      tek_mode = TEKMODE_ALPHA;
+      term.state = NORMAL;
+      tek_bypass = false;
+      tek_write(c, -2);
+    when 0x1C:   /* FS: Point Plot mode */
+      tek_mode = TEKMODE_POINT_PLOT;
+      term.state = TEK_ADDRESS0;
+    when 0x1D:   /* GS: Graph mode */
+      tek_mode = TEKMODE_GRAPH0;
+      term.state = TEK_ADDRESS0;
+    when 0x1E:   /* RS: Incremental Plot mode */
+      tek_mode = TEKMODE_INCREMENTAL_PLOT;
+      term.state = TEK_INCREMENTAL;
+    when 0x1F:   /* US: Normal mode */
+      tek_mode = TEKMODE_ALPHA;
+      term.state = NORMAL;
+      tek_bypass = false;
+  }
+}
+
 #define do_ctrl(...) (do_ctrl)(term_p, ##__VA_ARGS__)
 /* Process control character, returning whether it has been recognised. */
 static bool
@@ -1192,6 +1315,11 @@ static bool
 {
   TERM_VAR_REF(true)
   
+  if (tek_mode) {
+    tek_ctrl(c);
+    return true;
+  }
+
   switch (c) {
     when '\e':   /* ESC: Escape */
       term.state = ESCAPE;
@@ -1949,6 +2077,11 @@ static void
           if (state != term.show_scrollbar) {
             term.show_scrollbar = state;
             win_update_scrollbar(false);
+          }
+        when 38: /* DECTEK: Enter Tektronix Mode (VT240, VT330) */
+          if (state) {
+            tek_mode = TEKMODE_ALPHA;
+            tek_init(cfg.tek_glow);
           }
         when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
           term.deccolm_allowed = state;
@@ -3540,11 +3673,17 @@ static void
     when 12:  do_colour_osc(false, CURSOR_COLOUR_I, false);
     when 17:  do_colour_osc(false, SEL_COLOUR_I, false);
     when 19:  do_colour_osc(false, SEL_TEXT_COLOUR_I, false);
+    when 15:  do_colour_osc(false, TEK_FG_COLOUR_I, false);
+    when 16:  do_colour_osc(false, TEK_BG_COLOUR_I, false);
+    when 18:  do_colour_osc(false, TEK_CURSOR_COLOUR_I, false);
     when 110: do_colour_osc(false, FG_COLOUR_I, true);
     when 111: do_colour_osc(false, BG_COLOUR_I, true);
     when 112: do_colour_osc(false, CURSOR_COLOUR_I, true);
     when 117: do_colour_osc(false, SEL_COLOUR_I, true);
     when 119: do_colour_osc(false, SEL_TEXT_COLOUR_I, true);
+    when 115: do_colour_osc(false, TEK_FG_COLOUR_I, true);
+    when 116: do_colour_osc(false, TEK_BG_COLOUR_I, true);
+    when 118: do_colour_osc(false, TEK_CURSOR_COLOUR_I, true);
     when 7:  // Set working directory (from Mac Terminal) for Alt+F2
       // extract dirname from file://host/path scheme
       if (!strncmp(s, "file:", 5))
@@ -3986,8 +4125,11 @@ static void
             wc = cs_btowc_glyph(c);
             if (wc != c)
               write_char(wc, 1);
+            else if (cfg.printable_controls > 1)
+              goto goon;
           }
           continue;
+          goon:;
         }
 
         // Non-characters
@@ -4007,7 +4149,7 @@ static void
           if (win_char_width(wc, term.curs.attr.attr) < 2)
             term.curs.attr.attr |= TATTR_EXPAND;
         }
-        else
+        else {
 #if HAS_LOCALES
           if (cfg.charwidth % 10)
             width = xcwidth(wc);
@@ -4027,6 +4169,13 @@ static void
 #else
           width = xcwidth(wc);
 #endif
+        }
+        if (width < 0 && cfg.printable_controls) {
+          if (wc >= 0x80 && wc < 0xA0)
+            width = 1;
+          else if (wc < ' ' && cfg.printable_controls > 1)
+            width = 1;
+        }
 
         if (width == 2
             // && wcschr(W("〈〉《》「」『』【】〒〓〔〕〖〗〘〙〚〛"), wc)
@@ -4259,6 +4408,44 @@ static void
 
       when VT52_BG:
         do_vt52_colour(false, c);
+
+      when TEK_ESCAPE:
+        tek_esc(c);
+
+      when TEK_ADDRESS0 case_or TEK_ADDRESS:
+        if (c < ' ')
+          tek_ctrl(c);
+        else if (tek_mode == TEKMODE_SPECIAL_PLOT && term.state == TEK_ADDRESS0) {
+          term.state = TEK_ADDRESS;
+          term.cmd_len = 0;
+          tek_intensity(c & 0x40, c & 0x37);
+        }
+        else if (!(c & 0x60) || term.cmd_len > 5) {
+          term.cmd_len = 0;
+          term.state = NORMAL;  // error
+        }
+        else {
+          if (term.state == TEK_ADDRESS0) {
+            term.state = TEK_ADDRESS;
+            term.cmd_len = 0;
+          }
+
+          term_push_cmd(c);
+          if ((c & 0x60) == 0x40) {
+            tek_address(term.cmd_buf);
+            term.state = TEK_ADDRESS0;
+            if (tek_mode == TEKMODE_GRAPH0)
+              tek_mode = TEKMODE_GRAPH;
+          }
+        }
+
+      when TEK_INCREMENTAL:
+        if (c < ' ')
+          tek_ctrl(c);
+        else if (c == ' ' || c == 'P')
+          tek_pen(c == 'P');
+        else if (strchr("DEAIHJBF", c))
+          tek_step(c);
 
       when ESCAPE case_or CMD_ESCAPE:
         if (term.vt52_mode)

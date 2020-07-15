@@ -17,6 +17,7 @@ extern "C" {
 #include "charset.h"  // wcscpy, wcsncat, combiningdouble
 #include "config.h"
 #include "winimg.h"  // winimgs_paint
+#include "tek.h"
 
 #include <winnls.h>
 #include <usp10.h>  // Uniscribe
@@ -1253,8 +1254,12 @@ void
   win_paint_exclude_search(dc);
   term_update_search();
 
-  term_paint();
-  winimgs_paint();
+  if (tek_mode)
+    tek_paint();
+  else {
+    term_paint();
+    winimgs_paint();
+  }
 
   ReleaseDC(wnd, dc);
 
@@ -4487,8 +4492,7 @@ win_set_colour(colour_i i, colour c)
     if (i == BOLD_COLOUR_I) {
       cc(BOLD_COLOUR_I, cfg.bold_colour);
     }
-    else
-    if (i == BOLD_FG_COLOUR_I) {
+    else if (i == BOLD_FG_COLOUR_I) {
       bold_colour_selected = false;
       if (cfg.bold_colour != (colour)-1)
         cc(BOLD_FG_COLOUR_I, cfg.bold_colour);
@@ -4507,6 +4511,12 @@ win_set_colour(colour_i i, colour c)
       cc(i, cfg.sel_bg_colour);
     else if (i == SEL_TEXT_COLOUR_I)
       cc(i, cfg.sel_fg_colour);
+    else if (i == TEK_FG_COLOUR_I)
+      cc(i, cfg.tek_fg_colour);
+    else if (i == TEK_BG_COLOUR_I)
+      cc(i, cfg.tek_bg_colour);
+    else if (i == TEK_CURSOR_COLOUR_I)
+      cc(i, cfg.tek_cursor_colour);
   }
   else {
     cc(i, c);
@@ -4634,6 +4644,9 @@ win_reset_colours(void)
     else
       printf("colour %d %06X [%s]\n", i, (int)colours[i], ci[i - FG_COLOUR_I]);
 #endif
+  win_set_colour(TEK_FG_COLOUR_I, cfg.tek_fg_colour);
+  win_set_colour(TEK_BG_COLOUR_I, cfg.tek_bg_colour);
+  win_set_colour(TEK_CURSOR_COLOUR_I, cfg.tek_cursor_colour);
 }
 
 
@@ -4658,8 +4671,12 @@ void
 
   //if (kb_trace) printf("[%ld] win_paint state %d (idl/blk/pnd)\n", mtime(), update_state);
   if (update_state != UPDATE_PENDING) {
-    term_paint();
-    winimgs_paint();
+    if (tek_mode)
+      tek_paint();
+    else {
+      term_paint();
+      winimgs_paint();
+    }
   }
 
   win_paint_tabs(0, p.rcPaint.right - p.rcPaint.left);
