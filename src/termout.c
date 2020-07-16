@@ -1258,6 +1258,9 @@ static void
       tek_beam(false, true, c & 7);
     when '8' ... ';':
       tek_font(c - '8');
+    when '?':
+      if (term.state == TEK_ADDRESS0 || term.state == TEK_ADDRESS)
+        term_do_write("", 1);
     when CTRL('C'):
       tek_mode = TEKMODE_OFF;
       win_invalidate_all(false);
