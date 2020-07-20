@@ -36,11 +36,11 @@ struct tekfont {
   void * f;
   short rows, cols;
   short hei, wid;
-} tekfonts[] = {
-  {0, 35, 74, 87, 55},
-  {0, 38, 81, 80, 50},
-  {0, 58, 121, 52, 33},
-  {0, 64, 133, 48, 30}
+} tekfonts[] = {        // Tek		VT240		mintty
+  {0, 35, 74, 89, 55},  // 35 × 74	35 × 74		35 × 74
+  {0, 38, 81, 82, 50},  // 38 × 81	38 × 81		38 × 81
+  {0, 58, 121, 53, 32}, // 58 × 121	58 × 128	58 × 128
+  {0, 64, 133, 48, 30}  // 64 × 133	64 × 133	64 × 136 (see out_lf)
 };
 
 struct tekchar {
@@ -336,7 +336,7 @@ tek_address(char * code)
   }
   else {  // error
 #ifdef debug_graph
-  printf(" -> err\n");
+    printf(" -> err\n");
 #endif
     return;
   }
@@ -589,7 +589,9 @@ out_lf(void)
 {
   short ph = tekfonts[lastfont & 3].hei;
   out_y -= ph;
-  if (out_y < 0) {
+  // "<=" rather than "<" to skip last pixel line,
+  // to adjust smallest character size mode to original 64 lines
+  if (out_y <= 0) {
     out_y = 3120 - ph;
     margin = 2048 - margin;
     out_x = (out_x + 2048) % 4096;
@@ -622,11 +624,12 @@ out_char(HDC dc, struct tekchar * tc)
           out_x = 4096 - pw;
         }
       when '\t':  /* HT: right */
-        out_x += pw;
+        out_flush(dc);
         if (out_x + pw > 4096) {
           out_cr();
           out_lf();
         }
+        out_x += pw;
       when '\v':  /* VT: up */
         out_up();
       when '\n':  /* LF: down */
@@ -640,24 +643,29 @@ out_char(HDC dc, struct tekchar * tc)
       out_flush(dc);
     }
     lastwidth = tc->w;
-
-    if (!txt) {
-      txt_y = out_y;
-      txt_x = out_x;
-    }
-
     short pw = tc->w * tekfonts[tc->font].wid;
-    out_x += pw;
+    //printf("out %02X @%d:%d\n", tc->c, out_y, out_x);
+
+    // line wrap-around
     if (out_x + pw > 4096) {
       out_flush(dc);
       out_cr();
       out_lf();
+      //printf("wrapped -> @%d:%d\n", out_y, out_x);
+    }
+
+    if (!txt) {
+      txt_y = out_y;
+      txt_x = out_x;
+      //printf("txt %02X @%d:%d\n", tc->c, out_y, out_x);
     }
 
     txt = renewn(txt, (txt ? wcslen(txt) : 0) + 2);
     txt[txt_len ++] = tc->c;
     txt[txt_len] = 0;
     txt_wid += pw;
+
+    out_x += pw;
   }
   lastfont = tc->font;
 }
@@ -744,7 +752,7 @@ void
   HDC dc = GetDC(wnd);
   HDC hdc = CreateCompatibleDC(dc);
   HBITMAP hbm = scale_mode == 1
-                ? CreateCompatibleBitmap(dc, 4096, 4096)
+                ? CreateCompatibleBitmap(dc, 4096, 3120)
                 : CreateCompatibleBitmap(dc, width, height);
   (void)SelectObject(hdc, hbm);
 
@@ -754,7 +762,7 @@ void
   HBRUSH bgbr = CreateSolidBrush(bg);
   RECT tmp_rect;
   if (scale_mode == 1)
-    tmp_rect = {0, 0, 4096, 4096};
+    tmp_rect = {0, 0, 4096, 3120};
   else
     tmp_rect = {0, 0, width, height};
   FillRect(hdc, &tmp_rect, bgbr);
@@ -786,15 +794,22 @@ void
   else
     scale_mode = 0;
 
+  int pen_width0 = scale_mode == 1
+                   ? width / 204 + height / 156
+                   : (width + height) / 1600;
+  // in scale_modes 0 or -1, for full width (3120×4096) pen_width should be 4
+  //printf("pen width %d\n", pen_width0);
+
   txt = 0;
   out_x = 0;
   out_y = 3120 - tekfonts[font].hei;
   margin = 0;
   lastfont = 4;
-  int pen_width = scale_mode == 1 ? width / 204 + height / 156 : 0;
   //printf("tek_paint %d %p\n", tek_buf_len, tek_buf);
   for (int i = 0; i < tek_buf_len; i++) {
     struct tekchar * tc = &tek_buf[i];
+
+    int pen_width = pen_width0;
 
     // write-thru mode and beam glow effect (bright drawing spot)
     if (tc->writethru) {
@@ -832,7 +847,7 @@ void
       // simulate defocused by brighter display
       //fg = glowfg;
       // or by wider pen
-      pen_width = width / 204 + height / 156;
+      pen_width = (pen_width ?: 1) * 8;
       // or by shaded pen; not implemented
     }
 
@@ -927,7 +942,7 @@ void
   // GIN mode
   if (tek_mode == TEKMODE_GIN) {
     fg = ((fg0 & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
-    HPEN pen = CreatePen(PS_SOLID, pen_width, fg);
+    HPEN pen = CreatePen(PS_SOLID, pen_width0, fg);
     HPEN oldpen = (HPEN)SelectObject(hdc, pen);
     SetBkMode(hdc, TRANSPARENT);  // stabilize broken vector styles
 
