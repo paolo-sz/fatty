@@ -26,8 +26,7 @@ struct Tab {
     std::unique_ptr<term> terminal;
     std::unique_ptr<child> chld;
     struct {
-        std::wstring titles[256];
-        uint titles_i;
+        std::vector<std::wstring> titles;
         bool attention;
     } info;
 

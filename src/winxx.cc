@@ -55,7 +55,6 @@ Tab::Tab() : terminal(new term), chld(new child) {
     memset(terminal.get(), 0, sizeof(struct term));
     memset(chld.get(), 0, sizeof(struct child));
     info.attention = false;
-    info.titles_i = 0;
 }
 
 Tab::~Tab() {
@@ -320,40 +319,42 @@ extern "C" {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
       Tab& tab = tabs[tab_idx];
-      if (tab.info.titles[tab.info.titles_i] != title) {
-          tab.info.titles[tab.info.titles_i] = title;
+      if (tab.info.titles.size() != 0) {
+        if (tab.info.titles.back() != title) {
+          tab.info.titles.back() = title;
+          invalidate_tabs();
+        }
+      } else {
+          tab.info.titles.push_back(title);
           invalidate_tabs();
       }
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
-      tie.pszText = (wchar *)tab.info.titles[tab.info.titles_i].data();
+      tie.pszText = (wchar *)tab.info.titles.back().data();
       SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
       if ((is_active_terminal)(term_p)) {
-        win_set_title((wchar *)tab.info.titles[tab.info.titles_i].data());
+        win_set_title((wchar *)tab.info.titles.back().data());
       }
   }
   
   wchar_t* win_tab_get_title(unsigned int idx) {
-      return (wchar_t *)tabs[idx].info.titles[tabs[idx].info.titles_i].c_str();
+      return (wchar_t *)tabs[idx].info.titles.back().c_str();
   }
   
   void win_tab_title_push(struct term* term_p) {
     int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return;
     Tab& tab = tabs[tab_idx];
-    std::wstring from_title = tab.info.titles[tab.info.titles_i];
-    if (tab.info.titles_i < lengthof(tab.info.titles)-1) {
-      tab.info.titles_i++;
-      tab.info.titles[tab.info.titles_i] = from_title;
-    }
+    std::wstring from_title = tab.info.titles.back();
+    tab.info.titles.push_back(from_title);
   }
     
   wchar_t* win_tab_title_pop(struct term* term_p) {
     int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return const_cast<wchar *>(L"");
     Tab& tab = tabs[tab_idx];
-    if (tab.info.titles_i != 0)
-      tab.info.titles_i--;
+    if (tab.info.titles.size() != 1)
+      tab.info.titles.pop_back();
     return win_tab_get_title(active_tab);
   }
   
