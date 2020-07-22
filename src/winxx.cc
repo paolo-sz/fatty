@@ -20,7 +20,7 @@
 extern "C" {
   #include "winpriv.h"
   #include "winsearch.h"
-  
+
   extern wchar * cs__mbstowcs(const char * s);
 }
 
@@ -78,27 +78,27 @@ Tab& Tab::operator=(Tab&& t) {
 }
 
 extern "C" {
-  
+
   void win_set_timer(CallbackFn cb, void* data, uint ticks) {
       auto result = callbacks.insert(std::make_tuple(cb, data));
       CallbackSet::iterator iter = result.first;
       SetTimer(wnd, reinterpret_cast<UINT_PTR>(&*iter), ticks, NULL);
   }
-  
+
   void win_process_timer_message(WPARAM message) {
       void* pointer = reinterpret_cast<void*>(message);
       auto callback = *reinterpret_cast<Callback*>(pointer);
       callbacks.erase(callback);
       KillTimer(wnd, message);
-  
+
       // call the callback
       get<0>(callback)( get<1>(callback) );
   }
-  
+
   static void invalidate_tabs() {
       win_invalidate_all(false);
   }
-  
+
   struct term* win_active_terminal() {
       if (active_tab >= tabs.size()) {
         if (tabs.size() == 0) {
@@ -120,14 +120,14 @@ extern "C" {
   int win_active_tab() {
     return active_tab;
   }
-  
+
   static void update_window_state(struct term *term_p) {
       win_update_menus(false /*should this be true?*/);
       if (cfg.title_settable)
         SetWindowTextW(wnd, win_tab_get_title(active_tab));
       (win_adapt_term_size)(term_p, false, false);
   }
-  
+
   static void set_active_tab(unsigned int index) {
       if (index >= tabs.size()) {
         active_tab = tabs.size() - 1;
@@ -142,7 +142,7 @@ extern "C" {
       }
       active->info.attention = false;
       SetFocus(wnd);
-      
+
       struct term* term_p = active->terminal.get();
       term_p->results.update_type = DISABLE_UPDATE;
       if (IsWindowVisible(win_get_search_wnd()) != term_p->search_window_visible) {
@@ -156,18 +156,18 @@ extern "C" {
           SetWindowTextW(win_get_search_edit_wnd(), L"");
         }
       }
-  
+
       update_window_state(term_p);
       win_invalidate_all(false);
       term_p->results.update_type = NO_UPDATE;
   }
-  
+
   int tab_idx_by_term(struct term* term_p) {
       std::vector<Tab>::iterator match = find_if(tabs.begin(), tabs.end(), [=](Tab& tab) {
               return tab.terminal.get() == term_p; });
       return (match == tabs.end()) ? -1 : (match - tabs.begin());
   }
-  
+
   void (win_tab_change)(struct term* term_p, int change) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
@@ -195,11 +195,11 @@ extern "C" {
         set_active_tab(tab_idx);
       }
   }
-  
+
   static char* g_home;
   static char* g_cmd;
   static char** g_argv;
-  
+
   static void newtab(
           unsigned short rows, unsigned short cols,
           unsigned short width, unsigned short height, const char* cwd, char* title) {
@@ -227,13 +227,13 @@ extern "C" {
       (win_tab_set_title)(tab.terminal.get(), ws);
       free(ws);
   }
-  
+
   static void set_tab_bar_visibility(bool b);
-  
+
   void win_tab_set_argv(char** argv) {
       g_argv = argv;
   }
-  
+
   void win_tab_init(char* home, char* cmd, char** argv, int width, int height, char* title) {
       g_home = home;
       g_cmd = cmd;
@@ -241,7 +241,7 @@ extern "C" {
       newtab(cfg.rows, cfg.cols, width, height, nullptr, title);
       set_tab_bar_visibility(tabs.size() > 1);
   }
-  
+
   void (win_tab_create)(struct term* term_p) {
       std::stringstream cwd_path;
       cwd_path << "/proc/" << term_p->child->pid << "/cwd";
@@ -251,7 +251,7 @@ extern "C" {
       set_active_tab(tabs.size() - 1);
       set_tab_bar_visibility(tabs.size() > 1);
   }
-  
+
   void remove_callbacks(struct term* term_p) {
       for (;;) {
         auto cb = std::find_if(callbacks.begin(), callbacks.end(), [term_p](Callback x) {
@@ -284,7 +284,7 @@ extern "C" {
           win_invalidate_all(false);
       }
   }
-  
+
   void win_tab_clean() {
       bool invalidate = false;
       unsigned int new_active_tab = 0;
@@ -306,7 +306,7 @@ extern "C" {
           win_invalidate_all(false);
       }
   }
-  
+
   void (win_tab_attention)(struct term* term_p) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
@@ -314,7 +314,7 @@ extern "C" {
       tab.info.attention = true;
       invalidate_tabs();
   }
-  
+
   void (win_tab_set_title)(struct term* term_p, wchar_t* title) {
       int tab_idx = tab_idx_by_term(term_p);
       if (tab_idx == -1) return;
@@ -336,11 +336,11 @@ extern "C" {
         win_set_title((wchar *)tab.info.titles.back().data());
       }
   }
-  
+
   wchar_t* win_tab_get_title(unsigned int idx) {
       return (wchar_t *)tabs[idx].info.titles.back().c_str();
   }
-  
+
   void win_tab_title_push(struct term* term_p) {
     int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return;
@@ -348,7 +348,7 @@ extern "C" {
     std::wstring from_title = tab.info.titles.back();
     tab.info.titles.push_back(from_title);
   }
-    
+
   wchar_t* win_tab_title_pop(struct term* term_p) {
     int tab_idx = tab_idx_by_term(term_p);
     if (tab_idx == -1) return const_cast<wchar *>(L"");
@@ -357,35 +357,32 @@ extern "C" {
       tab.info.titles.pop_back();
     return win_tab_get_title(active_tab);
   }
-  
-  /*
-   * Title stack (implemented as fixed-size circular buffer)
-   */
+
   void
   (win_tab_save_title)(struct term* term_p)
   {
     win_tab_title_push(term_p);
   }
-  
+
   void
   (win_tab_restore_title)(struct term* term_p)
   {
     (win_tab_set_title)(term_p, win_tab_title_pop(term_p));
   }
-  
+
   bool win_should_die() {
       return tabs.size() == 0;
   }
-  
+
   static int tabheight() {
       init_scale_factors();
       RECT tr;
       SendMessage(tab_wnd, TCM_GETITEMRECT, 0, (LPARAM)&tr);
       return tr.bottom;
   }
-  
+
   static bool tab_bar_visible = false;
-  
+
   static void set_tab_bar_visibility(bool b) {
       if (b == tab_bar_visible) return;
   
@@ -394,23 +391,23 @@ extern "C" {
       (win_adapt_term_size)(win_active_terminal(), false, false);
       win_invalidate_all(false);
   }
-  
+
   int win_tab_height() {
     return tab_bar_visible ? tabheight() : 0;
   }
-  
+
   static int tab_font_size() {
       return 14 * g_yscale;
   }
-  
+
   static HGDIOBJ new_tab_font() {
       return CreateFont(tab_font_size(),0,0,0,FW_NORMAL,0,0,0,1,0,0,CLEARTYPE_QUALITY,0,0);
   }
-  
+
   static HGDIOBJ new_active_tab_font() {
       return CreateFont(tab_font_size(),0,0,0,FW_BOLD,0,0,0,1,0,0,CLEARTYPE_QUALITY,0,0);
   }
-  
+
   // Wrap GDI object for automatic release
   struct SelectWObj {
       HDC tdc;
@@ -418,7 +415,7 @@ extern "C" {
       SelectWObj(HDC dc, HGDIOBJ obj) { tdc = dc; old = SelectObject(dc, obj); }
       ~SelectWObj() { DeleteObject(SelectObject(tdc, old)); }
   };
-  
+
   void (win_paint_tabs)(struct term *term_p, LPARAM lp, int width) {
       RECT loc_tabrect, tabrect;
       unsigned int Index;
@@ -502,21 +499,21 @@ extern "C" {
       }
       DeleteDC(bufdc);
   }
-  
+
   void win_for_each_term(void (*cb)(struct term* term_p)) {
       for (Tab& tab : tabs)
           cb(tab.terminal.get());
   }
-  
+
   void win_for_each_term_bool(void (*cb)(struct term* term_p, bool param), bool param) {
       for (Tab& tab : tabs)
           cb(tab.terminal.get(), param);
   }
-  
+
   void win_tab_mouse_click() {
       set_active_tab(TabCtrl_GetCurSel(tab_wnd));
   }
-  
+
   void win_tab_close_all() {
       for (Tab& tab : tabs) {
           if (tab.chld.get()) {
