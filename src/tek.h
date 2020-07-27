@@ -20,7 +20,7 @@ extern void (tek_page)(struct term* term_p);
 #define tek_reset(...) (tek_reset)(term_p, ##__VA_ARGS__)
 extern void (tek_reset)(struct term* term_p);
 #define tek_init(...) (tek_init)(term_p, ##__VA_ARGS__)
-extern void (tek_init)(struct term* term_p, int glow);
+extern void (tek_init)(struct term* term_p, bool reset, int glow);
 extern void tek_gin(void);
 
 extern void tek_font(short f);
@@ -28,7 +28,7 @@ extern void tek_write(wchar c, int width);
 #define tek_enq(...) (tek_enq)(child_p, ##__VA_ARGS__)
 extern void (tek_enq)(struct child* child_p);
 extern void tek_alt(bool);
-extern void tek_copy(void);
+extern void tek_copy(wchar * fn);
 #define tek_clear(...) (tek_clear)(term_p, ##__VA_ARGS__)
 extern void (tek_clear)(struct term* term_p);
 extern void tek_set_font(wchar * fn);
@@ -48,5 +48,8 @@ extern void tek_step(char c);
 
 #define tek_paint(...) (tek_paint)(term_p, ##__VA_ARGS__)
 extern void (tek_paint)(struct term* term_p);
+
+// avoid #include "winimg.h"
+extern void save_img(HDC, int x, int y, int w, int h, wstring fn);
 
 #endif

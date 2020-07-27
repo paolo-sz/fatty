@@ -27,6 +27,7 @@ extern "C" {
 #include "unicodever.t"
 
 #include <termios.h>
+#include <sys/time.h>
 
 #define TERM_CMD_BUF_INC_STEP 128
 #define TERM_CMD_BUF_MAX_SIZE (1024 * 1024)
@@ -1229,7 +1230,7 @@ static void
     when CTRL('O'):   /* LS0: Locking-shift zero */
       tek_alt(false);
     when CTRL('W'):   /* ETB: Make Copy */
-      tek_copy();
+      term_save_image();
       tek_bypass = false;
     when CTRL('X'):   /* CAN: Set Bypass */
       tek_bypass = true;
@@ -2086,7 +2087,7 @@ static void
         when 38: /* DECTEK: Enter Tektronix Mode (VT240, VT330) */
           if (state) {
             tek_mode = TEKMODE_ALPHA;
-            tek_init(cfg.tek_glow);
+            tek_init(true, cfg.tek_glow);
           }
         when 40: /* Allow/disallow DECCOLM (xterm c132 resource) */
           term.deccolm_allowed = state;
@@ -3778,7 +3779,7 @@ static void
     when 50:
       if (tek_mode) {
         tek_set_font(cs__mbstowcs(s));
-        tek_init(cfg.tek_glow);
+        tek_init(false, cfg.tek_glow);
       }
       else {
         uint ff = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
@@ -4071,7 +4072,8 @@ static void
             if (wc)
               pos--;
           when -1: // Encoding error
-            write_error();
+            if (!tek_mode)
+              write_error();
             if (term.in_mb_char || term.high_surrogate)
               pos--;
             term.high_surrogate = 0;

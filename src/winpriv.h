@@ -193,4 +193,7 @@ extern char * geturl(int n);
 
 extern unsigned long mtime(void);
 
+#define term_save_image(...) (term_save_image)(term_p, ##__VA_ARGS__)
+extern void (term_save_image)(struct term *term_p);
+
 #endif

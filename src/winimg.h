@@ -17,4 +17,6 @@ extern void (winimgs_clear)(struct term* term_p);
 
 extern void win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr);
 
+extern void save_img(HDC, int x, int y, int w, int h, wstring fn);
+
 #endif

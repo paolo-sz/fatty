@@ -30,6 +30,8 @@ static int thru_glow = 5;
 
 static bool flash = false;
 
+static wchar * copyfn = 0;
+
 static wchar * APL = const_cast<wchar *>(W(" ¨)<≤=>]∨∧≠÷,+./0123456789([;×:\\¯⍺⊥∩⌊∊_∇∆⍳∘'⎕∣⊤○⋆?⍴⌈∼↓∪ω⊃↑⊂←⊢→≥-⋄ABCDEFGHIJKLMNOPQRSTUVWXYZ{⊣}$ "));
 
 struct tekfont {
@@ -37,8 +39,8 @@ struct tekfont {
   short rows, cols;
   short hei, wid;
 } tekfonts[] = {        // Tek		VT240		mintty
-  {0, 35, 74, 89, 55},  // 35 × 74	35 × 74		35 × 74
-  {0, 38, 81, 82, 50},  // 38 × 81	38 × 81		38 × 81
+  {0, 35, 74, 88, 55},  // 35 × 74	35 × 74		35 × 74
+  {0, 38, 81, 81, 50},  // 38 × 81	38 × 81		38 × 81
   {0, 58, 121, 53, 32}, // 58 × 121	58 × 128	58 × 128
   {0, 64, 133, 48, 30}  // 64 × 133	64 × 133	64 × 136 (see out_lf)
 };
@@ -205,10 +207,14 @@ tek_alt(bool alt_chars)
 
 
 void
-tek_copy(void)
+tek_copy(wchar * fn)
 {
+  if (!copyfn)
+    copyfn = fn;
 }
 
+
+#define dont_debug_graph
 
 /* vector_style
    0 solid
@@ -220,6 +226,9 @@ tek_copy(void)
 void
 tek_beam(bool defocused, bool write_through, char vector_style)
 {
+#ifdef debug_graph
+  printf("!tek_beam %d defocused %d write-thru %d\n", vector_style, defocused, write_through);
+#endif
   beam_defocused = defocused;
   beam_writethru = write_through;
   if (vector_style > 4)
@@ -235,13 +244,11 @@ tek_intensity(bool defocused, int i)
   intensity = i;
 }
 
-#define dont_debug_graph
-
 void
 tek_address(char * code)
 {
 #ifdef debug_graph
-  printf("tek_address %d <%s>", tek_mode, code);
+  printf("!tek_address %d <%s>", tek_mode, code);
 #endif
   /* https://vt100.net/docs/vt3xx-gp/chapter13.html#S13.14.3
 	tag bits
@@ -270,7 +277,7 @@ tek_address(char * code)
   short tag = 0;
   char * tc = code;
   while (* tc) {
-    tag = (tag << 2) | (* tc >> 5);
+    tag = (tag << 2) | ((* tc >> 5) & 3);
 #ifdef debug_graph
     printf(" %d%d", *tc >> 6, (*tc >> 5) & 1);
 #endif
@@ -671,7 +678,7 @@ out_char(HDC dc, struct tekchar * tc)
 }
 
 void
-(tek_init)(struct term* term_p, int glow)
+(tek_init)(struct term* term_p, bool reset, int glow)
 {
   TERM_VAR_REF(true)
 
@@ -679,6 +686,9 @@ void
   init_font(1);
   init_font(2);
   init_font(3);
+
+  if (reset)
+    tek_reset();
 
   static bool init = false;
   if (!init) {
@@ -729,6 +739,20 @@ void
   // retrieve terminal pixel size (without padding)
   int height, width;
   win_get_pixels(&height, &width, false);
+  if (copyfn) {
+    height = 780;
+    width = 1024;
+    // check if any 12-bit graphics addressing is used
+    for (int i = 0; i < tek_buf_len; i++) {
+      struct tekchar * tc = &tek_buf[i];
+      if (tc->type && ((tc->x & 3) || (tc->y & 3))) {
+        // select high resolution to reflect 12 bit addressing
+        height = 3120;
+        width = 4096;
+        break;
+      }
+    }
+  }
 
   // align to aspect ratio
   int pad_l = 0, pad_t = 0;
@@ -810,25 +834,39 @@ void
     struct tekchar * tc = &tek_buf[i];
 
     int pen_width = pen_width0;
+    fg = fg0;
+
+    // defocused mode
+    if (tc->defocused) {
+      // simulate defocused by brighter display
+      //fg = glowfg;
+      if (cfg.tek_defocused_colour != (colour)-1)
+        fg = cfg.tek_defocused_colour;
+
+      // display defocused by wider pen
+      pen_width = (pen_width ?: 1) * 12;
+      //printf("defocused pen width %d\n", pen_width);
+      // or by shaded pen; not implemented
+    }
 
     // write-thru mode and beam glow effect (bright drawing spot)
     if (tc->writethru) {
-      fg = fg0;
       if (tc->recent) {
         // simulate Write-Thru by distinct colour?
         //fg = RGB(200, 100, 0);
         // fade out?
         if (tc->recent <= (thru_glow + 1) / 2)
-          fg = ((fg0 & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
+          fg = ((fg & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
 
         tc->recent--;
       }
       else {
         // simulate faded Write-Thru by distinct colour?
         //fg = RGB(200, 100, 0);
-        fg = cfg.tek_write_thru_colour;
-        if (fg == (colour)-1) {
-          fg = ((fg0 & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
+        if (cfg.tek_write_thru_colour != (colour)-1)
+          fg = cfg.tek_write_thru_colour;
+        else {
+          fg = ((fg & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
           fg = RGB(green(fg), blue(fg), red(fg));
         }
         // fade away?
@@ -838,17 +876,6 @@ void
     else if (tc->recent) {
       fg = glowfg;
       tc->recent --;
-    }
-    else
-      fg = fg0;
-
-    // defocused mode
-    if (tc->defocused) {
-      // simulate defocused by brighter display
-      //fg = glowfg;
-      // or by wider pen
-      pen_width = (pen_width ?: 1) * 8;
-      // or by shaded pen; not implemented
     }
 
     if (tc->type) {
@@ -875,6 +902,7 @@ void
         return CreatePen(style, pen_width, fg);
 #endif
       };
+      //printf("style %d defoc %d pw %d\n", tc->style, tc->defocused, pen_width);
       switch (tc->style) {
         // 1 dotted
         when 1: pen = create_pen(PS_DOT);
@@ -926,7 +954,7 @@ void
   }
 
   // text cursor
-  if (lastfont < 4 && term.cblinker) {
+  if (!copyfn && lastfont < 4 && term.cblinker) {
     if (cc != fg)
       out_flush(hdc);
     fg = cc;
@@ -959,17 +987,24 @@ void
   if (scale_mode == -1)
     SetWorldTransform(hdc, &oldxf);
 
-  if (scale_mode == 1)
-    StretchBlt(dc,
-               PADDING + pad_l, OFFSET + PADDING + pad_t,
-               width, height,
-               hdc,
-               0, 0, 4096, 3120, SRCCOPY);
-  else
-    BitBlt(dc,
-           PADDING + pad_l, OFFSET + PADDING + pad_t,
-           width, height,
-           hdc, 0, 0, SRCCOPY);
+  if (copyfn) {
+    save_img(hdc, 0, 0, width, height, copyfn);
+    free(copyfn);
+    copyfn = 0;
+  }
+  else {
+    if (scale_mode == 1)
+      StretchBlt(dc,
+                 PADDING + pad_l, OFFSET + PADDING + pad_t,
+                 width, height,
+                 hdc,
+                 0, 0, 4096, 3120, SRCCOPY);
+    else
+      BitBlt(dc,
+             PADDING + pad_l, OFFSET + PADDING + pad_t,
+             width, height,
+             hdc, 0, 0, SRCCOPY);
+  }
 
   DeleteObject(hbm);
   DeleteDC(hdc);
