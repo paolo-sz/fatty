@@ -500,14 +500,22 @@ extern "C" {
       DeleteDC(bufdc);
   }
 
-  void win_for_each_term(void (*cb)(struct term* term_p)) {
-      for (Tab& tab : tabs)
-          cb(tab.terminal.get());
+  struct term** win_get_term_list(int* n) {
+    static std::vector<struct term *> term_pp;
+    term_pp.clear();
+    for (Tab& tab : tabs)
+      term_pp.push_back(tab.terminal.get());
+    *n = term_pp.size();
+    return term_pp.data();
   }
 
-  void win_for_each_term_bool(void (*cb)(struct term* term_p, bool param), bool param) {
-      for (Tab& tab : tabs)
-          cb(tab.terminal.get(), param);
+  struct child** win_get_child_list(int* n) {
+    static std::vector<struct child *> child_pp;
+    child_pp.clear();
+    for (Tab& tab : tabs)
+      child_pp.push_back(tab.chld.get());
+    *n = child_pp.size();
+    return child_pp.data();
   }
 
   void win_tab_mouse_click() {

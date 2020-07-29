@@ -939,7 +939,7 @@ win_get_font(uint fi)
 }
 
 void
-(win_change_font)(struct term* term_p, uint fi, wstring fn)
+win_change_font(uint fi, wstring fn)
 {
   if (fi < lengthof(fontfamilies)) {
     fontfamilies[fi].name = fn;
@@ -947,8 +947,8 @@ void
     HDC dc = GetDC(wnd);
     win_init_fontfamily(dc, fi);
     ReleaseDC(wnd, dc);
-    win_adapt_term_size(true, false);
-    win_for_each_term_bool((win_font_cs_reconfig), true);
+    WIN_FOR_EACH_TERM(win_adapt_term_size(true, false));
+    WIN_FOR_EACH_TERM(win_font_cs_reconfig(true));
   }
 }
 

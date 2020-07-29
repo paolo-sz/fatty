@@ -67,8 +67,7 @@ extern void (win_paint)(struct term* term_p);
 
 extern void win_init_fonts(int size);
 extern wstring win_get_font(uint findex);
-#define win_change_font(...) (win_change_font)(term_p, ##__VA_ARGS__)
-extern void (win_change_font)(struct term* term_p, uint findex, wstring fn);
+extern void win_change_font(uint findex, wstring fn);
 #define win_font_cs_reconfig(...) (win_font_cs_reconfig)(term_p, ##__VA_ARGS__)
 extern void (win_font_cs_reconfig)(struct term* term_p, bool font_changed);
 
@@ -178,8 +177,26 @@ void win_tab_mouse_click();
 int win_tab_height();
 #define win_paint_tabs(...) (win_paint_tabs)(term_p, ##__VA_ARGS__)
 void (win_paint_tabs)(struct term *term_p, LPARAM lp, int width);
-void win_for_each_term(void (*cb)(struct term* term_p));
-void win_for_each_term_bool(void (*cb)(struct term* term_p, bool param), bool param);
+struct term** win_get_term_list(int* n);
+#define WIN_FOR_EACH_TERM(func) \
+ { \
+   int term_num; \
+   struct term** term_pp = win_get_term_list(&term_num); \
+   for (int i = 0; i < term_num; i++) { \
+     struct term* term_p = term_pp[i]; \
+     func; \
+   } \
+ }
+struct child** win_get_child_list(int* n);
+#define WIN_FOR_EACH_CHILD(func) \
+ { \
+   int child_num; \
+   struct child** child_pp = win_get_child_list(&child_num); \
+   for (int i = 0; i < child_num; i++) { \
+     struct child* child_p = child_pp[i]; \
+     func; \
+   } \
+ }
 
 bool win_should_die();
 #define win_close(...) (win_close)(term_p, ##__VA_ARGS__)

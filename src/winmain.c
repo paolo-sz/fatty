@@ -1843,7 +1843,7 @@ void
 win_invalidate_all(bool clearbg)
 {
   InvalidateRect(wnd, null, true);
-  win_for_each_term((term_paint));
+  WIN_FOR_EACH_TERM(term_paint());
   win_flush_background(clearbg);
 }
 
@@ -2026,9 +2026,9 @@ void
   int cols = max(1, term_width / cell_width);
   int rows = max(1, term_height / cell_height);
   if (rows != term.rows || cols != term.cols) {
-    term_resize(rows, cols);
+    WIN_FOR_EACH_TERM(term_resize(rows, cols));
     struct winsize ws = {(unsigned short)rows, (unsigned short)cols, (unsigned short)(cols * cell_width), (unsigned short)(rows * cell_height)};
-    child_resize(&ws);
+    WIN_FOR_EACH_CHILD(child_resize(&ws));
   }
   win_invalidate_all(false);
 
@@ -2202,7 +2202,7 @@ static void
   win_update_transparency(cfg.opaque_when_focused);
   win_update_mouse();
 
-  win_for_each_term_bool((win_font_cs_reconfig), font_changed);
+  WIN_FOR_EACH_TERM(win_font_cs_reconfig(font_changed));
 }
 
 void
@@ -2210,7 +2210,7 @@ void
 {
   trace_resize(("--- win_reconfig\n"));
  /* Pass new config data to the terminal */
-  win_for_each_term((term_reconfig));
+  WIN_FOR_EACH_TERM(term_reconfig());
 
   bool font_changed =
     wcscmp(new_cfg.font.name, cfg.font.name) ||
