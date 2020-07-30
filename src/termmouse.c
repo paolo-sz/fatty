@@ -480,6 +480,8 @@ bool
 {
   TERM_VAR_REF(true)
   
+  compose_clear();
+
   if (term.hovering) {
     term.hovering = false;
     win_update_term(true);
@@ -606,6 +608,8 @@ void
 {
   TERM_VAR_REF(true)
   
+  compose_clear();
+
   int state = term.mouse_state;
   term.mouse_state = (mouse_state_t)0;
   switch (state) {
@@ -713,6 +717,8 @@ void
 {
   TERM_VAR_REF(true)
   
+  compose_clear();
+
   //printf("mouse_move %d+%d/2\n", p.x, p.r);
   pos bp = box_pos(p);
 
@@ -771,6 +777,8 @@ void
 {
   TERM_VAR_REF(true)
   
+  compose_clear();
+
   if (term.hovering) {
     term.hovering = false;
     win_update_term(true);

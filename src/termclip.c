@@ -983,8 +983,7 @@ void
   
   struct timeval now;
   gettimeofday(& now, 0);
-  char * htmlf = newn(char, MAX_PATH + 1);
-  strftime(htmlf, MAX_PATH, "fatty.%F_%T.html", localtime (& now.tv_sec));
+  char * htmlf = save_filename(const_cast<char *>(".html"));
 
   int hfd = open(htmlf, O_WRONLY | O_CREAT | O_EXCL, 0600);
   if (hfd < 0) {

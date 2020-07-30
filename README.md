@@ -38,7 +38,6 @@ Then, in Cygwin terminal run following commands:
     git clone https://github.com/paolo-sz/fatty.git
     cd fatty
     make
-    cp src/fatty.exe /bin
   
 You can then try running it by typing `bin/fatty`
   

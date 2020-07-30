@@ -187,6 +187,7 @@ typedef struct {
   int char_narrowing;
   char emojis;
   char emoji_placement;
+  wstring save_filename;
   wstring app_id;
   wstring app_name;
   wstring app_launch_cmd;
@@ -247,5 +248,6 @@ extern void copy_config(char * tag, config * dst, const config * src);
 extern void apply_config(bool save);
 extern wchar * getregstr(HKEY key, wstring subkey, wstring attribute);
 extern uint getregval(HKEY key, wstring subkey, wstring attribute);
+extern char * save_filename(char * suf);
 
 #endif

@@ -1698,8 +1698,8 @@ static struct {
 static wchar compose_buf[lengthof(composed->kc) + 4];
 static int compose_buflen = 0;
 
-static void
-compose_clear()
+void
+compose_clear(void)
 {
   comp_state = COMP_CLEAR;
   compose_buflen = 0;
@@ -2002,22 +2002,22 @@ void
 bool
 (win_key_down)(struct term* term_p, WPARAM wp, LPARAM lp)
 {
+  uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
+  bool extended = HIWORD(lp) & KF_EXTENDED;
+  bool repeat = HIWORD(lp) & KF_REPEAT;
+  uint count = LOWORD(lp);
+
   uint key = wp;
   last_key_down = key;
   last_key_up = 0;
 
   if (comp_state == COMP_ACTIVE)
     comp_state = COMP_PENDING;
-  else if (comp_state == COMP_CLEAR)
+  else if (comp_state == COMP_CLEAR && !repeat)
     comp_state = COMP_NONE;
 
   TERM_VAR_REF(true)
   
-  uint scancode = HIWORD(lp) & (KF_EXTENDED | 0xFF);
-  bool extended = HIWORD(lp) & KF_EXTENDED;
-  bool repeat = HIWORD(lp) & KF_REPEAT;
-  uint count = LOWORD(lp);
-
 #ifdef debug_virtual_key_codes
   printf("win_key_down %02X %s scan %d ext %d rpt %d/%d other %02X\n", key, vk_name(key), scancode, extended, repeat, count, HIWORD(lp) >> 8);
 #endif
@@ -2785,7 +2785,7 @@ static LONG last_key_time = 0;
         }
 
     // Compose characters
-    if (comp_state) {
+    if (comp_state > 0) {
 #ifdef debug_compose
       printf("comp (%d)", wlen);
       for (int i = 0; i < compose_buflen; i++) printf(" %04X", compose_buf[i]);
@@ -3269,7 +3269,7 @@ void
 bool
 (win_key_up)(struct term *term_p, WPARAM wp, LPARAM lp)
 {
-  auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
+//  auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
 
   uint key = wp;
 #ifdef debug_virtual_key_codes
@@ -3305,7 +3305,10 @@ bool
         (cfg.compose_key == MDK_SHIFT && key == VK_SHIFT) ||
         (cfg.compose_key == MDK_ALT && key == VK_MENU)
        )
-      comp_state = COMP_ACTIVE;
+    {
+      if (comp_state >= 0)
+        comp_state = COMP_ACTIVE;
+    }
   }
   else
     comp_state = COMP_NONE;

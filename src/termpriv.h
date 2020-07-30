@@ -82,4 +82,6 @@ extern void (print_screen)(struct term *term_p);
 extern int putlink(char * link);
 extern char * geturl(int n);
 
+extern void compose_clear(void);
+
 #endif

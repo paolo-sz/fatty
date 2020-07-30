@@ -12,7 +12,7 @@ extern "C" {
 static HANDLE printer;
 
 static const DOC_INFO_1 doc_info = {
-  pDocName : const_cast<char *>("Mintty ANSI printer output"),
+  pDocName : const_cast<char *>("Fatty ANSI printer output"),
   pOutputFile : null,
   pDatatype : const_cast<char *>("TEXT")
 };
@@ -23,6 +23,7 @@ printer_start_job(wstring printer_name)
   if (OpenPrinterW((wchar *)printer_name, &printer, 0)) {
     if (StartDocPrinter(printer, 1, (LPBYTE)&doc_info)) {
       if (StartPagePrinter(printer)) {
+//        win_prefix_title(L"[Printing...] ");
         return;
       }
       EndDocPrinter(printer);
@@ -47,8 +48,7 @@ printer_wwrite(wchar * wdata, uint len)
   if (printer) {
     char * data = cs__wcstombs(wdata);
     uint mlen = len * sizeof(char);
-    DWORD written;
-    WritePrinter(printer, data, mlen, &written);
+    printer_write(data, mlen);
     free(data);
   }
 }
@@ -61,6 +61,7 @@ printer_finish_job(void)
     EndDocPrinter(printer);
     ClosePrinter(printer);
     printer = 0;
+//    win_unprefix_title(L"[Printing...] ");
   }
 }
 

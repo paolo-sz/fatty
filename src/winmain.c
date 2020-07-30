@@ -1355,8 +1355,7 @@ void
 {
   struct timeval now;
   gettimeofday(& now, 0);
-  char * copf = newn(char, MAX_PATH + 1);
-  strftime(copf, MAX_PATH, "fatty.%F_%T.png", localtime (& now.tv_sec));
+  char * copf = save_filename(const_cast<char *>(".png"));
   wchar * copyfn = path_posix_to_win_w(copf);
   free(copf);
 
@@ -3781,7 +3780,22 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
       }
     }
     else {  // legacy
-      rootfs = wcsdup(bp);
+      rootfs = newn(wchar, wcslen(bp) + 8);
+      wcscpy(rootfs, bp);
+      wcscat(rootfs, W("\\rootfs"));
+
+      char * rootdir = path_win_w_to_posix(rootfs);
+      struct stat fstat_buf;
+      if (stat (rootdir, & fstat_buf) == 0 && S_ISDIR (fstat_buf.st_mode)) {
+        // non-app or imported deployment
+      }
+      else {
+        // legacy Bash on Windows
+        free(rootfs);
+        rootfs = wcsdup(bp);
+      }
+      free(rootdir);
+
       icon = legacy_icon();
     }
 
@@ -3813,10 +3827,22 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
       printf("-- icon %ls\n", icon);
     }
 
+    *wsl_icon = icon;
     *wsl_ver = 1 + ((getregval(lxss, guid, W("Flags")) >> 3) & 1);
     *wsl_guid = cs__wcstoutf(guid);
-    *wsl_rootfs = rootfs;
-    *wsl_icon = icon;
+    char * rootdir = path_win_w_to_posix(rootfs);
+    struct stat fstat_buf;
+    if (stat (rootdir, & fstat_buf) == 0 && S_ISDIR (fstat_buf.st_mode)) {
+      *wsl_rootfs = rootfs;
+    }
+    else {
+      free(rootfs);
+      rootfs = newn(wchar, wcslen(wslname) + 8);
+      wcscpy(rootfs, W("\\\\wsl$\\"));
+      wcscat(rootfs, wslname);
+      *wsl_rootfs = rootfs;
+    }
+    free(rootdir);
     return 0;
   };
 
