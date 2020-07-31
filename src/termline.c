@@ -15,13 +15,15 @@ extern "C" {
 
 
 termline *
-newline(int cols, termchar erase_char)
+(newline)(struct term* term_p, int cols, int bce)
 {
+  TERM_VAR_REF(true)
+
   termline *line = std_new(termline);
   newn_1(line->chars, termchar, cols);
   //! Note: line->chars is based @ index -1
   for (int j = -1; j < cols; j++)
-    line->chars[j] = erase_char;
+    line->chars[j] = (bce ? term.erase_char : basic_erase_char);
   line->cols = line->size = cols;
   line->lattr = LATTR_NORM;
   line->temporary = false;
@@ -723,12 +725,14 @@ decompressline(uchar *data, int *bytes_used)
  * Clear a line, throwing away any combining characters.
  */
 void
-clearline(termline *line, termchar erase_char)
+(clearline)(struct term* term_p, termline *line)
 {
+  TERM_VAR_REF(true)
+
   line->lattr = LATTR_NORM;
   //! Note: line->chars is based @ index -1
   for (int j = -1; j < line->cols; j++)
-    line->chars[j] = erase_char;
+    line->chars[j] = term.erase_char;
   if (line->size > line->cols) {
     line->size = line->cols;
     renewn_1(line->chars, line->size);

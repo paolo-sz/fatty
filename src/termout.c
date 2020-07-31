@@ -299,8 +299,7 @@ static void
 
 //static void write_char(wchar c, int width);
 #define term_do_write(...) (term_do_write)(term_p, ##__VA_ARGS__)
-static void
-(term_do_write)(struct term* term_p, const char *buf, uint len);
+static void (term_do_write)(struct term* term_p, const char *buf, uint len);
 
 #define fill_rect(...) (fill_rect)(term_p, ##__VA_ARGS__)
 static void

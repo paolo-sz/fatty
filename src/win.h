@@ -81,10 +81,8 @@ extern void (win_popup_menu)(struct term *term_p, mod_keys mods);
 #define win_title_menu(...) (win_title_menu)(term_p, ##__VA_ARGS__)
 extern bool (win_title_menu)(struct term *term_p, bool leftbut);
 
-#define win_zoom_font(...) (win_zoom_font)(term_p, ##__VA_ARGS__)
-extern void (win_zoom_font)(struct term* term_p, int, bool sync_size_with_font);
-#define win_set_font_size(...) (win_set_font_size)(term_p, ##__VA_ARGS__)
-extern void (win_set_font_size)(struct term* term_p, int, bool sync_size_with_font);
+extern void win_zoom_font(int, bool sync_size_with_font);
+extern void win_set_font_size(int, bool sync_size_with_font);
 extern uint win_get_font_size(void);
 
 extern void win_check_glyphs(wchar *wcs, uint num, cattrflags attr);

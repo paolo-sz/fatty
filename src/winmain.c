@@ -711,7 +711,7 @@ win_set_icon(char * s, int icon_index)
 void
 win_set_title(wchar *wtitle)
 {
-  if (cfg.title_settable) {
+  if (title_settable) {
     // check current title to suppress unnecessary update_tab_titles()
     int len = GetWindowTextLengthW(wnd);
     wchar oldtitle[len + 1];
@@ -4255,7 +4255,7 @@ static char help[] =
   "  -s, --size COLS,ROWS  Set screen size in characters (also COLSxROWS)\n"
   "  -s, --size maxwidth|maxheight  Set max screen size in given dimension\n"
   "  -T, --Title TITLE     Set window title (default: the invoked command)\n"
-  "  -t, --title TITLE     Set window title (default: the invoked command) (cf. -T)\n"
+  "  -t, --title TITLE     Set tab window title (default: the invoked command) (cf. -T)\n"
   "                        Must be set before -b/--tab option\n"
   "  -u, --utmp            Create a utmp entry\n"
   "  -w, --window normal|min|max|full|hide  Set initial window state\n"
@@ -4618,7 +4618,7 @@ main(int argc, char *argv[])
         tablist_title[current_tab_size] = optarg;
       when 'T':
         set_arg_option("Title", optarg);
-        cfg.title_settable = false;
+        title_settable = false;
       when 'B':
         border_style = strdup(optarg);
       when 'R':

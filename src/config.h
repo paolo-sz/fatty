@@ -162,7 +162,6 @@ typedef struct {
   wstring log;
   bool logging;
   wstring title;
-  bool title_settable;
   bool create_utmp;
   char window;
   int x, y;

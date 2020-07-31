@@ -959,19 +959,19 @@ win_get_font_size(void)
 }
 
 void
-(win_set_font_size)(struct term* term_p, int size, bool sync_size_with_font)
+win_set_font_size(int size, bool sync_size_with_font)
 {
   trace_resize(("--- win_set_font_size %d %d×%d\n", size, term.rows, term.cols));
   size = size ? sgn(font_size) * min(size, 72) : cfg.font.size;
   if (size != font_size) {
     win_init_fonts(size);
     trace_resize((" (win_set_font_size -> win_adapt_term_size)\n"));
-    win_adapt_term_size(sync_size_with_font, false);
+    WIN_FOR_EACH_TERM(win_adapt_term_size(sync_size_with_font, false));
   }
 }
 
 void
-(win_zoom_font)(struct term* term_p, int zoom, bool sync_size_with_font)
+win_zoom_font(int zoom, bool sync_size_with_font)
 {
   trace_resize(("--- win_zoom_font %d\n", zoom));
   win_set_font_size(zoom ? max(1, abs(font_size) + zoom) : 0, sync_size_with_font);

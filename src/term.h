@@ -262,9 +262,11 @@ typedef struct {
 
 typedef termline * termlines;
 
-extern termline *newline(int cols, termchar erase_char);
+#define newline(...) (newline)(term_p, ##__VA_ARGS__)
+extern termline *(newline)(struct term* term_p, int cols, int bce);
 extern void freeline(termline *);
-extern void clearline(termline *, termchar erase_char);
+#define clearline(...) (clearline)(term_p, ##__VA_ARGS__)
+extern void (clearline)(struct term* term_p, termline *);
 extern void resizeline(termline *, int);
 
 #define sblines(...) (sblines)(term_p, ##__VA_ARGS__)

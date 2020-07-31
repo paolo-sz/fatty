@@ -123,7 +123,7 @@ extern "C" {
 
   static void update_window_state(struct term *term_p) {
       win_update_menus(false /*should this be true?*/);
-      if (cfg.title_settable)
+      if (title_settable)
         SetWindowTextW(wnd, win_tab_get_title(active_tab));
       (win_adapt_term_size)(term_p, false, false);
   }
@@ -355,7 +355,30 @@ extern "C" {
     Tab& tab = tabs[tab_idx];
     if (tab.info.titles.size() != 1)
       tab.info.titles.pop_back();
-    return win_tab_get_title(active_tab);
+    return const_cast<wchar_t *>(tab.info.titles.back().c_str());
+  }
+
+  void
+  (win_tab_prefix_title)(struct term* term_p, const wstring prefix)
+  {
+    int tab_idx = tab_idx_by_term(term_p);
+    if (tab_idx == -1) return;
+    Tab& tab = tabs[tab_idx];
+    std::wstring new_title = prefix;
+    new_title.append(tab.info.titles.back().c_str());
+    win_tab_set_title(const_cast<wchar_t *>(new_title.c_str()));
+  }
+
+  void
+  (win_tab_unprefix_title)(struct term* term_p, const wstring prefix)
+  {
+    int tab_idx = tab_idx_by_term(term_p);
+    if (tab_idx == -1) return;
+    Tab& tab = tabs[tab_idx];
+    if (tab.info.titles.back().find(prefix, 0) == 0) {
+      std::wstring new_title = tab.info.titles.back().replace(0, wcslen(prefix), L"");
+      win_tab_set_title(const_cast<wchar_t *>(new_title.c_str()));
+    }
   }
 
   void

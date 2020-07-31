@@ -409,6 +409,7 @@ static void
   }
 
   ShowWindow(search_wnd, show ? SW_SHOW : SW_HIDE);
+  term.search_window_visible = show;
 }
 
 void
@@ -420,7 +421,6 @@ void
     SetWindowTextW(search_edit_wnd, W(""));
   }
   win_toggle_search(true, true);
-  term.search_window_visible = true;
   win_adapt_term_size(false, false);
 }
 
@@ -430,7 +430,6 @@ static void
   TERM_VAR_REF(true)
   
   win_toggle_search(false, false);
-  term.search_window_visible = false;
   win_adapt_term_size(false, false);
 }
 

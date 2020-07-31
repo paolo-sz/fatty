@@ -1,6 +1,7 @@
 extern "C" {
   
 #include "print.h"
+#include "winpriv.h"  // win_prefix_title, win_unprefix_title
 
 #include <winbase.h>
 #include <wingdi.h>
@@ -18,12 +19,12 @@ static const DOC_INFO_1 doc_info = {
 };
 
 void
-printer_start_job(wstring printer_name)
+(printer_start_job)(struct term* term_p, wstring printer_name)
 {
   if (OpenPrinterW((wchar *)printer_name, &printer, 0)) {
     if (StartDocPrinter(printer, 1, (LPBYTE)&doc_info)) {
       if (StartPagePrinter(printer)) {
-//        win_prefix_title(L"[Printing...] ");
+        win_tab_prefix_title(L"[Printing...] ");
         return;
       }
       EndDocPrinter(printer);
@@ -54,14 +55,14 @@ printer_wwrite(wchar * wdata, uint len)
 }
 
 void
-printer_finish_job(void)
+(printer_finish_job)(struct term* term_p)
 {
   if (printer) {
     EndPagePrinter(printer);
     EndDocPrinter(printer);
     ClosePrinter(printer);
     printer = 0;
-//    win_unprefix_title(L"[Printing...] ");
+    win_tab_unprefix_title(L"[Printing...] ");
   }
 }
 

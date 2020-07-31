@@ -1251,7 +1251,7 @@ void
 
     // Fill bottom of screen with blank lines
     for (int i = newrows - create; i < newrows; i++)
-      lines[i] = newline(newcols, basic_erase_char);
+      lines[i] = newline(newcols, false);
 
     // Move existing lines down
     memmove(lines + restore, lines, term.rows * sizeof(termline *));
@@ -1284,7 +1284,7 @@ void
   }
   term.displines = renewn(term.displines, newrows);
   for (int i = 0; i < newrows; i++) {
-    termline *line = newline(newcols, basic_erase_char);
+    termline *line = newline(newcols, false);
     term.displines[i] = line;
     for (int j = 0; j < newcols; j++) {
       line->chars[j].attr = CATTR_DEFAULT;
@@ -1300,7 +1300,7 @@ void
   }
   term.other_lines = lines = renewn(lines, newrows);
   for (int i = 0; i < newrows; i++)
-    lines[i] = newline(newcols, term.erase_char);
+    lines[i] = newline(newcols, true);
 
   // Reset tab stops
   term.tabs = renewn(term.tabs, newcols);
@@ -1535,7 +1535,7 @@ void
   auto recycle = [&](termline **src) {
     memcpy(recycled, src, rec_size);
     for (int i = 0; i < lines; i++)
-      clearline(recycled[i], term.erase_char);
+      clearline(recycled[i]);
   };
 
   if (down) {

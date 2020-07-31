@@ -87,6 +87,10 @@ extern void update_available_version(bool ok);
 extern void set_dpi_auto_scaling(bool on);
 #define win_update_transparency(...) (win_update_transparency)(term_p, ##__VA_ARGS__)
 extern void (win_update_transparency)(struct term* term_p, bool opaque);
+#define win_tab_prefix_title(...) (win_tab_prefix_title)(term_p, ##__VA_ARGS__)
+extern void (win_tab_prefix_title)(struct term* term_p, const wstring);
+#define win_tab_unprefix_title(...) (win_tab_unprefix_title)(term_p, ##__VA_ARGS__)
+extern void (win_tab_unprefix_title)(struct term* term_p, const wstring);
 extern void win_set_icon(char * s, int icon_index);
 
 extern void win_show_tip(int x, int y, int cols, int rows);
