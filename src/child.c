@@ -43,8 +43,6 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 // http://www.tldp.org/LDP/abs/html/exitcodes.html
 #define mexit 126
 
-bool clone_size_token = true;
-
 bool logging = false;
 
 #if CYGWIN_VERSION_API_MINOR >= 66
@@ -880,30 +878,32 @@ setup_sync()
   Called from Alt+F2 (or session launcher via child_launch).
  */
 static void
-(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch)
+(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch, bool config_size)
 {
   CHILD_VAR_REF(true)
 
   trace_dir(asform("do_child_fork: %s", getcwd(malloc(MAX_PATH), MAX_PATH)));
   setup_sync();
 
+#ifdef control_AltF2_size_via_token
   auto reset_fork_mode = [&]()
   {
     clone_size_token = true;
   };
+#endif
 
   pid_t clone = fork();
 
   if (cfg.daemonize) {
     if (clone < 0) {
       childerror(_("Error: Could not fork child daemon"), true, errno, 0);
-      reset_fork_mode();
+      //reset_fork_mode();
       return;  // assume next fork will fail too
     }
     if (clone > 0) {  // parent waits for intermediate child
       int status;
       waitpid(clone, &status, 0);
-      reset_fork_mode();
+      //reset_fork_mode();
       return;
     }
 
@@ -987,9 +987,14 @@ static void
 #endif
 
     // provide environment to clone size
-    if (clone_size_token) {
+    if (!config_size) {
       setenvi(const_cast<char *>("FATTY_ROWS"), term.rows);
       setenvi(const_cast<char *>("FATTY_COLS"), term.cols);
+      // provide environment to maximise window
+      if (win_is_fullscreen)
+        setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 2);
+      else if (IsZoomed(wnd))
+        setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 1);
     }
     // provide environment to select monitor
     if (moni > 0)
@@ -997,11 +1002,6 @@ static void
     // propagate shortcut-inherited icon
     if (icon_is_from_shortcut)
       setenv(const_cast<char *>("FATTY_ICON"), cs__wcstoutf(cfg.icon), true);
-    // provide environment to maximise window
-    if (win_is_fullscreen)
-      setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 2);
-    else if (IsZoomed(wnd))
-      setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 1);
 
     //setenv(const_cast<char *>("FATTY_CHILD"), "1", true);
 
@@ -1029,16 +1029,16 @@ static void
 #endif
     exit_fatty(mexit);
   }
-  reset_fork_mode();
+  //reset_fork_mode();
 }
 
 /*
   Called from Alt+F2.
  */
 void
-child_fork(struct child* child_p, int argc, char *argv[], int moni)
+child_fork(struct child* child_p, int argc, char *argv[], int moni, bool config_size)
 {
-  do_child_fork(argc, argv, moni, false);
+  do_child_fork(argc, argv, moni, false, config_size);
 }
 
 /*
@@ -1081,7 +1081,7 @@ void
           }
         }
         new_argv[argc] = 0;
-        do_child_fork(argc, new_argv, moni, true);
+        do_child_fork(argc, new_argv, moni, true, true);
         free(new_argv);
         break;
       }

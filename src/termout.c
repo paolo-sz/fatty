@@ -1263,6 +1263,7 @@ static void
         term_do_write("", 1);
     when CTRL('C'):
       tek_mode = TEKMODE_OFF;
+      term.state = NORMAL;
       win_invalidate_all(false);
     when ']':  /* OSC: operating system command */
       term.state = OSC_START;
@@ -2753,8 +2754,8 @@ static void
           when 20: caflagsmask |= FONTFAM_MASK;
           when 53: caflagsmask |= ATTR_OVERL;
           when 58: caflagsmask |= ATTR_ULCOLOUR;
-          when 10: caflagsmask |= ATTR_FGMASK;
-          when 11: caflagsmask |= ATTR_BGMASK;
+          when 30 case_or 10: caflagsmask |= ATTR_FGMASK;
+          when 31 case_or 11: caflagsmask |= ATTR_BGMASK;
           when 73: caflagsmask |= ATTR_SUPERSCR;
           when 74: caflagsmask |= ATTR_SUBSCR;
         }
@@ -3580,8 +3581,9 @@ static void
     if (has_index_arg)
       child_printf("%u;", index);
     c = i < COLOUR_NUM ? colours[i] : 0;  // should not be affected by rvideo
-    child_printf("rgb:%04x/%04x/%04x\e\\",
-                 red(c) * 0x101, green(c) * 0x101, blue(c) * 0x101);
+    char * osc_fini = term.state == CMD_ESCAPE ? const_cast<char *>("\e\\") : const_cast<char *>("\a");
+    child_printf("rgb:%04x/%04x/%04x%s",
+                 red(c) * 0x101, green(c) * 0x101, blue(c) * 0x101, osc_fini);
   }
   else if (parse_colour(s, &c))
     win_set_colour((colour_i)i, c);
@@ -3642,7 +3644,8 @@ static void
   
   char *s = term.cmd_buf;
   s[term.cmd_len] = 0;
-  //printf("OSC %d <%s>\n", term.cmd_num, s);
+  //printf("OSC %d <%s> %s\n", term.cmd_num, s, term.state == CMD_ESCAPE ? "ST" : "BEL");
+  char * osc_fini = term.state == CMD_ESCAPE ? const_cast<char *>("\e\\") : const_cast<char *>("\a");
 
   if (*cfg.suppress_osc && contains(cfg.suppress_osc, term.cmd_num))
     // skip suppressed OSC command
@@ -3701,7 +3704,7 @@ static void
         child_set_fork_dir(s);
     when 701:  // Set/get locale (from urxvt).
       if (!strcmp(s, "?"))
-        child_printf("\e]701;%s\e\\", cs_get_locale());
+        child_printf("\e]701;%s%s", cs_get_locale(), osc_fini);
       else
         cs_set_locale(s);
     when 7721:  // Copy window title to clipboard.
@@ -3721,7 +3724,7 @@ static void
     }
     when 7770:  // Change font size.
       if (!strcmp(s, "?"))
-        child_printf("\e]7770;%u\e\\", win_get_font_size());
+        child_printf("\e]7770;%u%s", win_get_font_size(), osc_fini);
       else {
         char *end;
         int i = strtol(s, &end, 10);
@@ -3734,7 +3737,7 @@ static void
       }
     when 7777:  // Change font and window size.
       if (!strcmp(s, "?"))
-        child_printf("\e]7777;%u\e\\", win_get_font_size());
+        child_printf("\e]7777;%u%s", win_get_font_size(), osc_fini);
       else {
         char *end;
         int i = strtol(s, &end, 10);
@@ -3763,7 +3766,7 @@ static void
           s += sprintf(s, "%u", wcs[i]);
       }
       *s = 0;
-      child_printf("\e]7771;!%s\e\\", term.cmd_buf);
+      child_printf("\e]7771;!%s%s", term.cmd_buf, osc_fini);
     }
     when 77119: {  // Indic and Extra characters wide handling
       int what = atoi(s);
@@ -3784,7 +3787,7 @@ static void
         uint ff = (term.curs.attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
         if (!strcmp(s, "?")) {
           char * fn = cs__wcstombs(win_get_font(ff) ?: W(""));
-          child_printf("\e]50;%s\e\\", fn);
+          child_printf("\e]50;%s%s", fn, osc_fini);
           free(fn);
         }
         else {
@@ -4431,10 +4434,13 @@ static void
           term.cmd_len = 0;
           tek_intensity(c & 0x40, c & 0x37);
         }
-        else if (!(c & 0x60) || term.cmd_len > 5) {
-          term.cmd_len = 0;
-          term.state = NORMAL;  // error
-        }
+        //else if (term.cmd_len > 5) {
+        // no length checking here, interferes with previous OSC!
+        // let term_push_cmd do it
+        //}
+        //else if (!(c & 0x60)) {
+        // no error checking here, let tek_address catch it
+        //}
         else {
           if (term.state == TEK_ADDRESS0) {
             term.state = TEK_ADDRESS;

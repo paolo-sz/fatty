@@ -1365,7 +1365,7 @@ void
     HDC dc = GetDC(wnd);
     int height, width;
     win_get_pixels(&height, &width, false);
-    save_img(dc, PADDING, OFFSET + PADDING, 
+    save_img(dc, 0, OFFSET, 
                  width + 2 * PADDING, height + 2 * PADDING, copyfn);
     free(copyfn);
     ReleaseDC(wnd, dc);
@@ -1982,7 +1982,6 @@ void
   }
   int term_width = client_width - 2 * PADDING;
   int term_height = client_height - 2 * PADDING - OFFSET - g_render_tab_height;
-
   if (!sync_size_with_font && win_search_visible()) {
     term_height -= SEARCHBAR_HEIGHT;
   }
@@ -2728,11 +2727,11 @@ static struct {
 //          HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
 //          int x, y;
 //          int moni = search_monitors(&x, &y, mon, true, 0);
-//          child_fork(main_argc, main_argv, moni);
+//          child_fork(main_argc, main_argv, moni, get_mods() & MDK_SHIFT);
 //        }
 //        when IDM_NEW_MONI: {
 //          int moni = lp;
-//          child_fork(main_argc, main_argv, moni);
+//          child_fork(main_argc, main_argv, moni, get_mods() & MDK_SHIFT);
 //        }
         when IDM_COPYTITLE: win_copy_title();
         when IDM_NEWTAB: win_tab_create();
@@ -5382,7 +5381,8 @@ main(int argc, char *argv[])
           }
         }
         else {
-          win_set_chars(cfg.rows, cfg.cols);
+          // consider preset size (term_)
+          win_set_chars(term_rows ?: cfg.rows, term_cols ?: cfg.cols);
           trace_winsize("dpi > win_set_chars");
         }
       }

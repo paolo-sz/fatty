@@ -1754,7 +1754,7 @@ vk_name(uint key)
 #endif
 
 #ifdef debug_key
-#define trace_key(tag)	printf(" <-%s\n", tag)
+#define trace_key(tag)	printf(" key(%s)\n", tag)
 #else
 #define trace_key(tag)	(void)0
 #endif
@@ -2443,7 +2443,7 @@ static LONG last_key_time = 0;
                          win ? "W" : "",
                          super ? "U" : "",
                          hyper__ ? "Y" : "",
-                         (alt | win) ? "+" : "",
+                         (alt | win | super | hyper__) ? "+" : "",
                          keytag);
             free(keytag);
           }
@@ -2882,7 +2882,7 @@ static LONG last_key_time = 0;
     wchar wc = undead_keycode();
     if (!wc) {
 #ifdef debug_key
-      printf("modf !wc mods %d shft %d\n", mods, mods & MDK_SHIFT);
+      printf("modf !wc mods %X shft %d\n", mods, mods & MDK_SHIFT);
 #endif
       if (mods & MDK_SHIFT) {
         kbd[VK_SHIFT] = 0;
@@ -3058,11 +3058,13 @@ static LONG last_key_time = 0;
         app_pad_code('M' - '@');
       else if (!extended && term.modify_other_keys && (shift || ctrl))
         other_code('\r');
-      else if (!ctrl)
+#ifdef support_special_key_Enter
+      else if (ctrl)
+        ctrl_ch(CTRL('^'));
+#endif
+      else
         esc_if(alt),
         term.newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
-      else
-        ctrl_ch(CTRL('^'));
     when VK_BACK:
       if (!ctrl)
         esc_if(alt), ch(term.backspace_sends_bs ? '\b' : CDEL);
@@ -3098,6 +3100,7 @@ static LONG last_key_time = 0;
       : ctrl_ch(term.escape_sends_fs ? CTRL('\\') : CTRL('['));
     when VK_PAUSE:
       if (!vk_special(ctrl & !extended ? cfg.key_break : cfg.key_pause))
+        // default cfg.key_pause is CTRL(']')
         return false;
     when VK_CANCEL:
       if (!strcmp(cfg.key_break, "_BRK_")) {
@@ -3105,6 +3108,7 @@ static LONG last_key_time = 0;
         return false;
       }
       if (!vk_special(cfg.key_break))
+        // default cfg.key_break is CTRL('\\')
         return false;
     when VK_SNAPSHOT:
       if (!vk_special(cfg.key_prtscreen))
@@ -3174,8 +3178,12 @@ static LONG last_key_time = 0;
     when 'A' ... 'Z' case_or ' ': {
       bool check_menu = key == VK_SPACE && !term.shortcut_override
                         && cfg.window_shortcuts && alt && !altgr && !ctrl;
+      //// support Ctrl+Shift+AltGr combinations (esp. Ctrl+Shift+@)
+      //bool modaltgr = (mods & ~MDK_ALT) == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT));
+      // support Ctrl+AltGr combinations (esp. Ctrl+@ and Ctrl+Shift+@)
+      bool modaltgr = ctrl;
 #ifdef debug_key
-      printf("-- mods %d alt %d altgr %d/%d ctrl %d lctrl %d/%d (modf %d comp %d)\n", mods, alt, altgr, altgr0, ctrl, lctrl, lctrl0, term.modify_other_keys, comp_state);
+      printf("-- mods %X alt %d altgr %d/%d ctrl %d lctrl %d/%d (modf %d comp %d)\n", mods, alt, altgr, altgr0, ctrl, lctrl, lctrl0, term.modify_other_keys, comp_state);
 #endif
       if (allow_shortcut && check_menu) {
         send_syscommand(SC_KEYMENU);
@@ -3183,7 +3191,7 @@ static LONG last_key_time = 0;
       }
       else if (altgr_key())
         trace_key("altgr");
-      else if (!cfg.altgr_is_alt && altgr0 && !term.modify_other_keys)
+      else if (!modaltgr && !cfg.altgr_is_alt && altgr0 && !term.modify_other_keys)
         // prevent AltGr from behaving like Alt
         trace_key("!altgr");
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
@@ -3323,48 +3331,49 @@ bool
 
   last_key_up = key;
 
-/*
-  if (newwin_pending) {
-    if (key == newwin_key) {
-      if (is_key_down(VK_SHIFT))
-        newwin_shifted = true;
-      if (newwin_shifted || win_is_fullscreen)
-        clone_size_token = false;
+//  if (newwin_pending) {
+//    if (key == newwin_key) {
+//      if (is_key_down(VK_SHIFT))
+//        newwin_shifted = true;
+//#ifdef control_AltF2_size_via_token
+//      if (newwin_shifted /*|| win_is_fullscreen*/)
+//        clone_size_token = false;
+//#endif
+//
+//      newwin_pending = false;
+//
+//      // Calculate heuristic approximation of selected monitor position
+//      int x, y;
+//      MONITORINFO mi;
+//      search_monitors(&x, &y, 0, newwin_home, &mi);
+//      RECT r = mi.rcMonitor;
+//      int refx, refy;
+//      if (newwin_monix < 0)
+//        refx = r.left + 10;
+//      else if (newwin_monix > 0)
+//        refx = r.right - 10;
+//      else
+//        refx = (r.left + r.right) / 2;
+//      if (newwin_moniy < 0)
+//        refy = r.top + 10;
+//      else if (newwin_monix > 0)
+//        refy = r.bottom - 10;
+//      else
+//        refy = (r.top + r.bottom) / 2;
+//      POINT pt;
+//      pt.x = refx + newwin_monix * x;
+//      pt.y = refy + newwin_moniy * y;
+//      // Find monitor over or nearest to point
+//      HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+//      int moni = search_monitors(&x, &y, mon, true, 0);
+//
+//#ifdef debug_multi_monitors
+//      printf("NEW @ %d,%d @ monitor %d\n", pt.x, pt.y, moni);
+//#endif
+//      send_syscommand2(IDM_NEW_MONI, moni);
+//    }
+//  }
 
-      newwin_pending = false;
-
-      // Calculate heuristic approximation of selected monitor position
-      int x, y;
-      MONITORINFO mi;
-      search_monitors(&x, &y, 0, newwin_home, &mi);
-      RECT r = mi.rcMonitor;
-      int refx, refy;
-      if (newwin_monix < 0)
-        refx = r.left + 10;
-      else if (newwin_monix > 0)
-        refx = r.right - 10;
-      else
-        refx = (r.left + r.right) / 2;
-      if (newwin_moniy < 0)
-        refy = r.top + 10;
-      else if (newwin_monix > 0)
-        refy = r.bottom - 10;
-      else
-        refy = (r.top + r.bottom) / 2;
-      POINT pt;
-      pt.x = refx + newwin_monix * x;
-      pt.y = refy + newwin_moniy * y;
-      // Find monitor over or nearest to point
-      HMONITOR mon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
-      int moni = search_monitors(&x, &y, mon, true, 0);
-
-#ifdef debug_multi_monitors
-      printf("NEW @ %d,%d @ monitor %d\n", pt.x, pt.y, moni);
-#endif
-      send_syscommand2(IDM_NEW_MONI, moni);
-    }
-  }
-*/
   if (transparency_pending) {
     transparency_pending--;
 #ifdef debug_transparency

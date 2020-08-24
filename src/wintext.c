@@ -2837,6 +2837,7 @@ void
       default_bg = false;
 
     cursor_colour = colours[ime_open ? IME_CURSOR_COLOUR_I : CURSOR_COLOUR_I];
+    //printf("cc (ime_open %d) %06X\n", ime_open, cursor_colour);
 
     //static uint mindist = 32768;
     static uint mindist = 22222;
@@ -4505,7 +4506,9 @@ win_set_colour(colour_i i, colour c)
       cc(i, cfg.bg_colour);
     else if (i == CURSOR_COLOUR_I) {
       cc(i, cfg.cursor_colour);
-      cc(IME_CURSOR_COLOUR_I, cfg.ime_cursor_colour);
+      if (cfg.ime_cursor_colour != DEFAULT_COLOUR)
+        cc(IME_CURSOR_COLOUR_I, cfg.ime_cursor_colour);
+      //printf("ime_cc set -1 %06X\n", cfg.ime_cursor_colour);
     }
     else if (i == SEL_COLOUR_I)
       cc(i, cfg.sel_bg_colour);
@@ -4578,6 +4581,7 @@ win_set_colour(colour_i i, colour c)
           c = RGB(r, g, b);
         }
         cc(IME_CURSOR_COLOUR_I, c);
+        //printf("ime_cc set c %06X\n", c);
       }
       break;
       default:
@@ -4630,8 +4634,10 @@ win_reset_colours(void)
   win_set_colour(FG_COLOUR_I, cfg.fg_colour);
   win_set_colour(BG_COLOUR_I, cfg.bg_colour);
   win_set_colour(CURSOR_COLOUR_I, cfg.cursor_colour);
-  if (cfg.ime_cursor_colour != DEFAULT_COLOUR)
+  if (cfg.ime_cursor_colour != DEFAULT_COLOUR) {
     win_set_colour(IME_CURSOR_COLOUR_I, cfg.ime_cursor_colour);
+    //printf("ime_cc reset %06X\n", cfg.ime_cursor_colour);
+  }
   win_set_colour(SEL_COLOUR_I, cfg.sel_bg_colour);
   win_set_colour(SEL_TEXT_COLOUR_I, cfg.sel_fg_colour);
   // Bold colour

@@ -5,7 +5,7 @@
 #define WEBSITE "http://github.com/juho-p/fatty"
 
 #define MAJOR_VERSION  3
-#define MINOR_VERSION  2
+#define MINOR_VERSION  3
 #define PATCH_NUMBER   0
 #define BUILD_NUMBER   0
 
