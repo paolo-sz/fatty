@@ -356,13 +356,15 @@ static void
 
   if (a != MA_RELEASE)
     code |= a * 0x20;
-  else if (term.mouse_enc != ME_XTERM_CSI)
+  else if (term.mouse_enc != ME_XTERM_CSI && term.mouse_enc != ME_PIXEL_CSI)
     code = 0x3;
 
   code |= (mods & ~cfg.click_target_mod) * 0x4;
 
   if (term.mouse_enc == ME_XTERM_CSI)
     child_printf("\e[<%u;%u;%u%c", code, x, y, (a == MA_RELEASE ? 'm' : 'M'));
+  else if (term.mouse_enc == ME_PIXEL_CSI)
+    child_printf("\e[<%u;%u;%u%c", code, p.pix + 1, p.piy + 1, (a == MA_RELEASE ? 'm' : 'M'));
   else if (term.mouse_enc == ME_URXVT_CSI)
     child_printf("\e[%u;%u;%uM", code + 0x20, x, y);
   else {
@@ -404,6 +406,7 @@ static pos
   
   p.y = min(max(0, p.y), term.rows - 1);
   p.x = min(max(0, p.x), term.cols - 1);
+  // p.piy and p.pix already clipped in translate_pos()
   return p;
 }
 
@@ -413,7 +416,7 @@ static pos
 {
   TERM_VAR_REF(true)
   
-  pos sp = { .y = p.y + term.disptop, .x = p.x, .r = p.r };
+  pos sp = { .y = p.y + term.disptop, .x = p.x, .piy = 0, .pix = 0, .r = p.r };
   termline *line = fetch_line(sp.y);
 
   // Adjust to presentational direction.
@@ -647,7 +650,7 @@ void
 
       pos orig;
       if (state == MS_SEL_CHAR)
-        orig = (pos){y : term.curs.y, x : term.curs.x, r : false};
+        orig = (pos){y : term.curs.y, x : term.curs.x, piy : 0, pix : 0, r : false};
       else if (moved_previously)
         orig = last_dest;
       else
@@ -732,7 +735,7 @@ void
     else {
       term.sel_scroll = 0;
       if (p.x < 0 && p.y + term.disptop > term.sel_anchor.y)
-        bp = (pos){.y = p.y - 1, .x = term.cols - 1, .r = p.r};
+        bp = (pos){.y = p.y - 1, .x = term.cols - 1, .piy = 0, .pix = 0, .r = p.r};
     }
 
     bool alt = mods & MDK_ALT;

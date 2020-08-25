@@ -2128,6 +2128,8 @@ static void
           term.mouse_enc = state ? ME_UTF8 : (mouse_enc_t)0;
         when 1006: /* Xterm's CSI-style mouse encoding */
           term.mouse_enc = state ? ME_XTERM_CSI : (mouse_enc_t)0;
+        when 1016: /* Xterm's CSI-style mouse encoding with pixel resolution */
+          term.mouse_enc = state ? ME_PIXEL_CSI : (mouse_enc_t)0;
         when 1015: /* Urxvt's CSI-style mouse encoding */
           term.mouse_enc = state ? ME_URXVT_CSI : (mouse_enc_t)0;
         when 1037:
@@ -2332,6 +2334,8 @@ static int
         return 2 - (term.mouse_enc == ME_UTF8);
       when 1006: /* Xterm's CSI-style mouse encoding */
         return 2 - (term.mouse_enc == ME_XTERM_CSI);
+      when 1016: /* Xterm's CSI-style mouse encoding with pixel resolution */
+        return 2 - (term.mouse_enc == ME_PIXEL_CSI);
       when 1015: /* Urxvt's CSI-style mouse encoding */
         return 2 - (term.mouse_enc == ME_URXVT_CSI);
       when 1037:

@@ -1548,7 +1548,7 @@ void
     auto scroll_pos = [&](pos *p) {
       if (!term.show_other_screen && p->y >= topline && p->y < botline) {
         if ((p->y += lines) >= botline)
-          *p = (pos){y : botline, x : 0, r : false};
+          *p = (pos){y : botline, x : 0, piy : 0, pix : 0, r : false};
       }
     };
     scroll_pos(&term.sel_start);
@@ -1589,7 +1589,7 @@ void
     auto scroll_pos = [&](pos *p) {
       if (!term.show_other_screen && p->y >= seltop && p->y < botline) {
         if ((p->y -= lines) < seltop)
-          *p = (pos){y : seltop, x : 0, r : false};
+          *p = (pos){y : seltop, x : 0, piy : 0, pix : 0, r : false};
       }
     };
     scroll_pos(&term.sel_start);
@@ -1639,14 +1639,14 @@ void
   }
 
   if (from_begin)
-    start = (pos){y : line_only ? curs->y : 0, x : 0, r : false};
+    start = (pos){y : line_only ? curs->y : 0, x : 0, piy : 0, pix : 0, r : false};
   else
-    start = (pos){y : curs->y, x : curs->x, r : false};
+    start = (pos){y : curs->y, x : curs->x, piy : 0, pix : 0, r : false};
 
   if (to_end)
-    end = (pos){y : line_only ? curs->y + 1 : term.rows, x : 0, r : false};
+    end = (pos){y : line_only ? curs->y + 1 : term.rows, x : 0, piy : 0, pix : 0, r : false};
   else
-    end = (pos){y : curs->y, x : curs->x, r : false}, incpos(end);
+    end = (pos){y : curs->y, x : curs->x, piy : 0, pix : 0, r : false}, incpos(end);
 
   if (!from_begin || !to_end)
     term_check_boundary(curs->x, curs->y);

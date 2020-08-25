@@ -985,13 +985,15 @@ static pos
   return (pos){
     y : (int)floorf((y - PADDING - OFFSET - win_tab_height()) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
+    piy : (int)min(max(0, y - PADDING - OFFSET - win_tab_height()), term.cols * cell_width - 1),
+    pix : (int)min(max(0, x - PADDING), term.rows * cell_height - 1),
     r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)
          : false
   };
 }
 
-pos last_pos = {-1, -1, false};
+pos last_pos = {-1, -1, -1, -1, false};
 static LPARAM last_lp = -1;
 static int button_state = 0;
 
@@ -1063,7 +1065,7 @@ bool
     res = term_mouse_click(b, mods, p, count);
     last_skipped = false;
   }
-  last_pos = (pos){INT_MIN, INT_MIN, false};
+  last_pos = (pos){INT_MIN, INT_MIN, INT_MIN, INT_MIN, false};
   last_click_pos = p;
   last_time = t;
   last_button = b;
@@ -1429,7 +1431,7 @@ static void
   TERM_VAR_REF(true)
   
   // start and anchor keyboard selection
-  term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .r = 0};
+  term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .piy = 0, .pix = 0, .r = 0};
   term.sel_anchor = term.sel_pos;
   term.sel_start = term.sel_pos;
   term.sel_end = term.sel_pos;
@@ -2570,7 +2572,7 @@ static LONG last_key_time = 0;
           when VK_RIGHT: scroll = SB_NEXT;
           when VK_CLEAR:
             // start and anchor keyboard selection
-            term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .r = 0};
+            term.sel_pos = (pos){.y = term.curs.y, .x = term.curs.x, .piy = 0, .pix = 0, .r = 0};
             term.sel_anchor = term.sel_pos;
             term.sel_start = term.sel_pos;
             term.sel_end = term.sel_pos;

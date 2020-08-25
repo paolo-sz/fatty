@@ -309,8 +309,8 @@ void
 {
   TERM_VAR_REF(true)
   
-  term.sel_start = (pos){-sblines(), 0, false};
-  term.sel_end = (pos){term_last_nonempty_line(), term.cols, true};
+  term.sel_start = (pos){-sblines(), 0, 0, 0, false};
+  term.sel_end = (pos){term_last_nonempty_line(), term.cols, 0, 0, true};
   term.selected = true;
   if (cfg.copy_on_select)
     term_copy();
@@ -335,29 +335,29 @@ static wchar *
 
     if (y < sbtop) {
       y = sbtop;
-      end = (pos){y, 0, false};
+      end = (pos){y, 0, 0, 0, false};
     }
     else {
       termline * line = fetch_line(y);
       if (line->lattr & LATTR_MARKED) {
         if (y > sbtop) {
           y--;
-          end = (pos){y, term.cols, false};
+          end = (pos){y, term.cols, 0, 0, false};
           termline * line = fetch_line(y);
           if (line->lattr & LATTR_MARKED)
             y++;
         }
         else {
-          end = (pos){y, 0, false};
+          end = (pos){y, 0, 0, 0, false};
         }
       }
       else {
         skipprompt = line->lattr & LATTR_UNMARKED;
-        end = (pos){y, term.cols, false};
+        end = (pos){y, term.cols, 0, 0, false};
       }
 
       if (fetch_line(y)->lattr & LATTR_UNMARKED)
-        end = (pos){y, 0, false};
+        end = (pos){y, 0, 0, 0, false};
     }
 
     int yok = y;
@@ -367,7 +367,7 @@ static wchar *
       printf("y %d skip %d marked %X\n", y, skipprompt, line->lattr & (LATTR_UNMARKED | LATTR_MARKED));
 #endif
       if (skipprompt && (line->lattr & LATTR_UNMARKED))
-        end = (pos){y, 0, false};
+        end = (pos){y, 0, 0, 0, false};
       else
         skipprompt = false;
       if (line->lattr & LATTR_MARKED) {
@@ -375,18 +375,18 @@ static wchar *
       }
       yok = y;
     }
-    start = (pos){yok, 0, false};
+    start = (pos){yok, 0, 0, 0, false};
 #ifdef debug_user_cmd_clip
     printf("%d:%d...%d:%d\n", start.y, start.x, end.y, end.x);
 #endif
   }
   else if (screen) {
-    start = (pos){term.disptop, 0, false};
-    end = (pos){term_last_nonempty_line(), term.cols, false};
+    start = (pos){term.disptop, 0, 0, 0, false};
+    end = (pos){term_last_nonempty_line(), term.cols, 0, 0, false};
   }
   else if (all) {
-    start = (pos){-sblines(), 0, false};
-    end = (pos){term_last_nonempty_line(), term.cols, false};
+    start = (pos){-sblines(), 0, 0, 0, false};
+    end = (pos){term_last_nonempty_line(), term.cols, 0, 0, false};
   }
   else if (!term.selected) {
     return wcsdup(W(""));
@@ -506,8 +506,8 @@ static char *
   pos end = term.sel_end;
   bool rect = term.sel_rect;
   if (!term.selected) {
-    start = (pos){term.disptop, 0, false};
-    end = (pos){term.disptop + term.rows - 1, term.cols, false};
+    start = (pos){term.disptop, 0, 0, 0, false};
+    end = (pos){term.disptop + term.rows - 1, term.cols, 0, 0, false};
     rect = false;
   }
 
@@ -1021,8 +1021,8 @@ void
   else
     return;
 
-  pos start = (pos){term.disptop, 0, false};
-  pos end = (pos){term.disptop + term.rows - 1, term.cols, false};
+  pos start = (pos){term.disptop, 0, 0, 0, false};
+  pos end = (pos){term.disptop + term.rows - 1, term.cols, 0, 0, false};
   bool rect = false;
   clip_workbuf * buf = get_selection(start, end, rect, false);
   printer_wwrite(buf->text, buf->len);
