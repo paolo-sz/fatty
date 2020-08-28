@@ -751,7 +751,7 @@ void
   }
   else if (term.mouse_state > 0) {
     if (term.mouse_mode >= MM_BTN_EVENT)
-      send_mouse_event(MA_MOVE, (mouse_button)(term.mouse_state), mods, bp);
+      send_mouse_event(MA_MOVE, (mouse_button)term.mouse_state, mods, bp);
   }
   else {
     if (term.mouse_mode == MM_ANY_EVENT)

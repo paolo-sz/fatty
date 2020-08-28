@@ -247,7 +247,7 @@ typedef struct {
   cattr attr;
 } termchar;
 
-/*const*/ extern termchar basic_erase_char;
+extern termchar basic_erase_char;
 
 typedef struct {
   ushort lattr;
