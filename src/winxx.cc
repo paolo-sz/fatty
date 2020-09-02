@@ -135,7 +135,7 @@ extern "C" {
         active_tab = index;
       }
 
-      SendMessage(tab_wnd, TCM_SETCURSEL, active_tab, 0);
+      SendMessage(fatty_tab_wnd, TCM_SETCURSEL, active_tab, 0);
       Tab* active = &tabs.at(active_tab);
       for (Tab& tab : tabs) {
           (term_set_focus)(tab.terminal.get(), &tab == active, false);
@@ -185,10 +185,10 @@ extern "C" {
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
       tie.pszText = win_tab_get_title(tab_idx);
-      SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
+      SendMessageW(fatty_tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
       tie.mask = TCIF_TEXT; 
       tie.pszText = win_tab_get_title(dst_idx);
-      SendMessageW(tab_wnd, TCM_SETITEMW, dst_idx, (LPARAM)&tie);
+      SendMessageW(fatty_tab_wnd, TCM_SETITEMW, dst_idx, (LPARAM)&tie);
       if (tab_idx == (int)active_tab) {
         set_active_tab(dst_idx);
       } else if (dst_idx == (int)active_tab) {
@@ -211,7 +211,7 @@ extern "C" {
       } else {
         tie.pszText = g_cmd;
       }
-      res = SendMessage(tab_wnd, TCM_INSERTITEM, tabs.size(), (LPARAM)&tie);
+      res = SendMessage(fatty_tab_wnd, TCM_INSERTITEM, tabs.size(), (LPARAM)&tie);
       if (res == -1) return;
       tabs.push_back(Tab());
       Tab& tab = tabs.back();
@@ -274,10 +274,10 @@ extern "C" {
       if (!(pid)) return;
       remove_callbacks(terminal);
       unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
-      SendMessage(tab_wnd, TCM_DELETEITEM, tab_idx, 0);
+      SendMessage(fatty_tab_wnd, TCM_DELETEITEM, tab_idx, 0);
       child_terminate(child_p);
       tabs.erase(tabs.begin() + tab_idx);
-      SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+      SendMessage(fatty_tab_wnd, TCM_SETCURSEL, 0, 0);
       set_active_tab(new_active_tab);
       if (tabs.size() > 0) {
           set_tab_bar_visibility(tabs.size() > 1);
@@ -295,12 +295,12 @@ extern "C" {
           invalidate = true;
           remove_callbacks((*it).terminal.get());
           new_active_tab = (active_tab > (it - tabs.begin())) ? active_tab - 1 : active_tab;
-          SendMessage(tab_wnd, TCM_DELETEITEM, it - tabs.begin(), 0);
+          SendMessage(fatty_tab_wnd, TCM_DELETEITEM, it - tabs.begin(), 0);
           tabs.erase(it);
           active_tab = new_active_tab;
       }
       if (invalidate && tabs.size() > 0) {
-          SendMessage(tab_wnd, TCM_SETCURSEL, 0, 0);
+          SendMessage(fatty_tab_wnd, TCM_SETCURSEL, 0, 0);
           set_active_tab(new_active_tab);
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
@@ -331,7 +331,7 @@ extern "C" {
       TCITEMW tie; 
       tie.mask = TCIF_TEXT; 
       tie.pszText = (wchar *)tab.info.titles.back().data();
-      SendMessageW(tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
+      SendMessageW(fatty_tab_wnd, TCM_SETITEMW, tab_idx, (LPARAM)&tie);
       if ((is_active_terminal)(term_p)) {
         win_set_title((wchar *)tab.info.titles.back().data());
       }
@@ -400,7 +400,7 @@ extern "C" {
   static int tabheight() {
       init_scale_factors();
       RECT tr;
-      SendMessage(tab_wnd, TCM_GETITEMRECT, 0, (LPARAM)&tr);
+      SendMessage(fatty_tab_wnd, TCM_GETITEMRECT, 0, (LPARAM)&tr);
       return tr.bottom;
   }
 
@@ -444,7 +444,7 @@ extern "C" {
       unsigned int Index;
       HDC tab_dc;
       
-      if (!IsWindowVisible(tab_wnd) && tab_bar_visible) {
+      if (!IsWindowVisible(fatty_tab_wnd) && tab_bar_visible) {
         HDC dc = GetDC(wnd);
         SetRect(&loc_tabrect, 0, win_tab_height(), width, win_tab_height() + PADDING);
         const auto brush = CreateSolidBrush(cfg.bg_colour);
@@ -453,13 +453,13 @@ extern "C" {
         ReleaseDC(wnd, dc);
       }
       
-      GetWindowRect(tab_wnd, &loc_tabrect);
+      GetWindowRect(fatty_tab_wnd, &loc_tabrect);
       if (width) {
         loc_tabrect.right = loc_tabrect.left + width;
-        SetWindowPos(tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
+        SetWindowPos(fatty_tab_wnd, 0, 0, 0, width, win_tab_height(), tab_bar_visible ? SWP_SHOWWINDOW : SWP_HIDEWINDOW);
       } else {
         width = loc_tabrect.right - loc_tabrect.left;
-        ShowWindow(tab_wnd, tab_bar_visible ? SW_SHOW : SW_HIDE);
+        ShowWindow(fatty_tab_wnd, tab_bar_visible ? SW_SHOW : SW_HIDE);
       }
 
       win_show_mouse();
@@ -542,7 +542,7 @@ extern "C" {
   }
 
   void win_tab_mouse_click() {
-      set_active_tab(TabCtrl_GetCurSel(tab_wnd));
+      set_active_tab(TabCtrl_GetCurSel(fatty_tab_wnd));
   }
 
   void win_tab_close_all() {
@@ -564,8 +564,8 @@ extern "C" {
     info.pt.x = GET_X_LPARAM(pos);
     info.pt.y = GET_Y_LPARAM(pos);
     info.flags = TCHT_ONITEM;
-    ScreenToClient(tab_wnd, &info.pt);
-    int tab_idx = TabCtrl_HitTest(tab_wnd, &info);
+    ScreenToClient(fatty_tab_wnd, &info.pt);
+    int tab_idx = TabCtrl_HitTest(fatty_tab_wnd, &info);
     if (tab_idx == -1)
       return;
 

@@ -1,5 +1,5 @@
 // config.c (part of FaTTY)
-// Copyright 2008-13 Andy Koppe, 2015-2017 Thomas Wolff
+// Copyright 2008-13 Andy Koppe, 2015-2020 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -49,6 +49,10 @@ const config default_cfg = {
   tek_cursor_colour : (colour)-1,
   tek_write_thru_colour : (colour)-1,
   tek_defocused_colour : (colour)-1,
+  tab_fg_colour : 0x00FF00,
+  tab_bg_colour : 0x323232,
+  tab_attention_bg_colour : 0x0000DD,
+  tab_active_bg_colour : 0x000000,
   tek_glow : 1,
   underl_colour : (colour)-1,
   hover_colour : (colour)-1,
@@ -56,10 +60,6 @@ const config default_cfg = {
   disp_clear : 0,
   disp_tab : 0,
   underl_manual : false,
-  tab_fg_colour : 0x00FF00,
-  tab_bg_colour : 0x323232,
-  tab_attention_bg_colour : 0x0000DD,
-  tab_active_bg_colour : 0x000000,
   sel_fg_colour : (colour)-1,
   sel_bg_colour : (colour)-1,
   search_fg_colour : 0x000000,
@@ -296,6 +296,10 @@ options[] = {
   {"TekDefocusedColour", OPT_COLOUR, offcfg(tek_defocused_colour)},
   {"TekGlow", OPT_INT, offcfg(tek_glow)},
   {"UnderlineColour", OPT_COLOUR, offcfg(underl_colour)},
+  {"TabForegroundColour", OPT_COLOUR, offcfg(tab_fg_colour)},
+  {"TabBackgroundColour", OPT_COLOUR, offcfg(tab_bg_colour)},
+  {"TabAttentionColour", OPT_COLOUR, offcfg(tab_attention_bg_colour)},
+  {"TabActiveColour", OPT_COLOUR, offcfg(tab_active_bg_colour)},
   {"DispSpace", OPT_INT, offcfg(disp_space)},
   {"DispClear", OPT_INT, offcfg(disp_clear)},
   {"DispTab", OPT_INT, offcfg(disp_tab)},
@@ -316,11 +320,6 @@ options[] = {
   {"OpaqueWhenFocused", OPT_BOOL, offcfg(opaque_when_focused)},
   {"CursorType", OPT_CURSOR, offcfg(cursor_type)},
   {"CursorBlinks", OPT_BOOL, offcfg(cursor_blinks)},
-
-  {"TabForegroundColour", OPT_COLOUR, offcfg(tab_fg_colour)},
-  {"TabBackgroundColour", OPT_COLOUR, offcfg(tab_bg_colour)},
-  {"TabAttentionColour", OPT_COLOUR, offcfg(tab_attention_bg_colour)},
-  {"TabActiveColour", OPT_COLOUR, offcfg(tab_active_bg_colour)},
 
   // Text
   {"Font", OPT_WSTRING, offcfg(font.name)},
