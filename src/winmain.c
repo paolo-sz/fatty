@@ -3172,6 +3172,10 @@ static struct {
 
       win_show_tip(r->left + extra_width, r->top + extra_height, cols, rows);
 
+      if (ew) {
+        win_paint_tabs(0, r->right - r->left);
+      }
+
       return ew || eh;
     }
 
