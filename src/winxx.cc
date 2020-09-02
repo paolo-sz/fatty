@@ -410,7 +410,7 @@ extern "C" {
       if (b == tab_bar_visible) return;
   
       tab_bar_visible = b;
-      g_render_tab_height = win_tab_height();
+      OFFSET = win_tab_height();
       (win_adapt_term_size)(win_active_terminal(), false, false);
       win_invalidate_all(false);
   }

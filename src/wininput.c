@@ -925,7 +925,7 @@ static bool is_tab_bar_area(int y) {
     ScreenToClient(wnd, &p);
     y = p.y;
   }
-  if (y < PADDING + g_render_tab_height) {
+  if (y < PADDING + OFFSET) {
     return true;
   }
   return false;
@@ -983,9 +983,9 @@ static pos
   TERM_VAR_REF(true)
     
   return (pos){
-    y : (int)floorf((y - PADDING - OFFSET - win_tab_height()) / (float)cell_height),
+    y : (int)floorf((y - PADDING - OFFSET) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
-    piy : (int)min(max(0, y - PADDING - OFFSET - win_tab_height()), term.cols * cell_width - 1),
+    piy : (int)min(max(0, y - PADDING - OFFSET), term.cols * cell_width - 1),
     pix : (int)min(max(0, x - PADDING), term.rows * cell_height - 1),
     r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)

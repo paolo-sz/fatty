@@ -1657,7 +1657,7 @@ void
   // prevent resizing to same logical size
   // which would remove bottom padding and spoil some Windows magic (#629)
   if (rows != term.rows || cols != term.cols) {
-    win_set_pixels(rows * cell_height + win_tab_height(), cols * cell_width);
+    win_set_pixels(rows * cell_height + OFFSET, cols * cell_width);
     win_fix_position();
   }
   trace_winsize("win_set_chars > win_fix_position");
@@ -1953,7 +1953,7 @@ void
   
   if (sync_size_with_font && !win_is_fullscreen) {
     // enforced win_set_chars(term.rows, term.cols):
-    win_set_pixels(term.rows * cell_height + win_tab_height(), term.cols * cell_width);
+    win_set_pixels(term.rows * cell_height + OFFSET, term.cols * cell_width);
     win_fix_position();
     trace_winsize("win_adapt_term_size > win_fix_position");
 
@@ -1974,7 +1974,7 @@ void
     norm_extra_height = extra_height;
   }
   int term_width = client_width - 2 * PADDING;
-  int term_height = client_height - 2 * PADDING - g_render_tab_height;
+  int term_height = client_height - 2 * PADDING;
   if (!sync_size_with_font /*&& win_tabbar_visible()*/) {
     // apparently insignificant if sync_size_with_font && win_is_fullscreen
     term_height -= OFFSET;
@@ -3149,7 +3149,7 @@ static struct {
       */
       LPRECT r = (LPRECT) lp;
       int width = r->right - r->left - extra_width - 2 * PADDING;
-      int height = r->bottom - r->top - extra_height - 2 * PADDING - OFFSET - g_render_tab_height;
+      int height = r->bottom - r->top - extra_height - 2 * PADDING - OFFSET;
       int cols = max(1, (int)((float)width / cell_width + 0.5));
       int rows = max(1, (int)((float)height / cell_height + 0.5));
 
@@ -5247,7 +5247,7 @@ main(int argc, char *argv[])
 
   fatty_tab_wnd = CreateWindowW(WC_TABCONTROLW, 0, 
                           WS_CHILD | WS_CLIPSIBLINGS | TCS_FOCUSNEVER | TCS_OWNERDRAWFIXED, 
-                          0, 0, width, win_tab_height(), 
+                          0, 0, width, OFFSET, 
                           wnd, NULL, inst, NULL);
   TabCtrl_SetMinTabWidth(fatty_tab_wnd, 100);
   const auto brush = CreateSolidBrush(cfg.tab_bg_colour);

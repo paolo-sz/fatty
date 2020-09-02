@@ -115,8 +115,6 @@ int OFFSET = 0;
 bool font_ambig_wide;
 
 
-int g_render_tab_height = 0;
-
 typedef enum {BOLD_NONE, BOLD_SHADOW, BOLD_FONT} BOLD_MODE;
 typedef enum {UND_LINE, UND_FONT} UND_MODE;
 
@@ -2782,7 +2780,7 @@ void
 
  /* Convert to window coordinates */
   int x = tx * char_width + PADDING;
-  int y = ty * cell_height + OFFSET + PADDING + g_render_tab_height;
+  int y = ty * cell_height + OFFSET + PADDING;
 
 #ifdef support_triple_width
 #define TATTR_TRIPLE 0x0080000000000000u
@@ -4666,7 +4664,7 @@ void
 
   // remember the tab height used for rendering. It could change, but we need
   // to be consistent during with the visual state of things
-  g_render_tab_height = win_tab_height();
+  //OFFSET = win_tab_height();
 
   term_invalidate(
     (p.rcPaint.left - PADDING) / cell_width,
@@ -4721,7 +4719,7 @@ void
 
     ExcludeClipRect(dc, PADDING, OFFSET + PADDING,
                     PADDING + cell_width * term.cols,
-                    OFFSET + PADDING + g_render_tab_height + cell_height * term.rows);
+                    OFFSET + PADDING + cell_height * term.rows);
 
     Rectangle(dc, p.rcPaint.left, p.rcPaint.top,
                   p.rcPaint.right, p.rcPaint.bottom);

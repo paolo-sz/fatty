@@ -56,7 +56,6 @@ extern void toggle_charinfo(void);
 extern void (toggle_vt220)(struct term* term_p);
 extern char * fontpropinfo(void);
 
-extern int g_render_tab_height; // current tab height in pixels
 extern bool title_settable;
 extern bool support_wsl;
 extern wstring wsl_basepath;
