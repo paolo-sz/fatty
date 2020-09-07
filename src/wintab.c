@@ -92,8 +92,9 @@ tabbar_update()
 static LRESULT CALLBACK
 tab_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR uid, DWORD_PTR data)
 {
-  //printf("tab_proc %d\n", msg);
+  //printf("tabbar tab_proc %03X\n", msg);
   if (msg == WM_PAINT) {
+    //printf("tabbar tab_proc WM_PAINT\n");
     RECT rect;
     GetClientRect(hwnd, &rect);
     PAINTSTRUCT pnts;
@@ -110,9 +111,11 @@ tab_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR uid, DWORD_PTR data
     return true;  // || uid || data ?
     (void)uid, (void)data;
   } else if (msg == WM_ERASEBKGND) {
+    //printf("tabbar tab_proc WM_ERASEBKGND\n");
     if (!lp)
       return true;
   } else if (msg == WM_DRAWITEM) {
+    //printf("tabbar tab_proc WM_DRAWITEM\n");
   }
   return DefSubclassProc(hwnd, msg, wp, lp);
 }
@@ -122,9 +125,9 @@ tab_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR uid, DWORD_PTR data
 static LRESULT CALLBACK
 container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 {
-  //printf("tabbar container_proc %04X\n", msg);
-
+  //printf("tabbar con_proc %03X\n", msg);
   if (msg == WM_NOTIFY) {
+    //printf("tabbar con_proc WM_NOTIFY\n");
     LPNMHDR lpnmhdr = (LPNMHDR)lp;
     //printf("notify %lld %d %d\n", lpnmhdr->idFrom, lpnmhdr->code, TCN_SELCHANGE);
     if (lpnmhdr->code == TCN_SELCHANGE) {
@@ -157,7 +160,8 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     }
   }
   else if (msg == WM_CREATE) {
-    tab_wnd = CreateWindowExA(0, WC_TABCONTROL, "", WS_CHILD|TCS_FIXEDWIDTH|TCS_OWNERDRAWFIXED, 0, 0, 0, 0, hwnd, 0, inst, NULL);
+    //printf("tabbar con_proc WM_CREATE\n");
+    tab_wnd = CreateWindowExA(0, WC_TABCONTROL, "", WS_CHILD | TCS_FIXEDWIDTH | TCS_OWNERDRAWFIXED, 0, 0, 0, 0, hwnd, 0, inst, NULL);
 #if CYGWIN_VERSION_API_MINOR >= 74
     SetWindowSubclass(tab_wnd, tab_proc, 0, 0);
 #endif
@@ -168,6 +172,7 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     SendMessage(tab_wnd, WM_SETFONT, (WPARAM)tabbar_font, 1);
   }
   else if (msg == WM_SHOWWINDOW) {
+    //printf("tabbar con_proc WM_SHOWWINDOW\n");
     if (wp) {
       //printf("show %p\n", bar_wnd);
       ShowWindow(tab_wnd, SW_SHOW);
@@ -176,6 +181,7 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     //return true;  // skip callback chain?
   }
   else if (msg == WM_SIZE) {
+    //printf("tabbar con_proc WM_SIZE\n");
     tabbar_font = CreateFontW(cell_height * TABFONTSCALE, cell_width * TABFONTSCALE, 0, 0, FW_DONTCARE, false, false, false,
                               DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
                               DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE,
@@ -189,13 +195,14 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
     tabbar_update();
   }
   else if (msg == WM_DRAWITEM) {
+    //printf("tabbar con_proc WM_DRAWITEM\n");
     LPDRAWITEMSTRUCT dis = (LPDRAWITEMSTRUCT)lp;
     HDC hdc = dis->hDC;
     //printf("container received drawitem %llx %p\n", wp, dis);
     int hcenter = (dis->rcItem.left + dis->rcItem.right) / 2;
     int vcenter = (dis->rcItem.top + dis->rcItem.bottom) / 2;
 
-    SetTextAlign(hdc, TA_CENTER|TA_TOP);
+    SetTextAlign(hdc, TA_CENTER | TA_TOP);
     TCITEMW tie;
     wchar_t buf[256];
     tie.mask = TCIF_TEXT;
@@ -209,20 +216,28 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
       //tabbr = GetSysColorBrush(COLOR_ACTIVECAPTION);
       //SetTextColor(hdc, GetSysColor(COLOR_CAPTIONTEXT));
       tabbr = GetSysColorBrush(COLOR_HIGHLIGHT);
+      //printf("TAB bg %06X\n", GetSysColor(COLOR_HIGHLIGHT));
       SetTextColor(hdc, GetSysColor(COLOR_HIGHLIGHTTEXT));
+      //printf("TAB fg %06X\n", GetSysColor(COLOR_HIGHLIGHTTEXT));
 
       // override active tab colours if configured
       tabbg = cfg.tab_bg_colour;
-      if (tabbg != (colour)-1)
+      if (tabbg != (colour)-1) {
+        //printf("TAB bg %06X\n", tabbg);
         tabbr = CreateSolidBrush(tabbg);
+      }
       colour tabfg = cfg.tab_fg_colour;
-      if (tabfg != (colour)-1)
+      if (tabfg != (colour)-1) {
+        //printf("TAB fg %06X\n", tabfg);
         SetTextColor(hdc, tabfg);
+      }
     }
     else {
       tabbr = GetSysColorBrush(COLOR_3DFACE);
+      //printf("tab bg %06X\n", GetSysColor(COLOR_3DFACE));
       //tabbr = GetSysColorBrush(COLOR_INACTIVECAPTION);
       SetTextColor(hdc, GetSysColor(COLOR_CAPTIONTEXT));
+      //printf("tab fg %06X\n", GetSysColor(COLOR_CAPTIONTEXT));
     }
     FillRect(hdc, &dis->rcItem, tabbr);
     if (tabbg != (colour)-1)
@@ -250,7 +265,9 @@ tabbar_init()
                               .lpszMenuName = NULL,
                               .lpszClassName = TABBARCLASS
                              });
-  bar_wnd = CreateWindowExA(WS_EX_STATICEDGE, TABBARCLASS, "", WS_CHILD | WS_BORDER, 0, 0, 0, 0, wnd, 0, inst, NULL);
+  bar_wnd = CreateWindowExA(WS_EX_STATICEDGE, TABBARCLASS, "",
+                            WS_CHILD | WS_BORDER,
+                            0, 0, 0, 0, wnd, 0, inst, NULL);
 
   initialized = true;
 }

@@ -1670,13 +1670,17 @@ apply_config(bool save)
   if (*cfg.colour_scheme) {
     load_scheme(cfg.colour_scheme);
     win_reset_colours();
+    win_invalidate_all(false);
   }
   else if (*cfg.theme_file) {
     load_theme(cfg.theme_file);
     win_reset_colours();
+    win_invalidate_all(false);
   }
-  else if (had_theme)
+  else if (had_theme) {
     win_reset_colours();
+    win_invalidate_all(false);
+  }
   //printf("apply_config %d bd %d\n", save, cfg.bold_as_font);
 }
 
@@ -1865,6 +1869,7 @@ static void
 add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
 {
   init_config_dirs();
+  //printf("add_file_resources <%ls> dirs %d\n", pattern, list_dirs);
 
   for (int i = last_config_dir; i >= 0; i--) {
 #ifdef use_findfile
@@ -1914,6 +1919,7 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
 #else
     char * pat = cs__wcstombs(pattern);
     char * patsuf = strrchr(pat, '.');
+    int patsuflen = patsuf ? strlen(patsuf) : 0;
     char * patbase = strrchr(pat, '/');
     if (patbase)
       *patbase = 0;
@@ -1938,9 +1944,7 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
           // strip suffix
           int len = strlen(direntry->d_name);
           if (direntry->d_name[0] != '.' && direntry->d_name[len - 1] != '~') {
-            char * dotsuf = strrchr(direntry->d_name, '.');
-            if (dotsuf)
-              *dotsuf = 0;
+            direntry->d_name[len - patsuflen] = 0;
             dlg_listbox_add(ctrl, direntry->d_name);
           }
         }

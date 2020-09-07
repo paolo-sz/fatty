@@ -87,6 +87,8 @@ static int main_argc;
 static bool invoked_from_shortcut = false;
 wstring shortcut = 0;
 static bool invoked_with_appid = false;
+uint hotkey = 0;
+mod_keys hotkey_mods = (mod_keys)0;
 
 
 //filled by win_adjust_borders:
@@ -702,6 +704,7 @@ win_set_icon(char * s, int icon_index)
 void
 win_set_title(wchar *wtitle)
 {
+  //printf("win_set_title settable %d <%s>\n", title_settable, title);
   if (title_settable) {
     // check current title to suppress unnecessary update_tab_titles()
     int len = GetWindowTextLengthW(wnd);
@@ -773,6 +776,32 @@ win_post_sync_msg(HWND target, int level)
     }
   }
 }
+
+#ifdef use_init_position
+static void
+win_init_position()
+{
+  BOOL CALLBACK wnd_call_sync(HWND curr_wnd, LPARAM lp)
+  {
+    (void)lp;
+    WINDOWINFO curr_wnd_info;
+    curr_wnd_info.cbSize = sizeof(WINDOWINFO);
+    GetWindowInfo(curr_wnd, &curr_wnd_info);
+    if (class_atom == curr_wnd_info.atomWindowType) {
+      if (curr_wnd != wnd && !IsIconic(curr_wnd)) {
+        PostMessage(curr_wnd, WM_USER, 0, WIN_INIT_POS);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  if (EnumWindows(wnd_call_sync, (LPARAM)4)) {
+    // all callbacks succeeded
+    win_synctabs(4);
+  }
+}
+#endif
 
 void
 win_to_top(HWND top_wnd)
@@ -3407,6 +3436,14 @@ static struct {
       else
         return result;
     }
+
+    when WM_SETHOTKEY: {
+      hotkey = wp & 0xFF;
+      ushort mods = wp >> 8;
+      hotkey_mods = (mod_keys)(!!(mods & HOTKEYF_SHIFT) * MDK_SHIFT
+                  | !!(mods & HOTKEYF_ALT) * MDK_ALT
+                  | !!(mods & HOTKEYF_CONTROL) * MDK_CTRL);
+    }
   }
 
  /*
@@ -3416,7 +3453,11 @@ static struct {
   return DefWindowProcW(wnd, message, wp, lp);
 }
 
+#define dont_hook_keyboard
+
 #ifdef hook_keyboard
+
+#define debug_hook
 
 static LRESULT CALLBACK
 hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
@@ -3429,14 +3470,18 @@ hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
          key, (uint)kbdll->scanCode, (uint)kbdll->flags, (ulong)kbdll->dwExtraInfo);
 #endif
 
-  mod_keys mods = get_mods();
-  auto is_hooked_hotkey = [&](WPARAM wParam, uint key) -> bool
+  auto is_hooked_hotkey = [&](WPARAM wParam, uint key, mod_keys mods) -> bool
   {
+#ifdef debug_hook
+    show_info(asform("key %02X mods %02X hooked %02X mods %02X", key, mods, hotkey, hotkey_mods));
+#endif
     return wParam == WM_KEYDOWN &&
-      // proof of concept; key/modifiers would need to be configurable
-      (key == VK_F9 && mods == MDK_ALT);
+      // hotkey/modifiers could be
+      // * derived from invocation shortcut (implemented)
+      // * configurable explicitly (not implemented)
+      (key == hotkey && mods == hotkey_mods);
   };
-  if (is_hooked_hotkey(wParam, key)) {
+  if (is_hooked_hotkey(wParam, key, get_mods())) {
     if (GetFocus() == wnd && IsWindowVisible(wnd)) {
       ShowWindow(wnd, SW_SHOW);  // in case it was started with -w hide
       ShowWindow(wnd, SW_HIDE);
@@ -4362,6 +4407,7 @@ opts[] = {
   {"size",       required_argument, 0, 's'},
   {"title",      required_argument, 0, 't'},
   {"Title",      required_argument, 0, 'T'},
+  {"tabbar",     optional_argument, 0, ''},
   {"Border",     required_argument, 0, 'B'},
   {"Report",     required_argument, 0, 'R'},
   {"Reportpos",  required_argument, 0, 'R'},  // compatibility variant
@@ -4676,6 +4722,9 @@ main(int argc, char *argv[])
       when 'T':
         set_arg_option("Title", optarg);
         title_settable = false;
+      when '':
+        set_arg_option("ShowTabBar", strdup("1"));
+        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
       when 'B':
         border_style = strdup(optarg);
       when 'R':
@@ -5561,6 +5610,11 @@ main(int argc, char *argv[])
       pAddClipboardFormatListener(wnd);
   }
 
+  // Set up tabbar
+  if (cfg.show_tabbar) {
+    win_open_tabbar();
+  }
+
 #ifdef use_init_position
   if (cfg.show_tabbar)
     // support tabbar; however, the purpose of this handling is unclear
@@ -5572,11 +5626,6 @@ main(int argc, char *argv[])
 #endif
 
   update_tab_titles();
-
-  // support tabbar
-  if (cfg.show_tabbar) {
-    win_open_tabbar();
-  }
 
 #ifdef hook_keyboard
   // Install keyboard hook.
