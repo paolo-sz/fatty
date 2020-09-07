@@ -1839,7 +1839,7 @@ void
     flash_taskbar(true);
   if (term.bell_popup)
     win_set_zorder(true);
-  if (!term.has_focus)
+  if (!is_active_terminal())
     win_tab_attention();
 }
 
