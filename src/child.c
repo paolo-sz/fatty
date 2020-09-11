@@ -857,7 +857,7 @@ setenvi(char * env, int val)
 static void
 setup_sync()
 {
-  if (cfg.geom_sync) {
+  if (sync_level()) {
     if (win_is_fullscreen) {
       setenvi(const_cast<char *>("FATTY_DX"), 0);
       setenvi(const_cast<char *>("FATTY_DY"), 0);

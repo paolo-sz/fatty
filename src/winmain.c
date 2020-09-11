@@ -87,8 +87,9 @@ static int main_argc;
 static bool invoked_from_shortcut = false;
 wstring shortcut = 0;
 static bool invoked_with_appid = false;
-uint hotkey = 0;
-mod_keys hotkey_mods = (mod_keys)0;
+static uint hotkey = 0;
+static mod_keys hotkey_mods = (mod_keys)0;
+static HHOOK kb_hook = 0;
 
 
 //filled by win_adjust_borders:
@@ -573,7 +574,7 @@ update_tab_titles()
     }
     return true;
   };
-  if (cfg.geom_sync || win_tabbar_visible()) {
+  if (sync_level() || win_tabbar_visible()) {
     // update my own list
     refresh_tab_titles(true);
     // support tabbar
@@ -756,10 +757,16 @@ void
  */
 
 // support tabbar
+int
+sync_level(void)
+{
+  return max(cfg.geom_sync, cfg.tabbar);
+}
+
 void
 win_post_sync_msg(HWND target, int level)
 {
-  if (cfg.geom_sync) {
+  if (sync_level()) {
     if (win_is_fullscreen)
       PostMessage(target, WM_USER, 0, WIN_FULLSCREEN);
     else if (IsZoomed(wnd))
@@ -912,8 +919,8 @@ win_switch(bool back, bool alternate)
   refresh_tab_titles(false);
   win_to_top(back ? get_prev_tab(alternate) : get_next_tab(alternate));
   // support tabbar
-  if (cfg.geom_sync)
-    win_post_sync_msg(back ? get_prev_tab(alternate) : get_next_tab(alternate), cfg.geom_sync);
+  if (sync_level())
+    win_post_sync_msg(back ? get_prev_tab(alternate) : get_next_tab(alternate), sync_level());
   win_update_tabbar();
 #endif
 }
@@ -967,7 +974,7 @@ win_gotab(uint n)
   win_to_top(tab);
 
   // reposition / resize
-  if (cfg.geom_sync) {
+  if (sync_level()) {
     win_post_sync_msg(tab, 0);  // 0: don't minimize
   }
 
@@ -1011,7 +1018,7 @@ win_synctabs(int level)
 #endif
   if (wm_user)
     return;
-  if (cfg.geom_sync >= level)
+  if (sync_level() >= level)
     EnumWindows(wnd_enum_tabs, (LPARAM)level);
 #ifdef debug_tabs
   printf("[%8p] win_synctabs end\n", wnd);
@@ -2483,6 +2490,9 @@ show_iconwarn(wchar * winmsg)
 #define dont_debug_only_focus_messages
 #define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
+#define dont_debug_hook
+
+static void win_global_keyboard_hook(bool on);
 
 static LPARAM
 screentoclient(HWND wnd, LPARAM lp)
@@ -2626,13 +2636,13 @@ static struct {
         ShowWindow(wnd, SW_RESTORE);
       }
       else if (!wp && lp == WIN_TITLE) {
-        if (cfg.geom_sync || win_tabbar_visible()) {
+        if (sync_level() || win_tabbar_visible()) {
           refresh_tab_titles(false);
           // support tabbar
           win_update_tabbar();
         }
       }
-      else if (cfg.geom_sync) {
+      else if (sync_level()) {
 #ifdef debug_tabs
         printf("[%8p] switched %d,%d %d,%d\n", wnd, (INT16)LOWORD(lp), (INT16)HIWORD(lp), LOWORD(wp), HIWORD(wp));
 #endif
@@ -2647,14 +2657,14 @@ static struct {
         else
 #endif
         if (!wp) {
-          if (lp == WIN_MINIMIZE && cfg.geom_sync >= 3)
+          if (lp == WIN_MINIMIZE && sync_level() >= 3)
             ShowWindow(wnd, SW_MINIMIZE);
-          else if (lp == WIN_FULLSCREEN && cfg.geom_sync)
+          else if (lp == WIN_FULLSCREEN && sync_level())
             win_maximise(2);
-          else if (lp == WIN_MAXIMIZE && cfg.geom_sync)
+          else if (lp == WIN_MAXIMIZE && sync_level())
             win_maximise(1);
         }
-        else if (cfg.geom_sync) {
+        else if (sync_level()) {
           if (win_is_fullscreen)
             clear_fullscreen();
           if (IsZoomed(wnd))
@@ -2935,7 +2945,7 @@ static struct {
           return 0;
       }
       else
-      if (wp == HTCAPTION && (cfg.geom_sync > 0 || get_mods() == MDK_CTRL)) {
+      if (wp == HTCAPTION && (sync_level() > 0 || get_mods() == MDK_CTRL)) {
         if (win_title_menu(false))
           return 0;
       }
@@ -3443,13 +3453,24 @@ static struct {
         return result;
     }
 
-    when WM_SETHOTKEY: {
-      hotkey = wp & 0xFF;
-      ushort mods = wp >> 8;
-      hotkey_mods = (mod_keys)(!!(mods & HOTKEYF_SHIFT) * MDK_SHIFT
-                  | !!(mods & HOTKEYF_ALT) * MDK_ALT
-                  | !!(mods & HOTKEYF_CONTROL) * MDK_CTRL);
-    }
+    when WM_SETHOTKEY:
+#ifdef debug_hook
+      show_info(asform("WM_SETHOTKEY %X %02X", wp >> 8, wp & 0xFF));
+#endif
+      if (wp & 0xFF) {
+        // Set up implicit startup hotkey as defined via Windows shortcut
+        if (!hotkey)
+          win_global_keyboard_hook(true);
+        hotkey = wp & 0xFF;
+        ushort mods = wp >> 8;
+        hotkey_mods = (mod_keys)(!!(mods & HOTKEYF_SHIFT) * MDK_SHIFT
+                    | !!(mods & HOTKEYF_ALT) * MDK_ALT
+                    | !!(mods & HOTKEYF_CONTROL) * MDK_CTRL);
+      }
+      else {
+        hotkey = 0;
+        win_global_keyboard_hook(false);
+      }
   }
 
  /*
@@ -3458,12 +3479,6 @@ static struct {
   */
   return DefWindowProcW(wnd, message, wp, lp);
 }
-
-#define dont_hook_keyboard
-
-#ifdef hook_keyboard
-
-#define debug_hook
 
 static LRESULT CALLBACK
 hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
@@ -3535,15 +3550,20 @@ hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
   return CallNextHookEx(0, nCode, wParam, lParam);
 }
 
-void
+static void
 hook_windows(int id, HOOKPROC hookproc, bool global)
 {
-  bool hotkey_configured() {return false;}
-  if (hotkey_configured())
-    SetWindowsHookExW(id, hookproc, 0, global ? 0 : GetCurrentThreadId());
+  kb_hook = SetWindowsHookExW(id, hookproc, 0, global ? 0 : GetCurrentThreadId());
 }
 
-#endif
+static void
+win_global_keyboard_hook(bool on)
+{
+  if (on)
+    hook_windows(WH_KEYBOARD_LL, hookprockbll, true);
+  else if (kb_hook)
+    UnhookWindowsHookEx(kb_hook);
+}
 
 bool
 win_get_ime(void)
@@ -4729,7 +4749,7 @@ main(int argc, char *argv[])
         set_arg_option("Title", optarg);
         title_settable = false;
       when '':
-        set_arg_option("ShowTabBar", strdup("1"));
+        set_arg_option("TabBar", strdup("1"));
         set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
       when 'B':
         border_style = strdup(optarg);
@@ -5315,27 +5335,25 @@ main(int argc, char *argv[])
   // INT16 to handle multi-monitor negative coordinates properly
   INT16 sx = 0, sy = 0, sdx = 1, sdy = 1;
   short si = 0;
-  {
-    if (getenv("FATTY_X")) {
-      sx = atoi(getenv("FATTY_X"));
-      unsetenv("FATTY_X");
-      si++;
-    }
-    if (getenv("FATTY_Y")) {
-      sy = atoi(getenv("FATTY_Y"));
-      unsetenv("FATTY_Y");
-      si++;
-    }
-    if (getenv("FATTY_DX")) {
-      sdx = atoi(getenv("FATTY_DX"));
-      unsetenv("FATTY_DX");
-      si++;
-    }
-    if (getenv("FATTY_DY")) {
-      sdy = atoi(getenv("FATTY_DY"));
-      unsetenv("FATTY_DY");
-      si++;
-    }
+  if (getenv("FATTY_X")) {
+    sx = atoi(getenv("FATTY_X"));
+    unsetenv("FATTY_X");
+    si++;
+  }
+  if (getenv("FATTY_Y")) {
+    sy = atoi(getenv("FATTY_Y"));
+    unsetenv("FATTY_Y");
+    si++;
+  }
+  if (getenv("FATTY_DX")) {
+    sdx = atoi(getenv("FATTY_DX"));
+    unsetenv("FATTY_DX");
+    si++;
+  }
+  if (getenv("FATTY_DY")) {
+    sdy = atoi(getenv("FATTY_DY"));
+    unsetenv("FATTY_DY");
+    si++;
   }
 
   // Initialise the terminal.
@@ -5518,7 +5536,7 @@ main(int argc, char *argv[])
   }
 
   {
-    if (cfg.geom_sync) {
+    if (sync_level()) {
 #ifdef debug_tabs
       printf("[%8p] launched %d,%d %d,%d\n", wnd, sx, sy, sdx, sdy);
 #endif
@@ -5617,12 +5635,12 @@ main(int argc, char *argv[])
   }
 
   // Set up tabbar
-  if (cfg.show_tabbar) {
+  if (cfg.tabbar) {
     win_open_tabbar();
   }
 
 #ifdef use_init_position
-  if (cfg.show_tabbar)
+  if (cfg.tabbar)
     // support tabbar; however, the purpose of this handling is unclear
     win_init_position();
   else
@@ -5633,9 +5651,11 @@ main(int argc, char *argv[])
 
   update_tab_titles();
 
-#ifdef hook_keyboard
-  // Install keyboard hook.
-  hook_windows(WH_KEYBOARD_LL, hookprockbll, true);
+#ifdef always_hook_keyboard
+  // Install keyboard hook if we configure an explicit startup hotkey...
+  // not implemented
+  if (hotkey_configured ...)
+    win_global_keyboard_hook(true);
 #endif
 
   if (report_winpid) {

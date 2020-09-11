@@ -155,6 +155,8 @@ extern wstring wslicon(wchar * params);
 extern char * (foreground_cwd)(struct child* child_p);
 
 extern void win_switch(bool back, bool alternate);
+extern int sync_level(void);
+
 extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MONITORINFO *mip);
 
 #define win_set_ime_open(...) (win_set_ime_open)(term_p, ##__VA_ARGS__)
