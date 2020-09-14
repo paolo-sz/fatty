@@ -3483,6 +3483,12 @@ static struct {
 static LRESULT CALLBACK
 hookprockbll(int nCode, WPARAM wParam, LPARAM lParam)
 {
+  struct term *term_p = win_active_terminal();
+  TERM_VAR_REF(true)
+
+  if (term.shortcut_override)
+    return CallNextHookEx(0, nCode, wParam, lParam);
+
   LPKBDLLHOOKSTRUCT kbdll = (LPKBDLLHOOKSTRUCT)lParam;
   uint key = kbdll->vkCode;
 #ifdef debug_hook
@@ -5354,6 +5360,9 @@ main(int argc, char *argv[])
     sdy = atoi(getenv("FATTY_DY"));
     unsetenv("FATTY_DY");
     si++;
+  }
+  if (getenv("FATTY_TABBAR")) {
+    cfg.tabbar = max(cfg.tabbar, atoi(getenv("FATTY_TABBAR")));
   }
 
   // Initialise the terminal.

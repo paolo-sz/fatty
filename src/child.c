@@ -870,6 +870,8 @@ setup_sync()
       setenvi(const_cast<char *>("FATTY_DX"), r.right - r.left);
       setenvi(const_cast<char *>("FATTY_DY"), r.bottom - r.top);
     }
+    if (cfg.tabbar)
+      setenvi(const_cast<char *>("FATTY_TABBAR"), cfg.tabbar);
   }
 }
 
