@@ -817,7 +817,7 @@ void
   }
   else if (horizontal) {
   }
-  else if ((mods & ~MDK_SHIFT) == MDK_CTRL) {
+  else if (cfg.zoom_mouse && (mods & ~MDK_SHIFT) == MDK_CTRL) {
     if (strstr(cfg.suppress_wheel, "zoom"))
       return;
     if (cfg.zoom_mouse) {
@@ -828,17 +828,22 @@ void
       }
     }
   }
-  else if (!(mods & ~MDK_SHIFT)) {
+  else if (!(mods & ~(MDK_SHIFT | MDK_CTRL | MDK_ALT))) {
+    if (mods & MDK_CTRL)
+      lines_per_notch = 1;
+    else if (cfg.lines_per_notch > 0)
+      lines_per_notch = min(cfg.lines_per_notch, term.rows - 1);
+
     // Scroll, taking the lines_per_notch setting into account.
     // Scroll by a page per notch if setting is -1 or Shift is pressed.
-    int lines_per_page = max(1, term.rows - 1);
+    int lines_per_page = max(1, term.rows);
     if (lines_per_notch == -1 || mods & MDK_SHIFT)
       lines_per_notch = lines_per_page;
     int lines = lines_per_notch * accu / NOTCH_DELTA;
     //printf("mouse lines %d per notch %d accu %d\n", lines, lines_per_notch, accu);
     if (lines) {
       accu -= lines * NOTCH_DELTA / lines_per_notch;
-      if (!term.on_alt_screen || term.show_other_screen) {
+      if ((!term.on_alt_screen || term.show_other_screen) && !(mods & MDK_ALT)) {
         if (strstr(cfg.suppress_wheel, "scrollwin"))
           return;
         term_scroll(0, -lines);
