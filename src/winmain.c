@@ -2669,6 +2669,15 @@ static struct {
             clear_fullscreen();
           if (IsZoomed(wnd))
             win_maximise(0);
+#ifdef attempt_to_restore_tabset_consistently
+          // if a set of synchronized windows (tab set) is minimized, 
+          // one window restored and closed, the others remain minimized;
+          // this is a failed attempt to fix that inconsistency
+          //printf("WM_USER sync iconic %d\n", IsIconic(wnd));
+          if (IsIconic(wnd))
+            ShowWindow(wnd, SW_RESTORE);
+#endif
+
           // (INT16) to handle multi-monitor negative coordinates properly
           SetWindowPos(wnd, null,
                        //GET_X_LPARAM(lp), GET_Y_LPARAM(lp),
@@ -2862,9 +2871,13 @@ static struct {
             child_printf("\e[%u#d", info.nTrackPos);
           }
         }
-        // flush notification to handle auto-repeat click on scrollbar,
-        // as messages are not dispatched to the application while 
-        // holding the mouse button on the scrollbar
+        // while holding the mouse button on the scrollbar (e.g. dragging), 
+        // messages are not dispatched to the application;
+        // so in order to make any response effective on the screen, 
+        // we need to call the child_proc function here;
+        // additional delay avoids incomplete delivery of such echo (#1033),
+        // 1ms is not sufficient
+        usleep(5555);
         child_proc();
       }
 

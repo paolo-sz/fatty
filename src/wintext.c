@@ -4033,9 +4033,19 @@ draw:;
         if (attr.attr & TATTR_RIGHTCURS)
           xx += char_width - caret_width;
         if (attr.attr & TATTR_ACTCURS) {
+#ifdef cursor_painted_with_rectangle
+          // this would add an additional line, vanishing again but 
+          // leaving a pixel artefact, under some utterly weird interference 
+          // with output of certain characters (mintty/wsltty#255)
           HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(_cc));
           Rectangle(dc, xx, y, xx + caret_width, y + cell_height);
           DeleteObject(SelectObject(dc, oldbrush));
+#else
+          HBRUSH br = CreateSolidBrush(_cc);
+          RECT tmp_rect = {xx, y, xx + caret_width, y + cell_height};
+          FillRect(dc, &tmp_rect, br);
+          DeleteObject(br);
+#endif
         }
         else if (attr.attr & TATTR_PASCURS) {
           for (int dy = 0; dy < cell_height; dy += 2) {
