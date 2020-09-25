@@ -310,11 +310,13 @@ static HRESULT (WINAPI * pGetProcessDpiAwareness)(HANDLE hprocess, int * value) 
 static HRESULT (WINAPI * pSetProcessDpiAwareness)(int value) = 0;
 static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
 
+#ifndef _DPI_AWARENESS_CONTEXTS_
 DECLARE_HANDLE(DPI_AWARENESS_CONTEXT);
 #define DPI_AWARENESS_CONTEXT_UNAWARE           ((DPI_AWARENESS_CONTEXT)-1)
 #define DPI_AWARENESS_CONTEXT_SYSTEM_AWARE      ((DPI_AWARENESS_CONTEXT)-2)
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE ((DPI_AWARENESS_CONTEXT)-3)
 #define DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 ((DPI_AWARENESS_CONTEXT)-4)
+#endif
 static DPI_AWARENESS_CONTEXT (WINAPI * pSetThreadDpiAwarenessContext)(DPI_AWARENESS_CONTEXT dpic) = 0;
 static HRESULT (WINAPI * pEnableNonClientDpiScaling)(HWND win) = 0;
 static BOOL (WINAPI * pAdjustWindowRectExForDpi)(LPRECT lpRect, DWORD dwStyle, BOOL bMenu, DWORD dwExStyle, UINT dpi) = 0;
@@ -1433,7 +1435,7 @@ win_is_glass_available(void)
 {
   BOOL result = false;
 #ifdef support_glass
-#warning #501: “Just give up on glass effects. Microsoft clearly have.”
+#warning #501: "Just give up on glass effects. Microsoft clearly have."
   if (pDwmIsCompositionEnabled)
     pDwmIsCompositionEnabled(&result);
 #endif

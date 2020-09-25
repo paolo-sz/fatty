@@ -1759,7 +1759,7 @@ static void
         attr.attr |= prot;
       when 1: attr.attr |= ATTR_BOLD;
       when 2: attr.attr |= ATTR_DIM;
-      when 1 | SUB_PARS:
+      when (uint)1 | SUB_PARS:
         if (i + 1 < argc)
           switch (term.csi_argv[i + 1]) {
             when 2:
@@ -1769,7 +1769,7 @@ static void
       when 4:
         attr.attr &= ~UNDER_MASK;
         attr.attr |= ATTR_UNDER;
-      when 4 | SUB_PARS:
+      when (uint)4 | SUB_PARS:
         if (i + 1 < argc)
           switch (term.csi_argv[i + 1]) {
             when 0:
@@ -1794,7 +1794,7 @@ static void
       when 6: attr.attr |= ATTR_BLINK2;
       when 7: attr.attr |= ATTR_REVERSE;
       when 8: attr.attr |= ATTR_INVISIBLE;
-      when 8 | SUB_PARS:
+      when (uint)8 | SUB_PARS:
         if (i + 1 < argc)
           switch (term.csi_argv[i + 1]) {
             when 7:
@@ -1868,7 +1868,7 @@ static void
           attr.truefg = make_colour(r, g, b);
           i += 4;
         }
-      when 38 | SUB_PARS: /* ISO/IEC 8613-6 foreground colour */
+      when (uint)38 | SUB_PARS: /* ISO/IEC 8613-6 foreground colour */
         if (sub_pars >= 2 && term.csi_argv[i + 1] == 5) {
           // set foreground to palette colour
           attr.attr &= ~ATTR_FGMASK;
@@ -1927,7 +1927,7 @@ static void
           attr.truebg = make_colour(r, g, b);
           i += 4;
         }
-      when 48 | SUB_PARS: /* ISO/IEC 8613-6 background colour */
+      when (uint)48 | SUB_PARS: /* ISO/IEC 8613-6 background colour */
         if (sub_pars >= 2 && term.csi_argv[i + 1] == 5) {
           // set background to palette colour
           attr.attr &= ~ATTR_BGMASK;
@@ -1963,7 +1963,7 @@ static void
       when 49: /* default background */
         attr.attr &= ~ATTR_BGMASK;
         attr.attr |= ATTR_DEFBG;
-      when 58 | SUB_PARS: /* ISO/IEC 8613-6 format underline colour */
+      when (uint)58 | SUB_PARS: /* ISO/IEC 8613-6 format underline colour */
         if (sub_pars >= 2 && term.csi_argv[i + 1] == 5) {
           // set foreground to palette colour
           attr.attr |= ATTR_ULCOLOUR;
