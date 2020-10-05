@@ -13,7 +13,7 @@ using std::min;
 extern "C" {
 
 #include "termpriv.h"
-#include "winpriv.h"  // win_get_font, win_change_font, win_led, win_set_scrollview
+#include "winpriv.h"  // colours, win_get_font, win_change_font, win_led, win_set_scrollview
 
 #include "win.h"
 #include "appinfo.h"
@@ -2504,6 +2504,63 @@ pop_attrs(cattr * _ca, cattrflags * _caflagsmask)
   return true;
 }
 
+static COLORREF * colours_stack[10] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+static int colours_cur = 0;
+static int colours_num = 0;
+
+static void
+push_colours(uint ix)
+{
+  if (ix > 10)
+    return;
+
+  if (ix) {  // store
+    colours_cur = ix;
+    ix--;
+  }
+  else {  // push
+    if (colours_cur < 10) {
+      ix = colours_cur;
+      colours_cur++;
+    }
+    else
+      return;
+  }
+  //printf("push %d\n", ix);
+
+  if (!colours_stack[ix]) {
+    colours_stack[ix] = (COLORREF *)malloc(COLOUR_NUM * sizeof(COLORREF));
+    if (colours_stack[ix])
+      colours_num++;
+  }
+  if (colours_stack[ix])
+    memcpy(colours_stack[ix], colours, COLOUR_NUM * sizeof(COLORREF));
+}
+
+static void
+pop_colours(uint ix)
+{
+  if (ix > 10)
+    return;
+
+  if (ix) {  // retrieve
+    colours_cur = ix;
+    ix--;
+  }
+  else {  // pop
+    if (colours_cur) {
+      colours_cur--;
+      ix = colours_cur;
+    }
+    else
+      return;
+  }
+  //printf("pop %d\n", ix);
+
+  if (colours_stack[ix])
+    memcpy(colours, colours_stack[ix], COLOUR_NUM * sizeof(COLORREF));
+}
+
 #define do_winop(...) (do_winop)(term_p, ##__VA_ARGS__)
 /*
  * dtterm window operations and xterm extensions.
@@ -2808,6 +2865,13 @@ static void
           term.curs.attr.ulcolr = ca.ulcolr;
       }
     }
+    when CPAIR('#', 'P'):  /* Push dynamic colours onto stack (XTPUSHCOLORS) */
+      push_colours(arg0);
+    when CPAIR('#', 'Q'):  /* Pop dynamic colours from stack (XTPOPCOLORS) */
+      pop_colours(arg0);
+      win_invalidate_all(false);  // refresh
+    when CPAIR('#', 'R'):  /* Report colours stack entry (XTREPORTCOLORS) */
+      child_printf("\e[?%d;%d#Q", colours_cur, colours_num);
     when CPAIR('$', 'p'): { /* DECRQM: request (private) mode */
       int arg = term.csi_argv[0];
       child_printf("\e[%s%u;%u$y",
