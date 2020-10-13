@@ -3618,10 +3618,14 @@ static void
 {
   TERM_VAR_REF(true)
   
+  int osc_num = term.cmd_num;  // 4, 5, 10..19, 104, 105, 110..119
   char *s = term.cmd_buf;
+
+do_osc_control:
+  //printf("OSC %d <%s>\n", osc_num, s);
   int index;
-  if (has_index_arg) {
-    int osc = i;
+  if (has_index_arg) {  // OSC 4, 5, 104, 105
+    int osc = i;  // 4, 5
     int len = 0;
     sscanf(s, "%u;%n", &index, &len);
     i = index;
@@ -3641,18 +3645,29 @@ static void
       else if (i == 4)
         i = ITALIC_COLOUR_I;
 #endif
-      else
+      else if (i > 4)
         return;
+      else {
+        // skip unimplemented setting, continue to process multiple controls
+        i = COLOUR_NUM;
+      }
     }
     else if (i >= 256)
       return;
   }
 
+  char * cont = strchr(s, ';');
+  if (cont)
+    *cont = 0;  // enable colour parsing with subsequent multiple values
+
   colour c;
-  if (reset)
+  if (i >= COLOUR_NUM) {
+    // skip this setting
+  }
+  else if (reset)
     win_set_colour((colour_i)i, (colour)-1);
   else if (!strcmp(s, "?")) {
-    child_printf("\e]%u;", term.cmd_num);
+    child_printf("\e]%u;", osc_num);
     if (has_index_arg)
       child_printf("%u;", index);
     c = i < COLOUR_NUM ? colours[i] : 0;  // should not be affected by rvideo
@@ -3662,14 +3677,47 @@ static void
   }
   else if (parse_colour(s, &c))
     win_set_colour((colour_i)i, c);
+
+  if (cont) {  // support multiple osc controls
+    s = cont;  // original ';' position
+    s++;
+    if (osc_num >= 10 && osc_num <= 19) {  // "dynamic colors"
+      int new_num;
+      int len = 0;
+      sscanf(s, "%u;%n", &new_num, &len);
+      if (len) {  // OSC 10;blue;12;red
+        s += len;
+        osc_num = new_num;
+      }
+      else  // OSC 10;blue;pink: auto-increment dynamic color index
+        osc_num++;
+      // adjust i (the extended colour palette index)
+      // to the new dynamic color number;
+      // what a hack! this should have been done in do_cmd
+      switch (osc_num) {
+        when 10:   i = FG_COLOUR_I;
+        when 11:   i = BG_COLOUR_I;
+        when 12:   i = CURSOR_COLOUR_I;
+        when 17:   i = SEL_COLOUR_I;
+        when 19:   i = SEL_TEXT_COLOUR_I;
+        when 15:   i = TEK_FG_COLOUR_I;
+        when 16:   i = TEK_BG_COLOUR_I;
+        when 18:   i = TEK_CURSOR_COLOUR_I;
+                   break;
+        default: i = COLOUR_NUM;
+      }
+    }
+    goto do_osc_control;
+  }
 }
 
 #define do_clipboard(...) (do_clipboard)(term_p, ##__VA_ARGS__)
 /*
- * OSC52: \e]52;[cp0-6];?|base64-string\07"
+ * OSC 52: \e]52;[cp0-6];?|base64-string\07"
  * Only system clipboard is supported now.
  */
-static void (do_clipboard)(struct term* term_p)
+static void
+(do_clipboard)(struct term* term_p)
 {
   TERM_VAR_REF(true)
   

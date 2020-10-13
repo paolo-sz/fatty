@@ -1890,7 +1890,7 @@ static int
     return m;
   };
 
-  mod_keys mod_tag = tagmods(tag);
+  mod_keys mod_tag = tagmods(tag ?: const_cast<char *>(""));
   char * tag0 = tag ? strchr(tag, '+') : 0;
   if (tag0)
     tag0++;
