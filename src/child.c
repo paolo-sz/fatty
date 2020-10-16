@@ -862,7 +862,7 @@ setup_sync()
       setenvi(const_cast<char *>("FATTY_DX"), 0);
       setenvi(const_cast<char *>("FATTY_DY"), 0);
     }
-    else {
+    else if (!IsZoomed(wnd)) {
       RECT r;
       GetWindowRect(wnd, &r);
       setenvi(const_cast<char *>("FATTY_X"), r.left);

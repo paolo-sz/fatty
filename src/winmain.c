@@ -5587,6 +5587,30 @@ main(int argc, char *argv[])
     trace_winsize("border_style");
   }
 
+  if (cfg.tabbar && !getenv("FATTY_DX") && !getenv("FATTY_DY")) {
+    HWND wnd_other = FindWindowEx(NULL, wnd,
+        (LPCTSTR)(uintptr_t)class_atom, NULL);
+    if (wnd_other) {
+      if (IsZoomed(wnd_other)) {
+        if ((GetWindowLong(wnd_other, GWL_STYLE) & WS_THICKFRAME) == 0) {
+          setenvi(const_cast<char *>("FATTY_DX"), 0);
+          setenvi(const_cast<char *>("FATTY_DY"), 0);
+        }
+        else {
+          run_max = 1;
+        }
+      }
+      else {
+        RECT r;
+        GetWindowRect(wnd_other, &r);
+        setenvi(const_cast<char *>("FATTY_X"), r.left);
+        setenvi(const_cast<char *>("FATTY_Y"), r.top);
+        setenvi(const_cast<char *>("FATTY_DX"), r.right - r.left);
+        setenvi(const_cast<char *>("FATTY_DY"), r.bottom - r.top);
+      }
+    }
+  }
+
   {
     if (sync_level()) {
 #ifdef debug_tabs
