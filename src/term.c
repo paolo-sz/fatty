@@ -1,6 +1,6 @@
 // term.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-12 Andy Koppe, 2016-2018 Thomas Wolff
+// Based on code from mintty by 2008-12 Andy Koppe, 2016-2020 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -1405,6 +1405,8 @@ void
 
 /*
    Scroll the actual display (window contents and its cache).
+   NOTE: This was an incomplete and initially unsuccessful attempt 
+   to implement smooth scrolling (DECSCLM, DECSET 4).
  */
 static int dispscroll_top, dispscroll_bot, dispscroll_lines = 0;
 

@@ -1,6 +1,6 @@
 // termout.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe and Thomas Wolff
+// Based on code from mintty by 2008-12 Andy Koppe, 2017-20 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -3620,10 +3620,10 @@ static void
   
   int osc_num = term.cmd_num;  // 4, 5, 10..19, 104, 105, 110..119
   char *s = term.cmd_buf;
+  int index;
 
 do_osc_control:
   //printf("OSC %d <%s>\n", osc_num, s);
-  int index;
   if (has_index_arg) {  // OSC 4, 5, 104, 105
     int osc = i;  // 4, 5
     int len = 0;
