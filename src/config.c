@@ -1868,7 +1868,7 @@ about_handler(control *unused(ctrl), int event)
 #endif
 
 static void
-add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
+do_file_resources(control *ctrl, wstring pattern, bool list_dirs, str_fn fnh)
 {
   init_config_dirs();
   //printf("add_file_resources <%ls> dirs %d\n", pattern, list_dirs);
@@ -1895,7 +1895,8 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
           if (ffd.cFileName[0] != '.' && !!wcscmp(ffd.cFileName, W("common")))
             // exclude the [0-7] links left over by the `getemojis` script
             if (wcslen(ffd.cFileName) > 1)
-              dlg_listbox_add_w(ctrl, ffd.cFileName);
+              if (ctrl)
+                dlg_listbox_add_w(ctrl, ffd.cFileName);
         }
         else if (!list_dirs) {
           //LARGE_INTEGER filesize = {.LowPart = ffd.nFileSizeLow, .HighPart = ffd.nFileSizeHigh};
@@ -1905,7 +1906,10 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
           int len = wcslen(ffd.cFileName);
           if (ffd.cFileName[0] != '.' && ffd.cFileName[len - 1] != '~') {
             ffd.cFileName[len - sufl] = 0;
-            dlg_listbox_add_w(ctrl, ffd.cFileName);
+            if (ctrl)
+              dlg_listbox_add_w(ctrl, ffd.cFileName);
+            else
+              (void)fnh;  // CYGWIN_VERSION_API_MINOR < 74
           }
         }
         ok = FindNextFileW(hFind, &ffd);
@@ -1929,7 +1933,6 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
     //printf("<%s> -> <%s>\n", config_dirs[i], rcpat);
 
     DIR * dir = opendir(rcpat);
-    free(rcpat);
     if (dir) {
       struct dirent * direntry;
       while ((direntry = readdir (dir)) != 0) {
@@ -1939,23 +1942,46 @@ add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
         if (list_dirs && direntry->d_type == DT_DIR) {
           if (direntry->d_name[0] != '.' && !!strcmp(direntry->d_name, "common"))
             // exclude the [0-7] links left over by the `getemojis` script
-            if (strlen(direntry->d_name) > 1)
-              dlg_listbox_add(ctrl, direntry->d_name);
+            if (strlen(direntry->d_name) > 1) {
+              if (ctrl)
+                dlg_listbox_add(ctrl, direntry->d_name);
+            }
         }
         else if (!list_dirs) {
           // strip suffix
           int len = strlen(direntry->d_name);
           if (direntry->d_name[0] != '.' && direntry->d_name[len - 1] != '~') {
             direntry->d_name[len - patsuflen] = 0;
-            dlg_listbox_add(ctrl, direntry->d_name);
+            if (ctrl)
+              dlg_listbox_add(ctrl, direntry->d_name);
+            else {
+              char * fn = asform("%s/%s", rcpat, direntry->d_name);
+              wchar * wfn = path_posix_to_win_w(fn);
+              fnh(wfn);
+              free(wfn);
+              free(fn);
+            }
           }
         }
       }
       closedir(dir);
     }
+    free(rcpat);
     free(pat);
 #endif
   }
+}
+
+static void
+add_file_resources(control *ctrl, wstring pattern, bool list_dirs)
+{
+  do_file_resources(ctrl, pattern, list_dirs, 0);
+}
+
+void
+handle_file_resources(wstring pattern, str_fn fn_handler)
+{
+  do_file_resources(0, pattern, false, fn_handler);
 }
 
 

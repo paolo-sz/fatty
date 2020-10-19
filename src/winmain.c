@@ -3276,7 +3276,12 @@ static struct {
                        && !ctrl
                        ;
         //printf("WM_SIZE scale_font %d zoom_token %d\n", scale_font, zoom_token);
+        int rows0 = term.rows0, cols0 = term.cols0;
         win_adapt_term_size(false, scale_font);
+        if (wp == SIZE_MAXIMIZED) {
+          term.rows0 = rows0;
+          term.cols0 = cols0;
+        }
         if (zoom_token > 0)
           zoom_token = zoom_token >> 1;
         default_size_token = false;
@@ -4993,6 +4998,9 @@ main(int argc, char *argv[])
     run_max = atoi(getenv("FATTY_MAXIMIZE"));
     unsetenv("FATTY_MAXIMIZE");
   }
+  if (getenv("FATTY_TABBAR")) {
+    cfg.tabbar = max(cfg.tabbar, atoi(getenv("FATTY_TABBAR")));
+  }
 
   // if started from console, try to detach from caller's terminal (~daemonizing)
   // in order to not suppress signals
@@ -5321,6 +5329,17 @@ main(int argc, char *argv[])
   class_atom = RegisterClassExW(&tmp_wndc);
 
 
+  // Provide temporary fonts
+  auto add_font = [](wchar * fn)
+  {
+    int n = AddFontResourceExW(fn, FR_PRIVATE, 0);
+    if (n) {
+//      printf("Added %d fonts\n", dynfonts);
+   } else
+      printf("Failed to add font %ls\n", fn);
+  };
+  handle_file_resources(W("fonts/*"), add_font);
+
   // Initialise the fonts, thus also determining their width and height.
   win_init_fonts(cfg.font.size);
 
@@ -5337,6 +5356,7 @@ main(int argc, char *argv[])
     pGetDpiForMonitor(mon, 0, &x, &dpi);  // MDT_EFFECTIVE_DPI
   }
 #endif
+  win_prepare_tabbar();
   win_adjust_borders(cell_width * term_cols, cell_height * term_rows);
 
   // Having x == CW_USEDEFAULT but not y still triggers default positioning,
@@ -5403,9 +5423,6 @@ main(int argc, char *argv[])
     sdy = atoi(getenv("FATTY_DY"));
     unsetenv("FATTY_DY");
     si++;
-  }
-  if (getenv("FATTY_TABBAR")) {
-    cfg.tabbar = max(cfg.tabbar, atoi(getenv("FATTY_TABBAR")));
   }
 
   // Initialise the terminal.
@@ -5542,6 +5559,7 @@ main(int argc, char *argv[])
       */
       if (dpi != 96) {
         font_cs_reconfig(true);
+        win_prepare_tabbar();
         trace_winsize("dpi > font_cs_reconfig");
         if (maxwidth || maxheight) {
           // changed terminal size not yet recorded, 
@@ -5588,9 +5606,12 @@ main(int argc, char *argv[])
   }
 
   if (cfg.tabbar && !getenv("FATTY_DX") && !getenv("FATTY_DY")) {
-    HWND wnd_other = FindWindowEx(NULL, wnd,
-        (LPCTSTR)(uintptr_t)class_atom, NULL);
-    if (wnd_other) {
+#if CYGWIN_VERSION_API_MINOR < 74
+typedef UINT_PTR uintptr_t;
+#endif
+    HWND wnd_other = FindWindowExW(NULL, wnd,
+        (LPCWSTR)(uintptr_t)class_atom, NULL);
+    if (wnd_other && FindWindowExA(wnd_other, NULL, TABBARCLASS, NULL)) {
       if (IsZoomed(wnd_other)) {
         if ((GetWindowLong(wnd_other, GWL_STYLE) & WS_THICKFRAME) == 0) {
           setenvi(const_cast<char *>("FATTY_DX"), 0);
@@ -5694,13 +5715,6 @@ main(int argc, char *argv[])
 //    argv, &(struct winsize){term_rows, term_cols, term_width, term_height}
 //  );
 
-  // Finally show the window.
-  ShowWindow(wnd, show_cmd);
-  SetFocus(wnd);
-  // Cloning fullscreen window
-  if (run_max == 2)
-    win_maximise(2);
-
   // Set up clipboard notifications.
   HRESULT (WINAPI * pAddClipboardFormatListener)(HWND) =
     (HRESULT (*)(HWND))load_library_func("user32.dll", "AddClipboardFormatListener");
@@ -5714,6 +5728,17 @@ main(int argc, char *argv[])
   if (cfg.tabbar) {
     win_open_tabbar();
   }
+
+  // Finally show the window.
+  ShowWindow(wnd, show_cmd);
+  SetFocus(wnd);
+  // Cloning fullscreen window
+  if (run_max == 2)
+    win_maximise(2);
+
+  // Save the non-maximised window size
+  term.rows0 = term_rows;
+  term.cols0 = term_cols;
 
 #ifdef use_init_position
   if (cfg.tabbar)

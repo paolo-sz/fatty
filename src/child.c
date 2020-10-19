@@ -990,8 +990,8 @@ static void
 
     // provide environment to clone size
     if (!config_size) {
-      setenvi(const_cast<char *>("FATTY_ROWS"), term.rows);
-      setenvi(const_cast<char *>("FATTY_COLS"), term.cols);
+      setenvi(const_cast<char *>("FATTY_ROWS"), term.rows0);
+      setenvi(const_cast<char *>("FATTY_COLS"), term.cols0);
       // provide environment to maximise window
       if (win_is_fullscreen)
         setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 2);
