@@ -692,14 +692,13 @@ static void
     if (curs->x == term.marg_right)
       break;
     last = curs->x;
-    if (cfg.disp_tab
-        && term.lines[curs->y]->chars[last].chr == ' '
+    if (term.lines[curs->y]->chars[last].chr == ' '
         && (term.lines[curs->y]->chars[last].attr.attr & TATTR_CLEAR)
        )
       term.lines[curs->y]->chars[last].attr.attr |= ATTR_DIM;
     curs->x++;
   } while (curs->x < term.cols - 1 && !term.tabs[curs->x]);
-  if (last >= 0 && cfg.disp_tab
+  if (last >= 0
       && term.lines[curs->y]->chars[last].chr == ' '
       && (term.lines[curs->y]->chars[last].attr.attr & TATTR_CLEAR)
      )
@@ -917,6 +916,13 @@ static void
     }
 #endif
   }
+
+#ifdef enforce_ambiguous_narrow_here
+  // enforce ambiguous-narrow as configured or for WSL;
+  // this could be done here but is now sufficiently achieved in charset.c
+  if (cs_ambig_narrow && width > 1 && is_ambig(c))
+    width = 1;
+#endif
 
   if (cfg.charwidth >= 10 || cs_single_forced) {
     if (width > 1) {
@@ -2936,14 +2942,14 @@ static void
       restore_cursor();
     when 'm':        /* SGR: set graphics rendition */
       do_sgr();
-    when 't':        /* DECSLPP: set page size - ie window height */
+    when 't':
      /*
       * VT340/VT420 sequence DECSLPP, for setting the height of the window.
       * DEC only allowed values 24/25/36/48/72/144, so dtterm and xterm
       * claimed values below 24 for various window operations, 
       * and also allowed any number of rows from 24 and above to be set.
       */
-      if (arg0 >= 24) {
+      if (arg0 >= 24) {  /* DECSLPP: set page size - ie window height */
         if (*cfg.suppress_win && contains(cfg.suppress_win, 24))
           ; // skip suppressed window operation
         else {
@@ -3259,6 +3265,14 @@ static void
     when CPAIR('-', 'p'): /* DECARR: VT520 Select Auto Repeat Rate */
       if (arg0 <= 30)
         term.repeat_rate = arg0;
+    when CPAIR('%', 'q'):  /* setup progress indicator on taskbar icon */
+      if (arg0 <= 3) {
+        taskbar_progress(- arg0);
+        if (term.csi_argc > 1)
+          taskbar_progress(arg1);
+        else
+          term.detect_progress = arg0;
+      }
   }
 }
 

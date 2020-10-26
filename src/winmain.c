@@ -159,6 +159,8 @@ typedef struct {
 
 #endif
 
+#include <shlobj.h>
+
 
 unsigned long
 mtime(void)
@@ -1705,6 +1707,42 @@ void
 }
 
 
+void
+taskbar_progress(int i)
+{
+#if CYGWIN_VERSION_API_MINOR >= 74
+static int last_i = 0;
+  if (i == last_i)
+    return;
+  //printf("taskbar_progress %d\n", i);
+
+  ITaskbarList4 * tbl;
+  HRESULT hres = CoCreateInstance(CLSID_TaskbarList, NULL,
+                                  CLSCTX_INPROC_SERVER,
+                                  IID_ITaskbarList, (void **) &tbl);
+  if (!SUCCEEDED(hres))
+    return;
+
+  if (i > 0)
+    hres = tbl->lpVtbl->SetProgressValue(tbl, wnd, i, 100);
+  else if (i == 0)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_NOPROGRESS);
+  else if (i == -1)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_NORMAL);
+  else if (i == -2)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_PAUSED);
+  else if (i == -3)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_ERROR);
+
+  last_i = i;
+
+  tbl->lpVtbl->Release(tbl);
+#else
+  (void)i;
+#endif
+}
+
+
 // Clockwork
 int get_tick_count(void) { return GetTickCount(); }
 int cursor_blink_ticks(void) { return GetCaretBlinkTime(); }
@@ -2728,6 +2766,8 @@ static struct {
         when IDM_OPEN: term_open();
         when IDM_COPY: term_copy();
         when IDM_COPY_TEXT: term_copy_as('t');
+        when IDM_COPY_TABS: term_copy_as('T');
+        when IDM_COPY_TXT: term_copy_as('p');
         when IDM_COPY_RTF: term_copy_as('r');
         when IDM_COPY_HTXT: term_copy_as('h');
         when IDM_COPY_HFMT: term_copy_as('f');
@@ -3691,8 +3731,6 @@ typedef void * voidrefref;
 #define STARTF_TITLEISAPPID 0x00001000
 #endif
 
-#include <shlobj.h>
-
 static wchar *
 get_shortcut_icon_location(wchar * iconfile, bool * wdpresent)
 {
@@ -4128,10 +4166,14 @@ select_WSL(char * wsl)
       else
         std_delete(wsl_icon);
     }
-    // set implicit options --wsl -o Locale=C -o Charset=UTF-8
+    // set implicit option --wsl
     support_wsl = true;
-    set_arg_option("Locale", strdup("C"));
-    set_arg_option("Charset", strdup("UTF-8"));
+    if (cfg.old_locale) {
+      // enforce UTF-8 for WSL:
+      // also set implicit options -o Locale=C -o Charset=UTF-8
+      set_arg_option("Locale", strdup("C"));
+      set_arg_option("Charset", strdup("UTF-8"));
+    }
     if (0 == wcscmp(cfg.app_id, W("@")))
       // setting an implicit AppID fixes mintty/wsltty#96 but causes #784
       // so an explicit config value derives AppID from wsl distro name
@@ -5097,12 +5139,14 @@ main(int argc, char *argv[])
 #endif
     *pargv++ = const_cast<char *>("-e");
     *pargv++ = const_cast<char *>("APPDATA");
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("LANG");
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("LC_CTYPE");
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("LC_ALL");
+    if (!cfg.old_locale) {
+      *pargv++ = const_cast<char *>("-e");
+      *pargv++ = const_cast<char *>("LANG");
+      *pargv++ = const_cast<char *>("-e");
+      *pargv++ = const_cast<char *>("LC_CTYPE");
+      *pargv++ = const_cast<char *>("-e");
+      *pargv++ = const_cast<char *>("LC_ALL");
+    }
     if (start_home) {
 #ifdef wslbridge2
       *pargv++ = const_cast<char *>("--wsldir");

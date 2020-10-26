@@ -628,6 +628,8 @@ struct term {
   uchar *tabs;
   bool newtab;
 
+  int detect_progress;
+
   state_t state;
 
   // Mouse mode

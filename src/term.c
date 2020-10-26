@@ -425,6 +425,9 @@ void
   term_schedule_tblink2();
   term_schedule_cblink();
   term_clear_scrollback();
+
+  term.detect_progress = cfg.progress_bar;
+
   term_schedule_search_update();
 
   win_reset_colours();
@@ -2636,6 +2639,35 @@ void
         printf("INVALID c %d\n", curs_x),
 #endif
         dispchars[curs_x].attr.attr |= ATTR_INVALID;
+
+      if (term.detect_progress) {
+        int j = term.cols;
+        while (--j > 0) {
+          if (chars[j].chr == '%' ||
+              (!(chars[j].attr.attr & TATTR_CLEAR)
+               // note: TATTR_CLEAR is already cleared in newchars
+               && !wcschr(W(")"), chars[j].chr)
+              )
+             )
+            break;
+        }
+        int p = 0;
+        if (chars[j].chr == '%') {
+          int f = 1;
+          while (--j >= 0) {
+            if (chars[j].chr >= '0' && chars[j].chr <= '9') {
+              p += f * (chars[j].chr - '0');
+              f *= 10;
+            }
+            else {
+              j++;
+              break;
+            }
+          }
+        }
+        if (p <= 100)
+          taskbar_progress(p);
+      }
     }
 
     //trace_line("loopn", newchars);

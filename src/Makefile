@@ -121,9 +121,8 @@ LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -
 #override LDLIBS += -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid
 
 ifdef DEBUG
-  CPPFLAGS += -Wno-trampolines
-  COMMONFLAGS += -fno-omit-frame-pointer -g
-  LDFLAGS += -Wl,--export-all-symbols
+#  CPPFLAGS += -Wno-trampolines
+  COMMONFLAGS += -g
 else
   CPPFLAGS += -DNDEBUG
   COMMONFLAGS += -fomit-frame-pointer -O2

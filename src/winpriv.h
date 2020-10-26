@@ -114,6 +114,8 @@ extern void win_set_icon(char * s, int icon_index);
 extern void win_show_tip(int x, int y, int cols, int rows);
 extern void win_destroy_tip(void);
 
+extern void taskbar_progress(int percent);
+
 extern void win_init_menus(void);
 #define win_update_menus(...) (win_update_menus)(term_p, ##__VA_ARGS__)
 extern void (win_update_menus)(struct term *term_p, bool callback);
