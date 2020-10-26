@@ -2904,6 +2904,14 @@ static void
       else if (arg0 == 10 && !term.esc_mod) {
         term_export_html(false);
       }
+#ifdef support_SVG
+      else if (arg0 == 11 && !term.esc_mod) {
+        term_export_svg();
+      }
+#endif
+      else if (arg0 == 12 && !term.esc_mod) {
+        term_save_image();
+      }
       else if (arg0 == 0 && !term.esc_mod) {
         print_screen();
       }
