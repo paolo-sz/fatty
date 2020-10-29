@@ -44,6 +44,7 @@ const char * fatty_debug;
 #include <getopt.h>
 #if CYGWIN_VERSION_API_MINOR < 74
 #define getopt_long_only getopt_long
+typedef UINT_PTR uintptr_t;
 #endif
 #include <pwd.h>
 
@@ -1714,25 +1715,27 @@ taskbar_progress(int i)
 static int last_i = 0;
   if (i == last_i)
     return;
-  //printf("taskbar_progress %d\n", i);
+  //printf("taskbar_progress %d detect %d\n", i, term.detect_progress);
 
-  ITaskbarList4 * tbl;
+  ITaskbarList3 * tbl;
   HRESULT hres = CoCreateInstance(CLSID_TaskbarList, NULL,
                                   CLSCTX_INPROC_SERVER,
                                   IID_ITaskbarList, (void **) &tbl);
   if (!SUCCEEDED(hres))
     return;
 
-  if (i > 0)
+  if (i >= 0)
     hres = tbl->lpVtbl->SetProgressValue(tbl, wnd, i, 100);
-  else if (i == 0)
-    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_NOPROGRESS);
   else if (i == -1)
     hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_NORMAL);
   else if (i == -2)
     hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_PAUSED);
   else if (i == -3)
     hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_ERROR);
+  else if (i == -8)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_INDETERMINATE);
+  else if (i == -9)
+    hres = tbl->lpVtbl->SetProgressState(tbl, wnd, TBPF_NOPROGRESS);
 
   last_i = i;
 
@@ -3708,6 +3711,14 @@ exit_fatty(int exit_val)
 
   report_pos();
 
+  // bring next window to top
+  if (sync_level()) {
+    HWND wnd_other = FindWindowExW(NULL, wnd,
+        (LPCWSTR)(uintptr_t)class_atom, NULL);
+    if (wnd_other)
+      win_to_top(wnd_other);
+  }
+
   // could there be a lag until the window is actually destroyed?
   // so we'd have to add a safeguard here...
   SetWindowTextA(wnd, "");
@@ -5650,9 +5661,6 @@ main(int argc, char *argv[])
   }
 
   if (cfg.tabbar && !getenv("FATTY_DX") && !getenv("FATTY_DY")) {
-#if CYGWIN_VERSION_API_MINOR < 74
-typedef UINT_PTR uintptr_t;
-#endif
     HWND wnd_other = FindWindowExW(NULL, wnd,
         (LPCWSTR)(uintptr_t)class_atom, NULL);
     if (wnd_other && FindWindowExA(wnd_other, NULL, TABBARCLASS, NULL)) {
