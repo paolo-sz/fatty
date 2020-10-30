@@ -7,6 +7,7 @@
 #define _XOPEN_SOURCE
 #include <wchar.h>
 #include <algorithm>
+#include <string>
 
 using std::min;
 
@@ -4128,6 +4129,74 @@ static void
         else
           free(data);
       }
+    }
+    when 9: {
+typedef struct {
+  char * p;
+  int v;
+} paramap;
+      auto scanenum = [&](char * s, int * _i, paramap * p, bool donum) -> int {
+        char * sep = strchr(s, ';');
+        int len = sep ? (uint)(sep - s) : strlen(s);
+        while (p->p) {
+          std::string s_tmp = s;
+          std::string p_tmp = p->p;
+          std::transform(s_tmp.begin(), s_tmp.end(), s_tmp.begin(), ::tolower);
+          std::transform(p_tmp.begin(), p_tmp.end(), p_tmp.begin(), ::tolower);
+          if (0 == s_tmp.compare(0, std::string::npos, p_tmp.c_str(), len)) {
+            *_i = p->v;
+            return len;
+          }
+          p++;
+        }
+        if (donum) {
+          // fallback scan for number
+          int numlen = sscanf(s, "%d", _i);
+          if (numlen && numlen == len)
+            return numlen;
+        }
+        // not found
+        return 0;
+      };
+
+      int cmd;
+      paramap paramap_tmp1[] = {{const_cast<char *>("4"), 4}, {const_cast<char *>("progress"), 4}, {0, 0}};
+      int len = scanenum(s, &cmd,
+                         paramap_tmp1,
+                         false);
+      if (!len || cmd != 4)
+        return;
+      s += len;
+
+      if (!*s)
+        return;
+      s++;
+      int state;
+      paramap paramap_tmp2[] = {{const_cast<char *>("off"), 0},
+                                {const_cast<char *>("green"), 1},
+                                {const_cast<char *>("yellow"), 2},
+                                {const_cast<char *>("red"), 3},
+                                {const_cast<char *>("busy"), 8},
+                                {const_cast<char *>("0"), 0},
+                                {const_cast<char *>("1"), 1},
+                                {const_cast<char *>("4"), 2},
+                                {const_cast<char *>("2"), 3},
+                                {const_cast<char *>("3"), 8},
+                                {0, 0}};
+      len = scanenum(s, &state,
+                     paramap_tmp2,
+                     false);
+      if (!len)
+        return;
+      s += len;
+
+      int percent = -1;
+      if (*s) {
+        s++;
+        sscanf(s, "%d", &percent);
+      }
+
+      set_taskbar_progress(state, percent);
     }
   }
 }
