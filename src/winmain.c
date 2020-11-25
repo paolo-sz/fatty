@@ -2394,8 +2394,28 @@ void
 void
 win_tab_close(struct term** term_pp)
 {
+  struct child *child_p = (*term_pp)->child;
+  
   if (win_tab_count() > 1) {
     if (!cfg.confirm_exit || confirm_tab_exit(*term_pp)) {
+      if (!support_wsl && *cfg.exit_commands) {
+        // try to determine foreground program
+        char * fg_prog = foreground_prog();
+        if (fg_prog) {
+          // match program base name
+          char * exits = cs__wcstombs(cfg.exit_commands);
+          char * paste = matchconf(exits, fg_prog);
+          if (paste) {
+            child_send(paste, strlen(paste));
+            free(exits);  // also frees paste which points into exits
+            free(fg_prog);
+            return;  // don't close terminal
+          }
+          free(exits);
+          free(fg_prog);
+        }
+      }
+
       win_tab_delete(*term_pp);
       *term_pp = win_active_terminal();
       assert(term_pp);

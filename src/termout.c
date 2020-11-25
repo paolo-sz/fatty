@@ -91,6 +91,15 @@ static bool
   return true;
 }
 
+#define enable_progress(...) (enable_progress)(term_p, ##__VA_ARGS__)
+static void
+(enable_progress)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  term.lines[term.curs.y]->lattr |= LATTR_PROGRESS;
+}
+
 #define move(...) (move)(term_p, ##__VA_ARGS__)
 /*
  * Move the cursor to a given position, clipping at boundaries.
@@ -726,6 +735,7 @@ static void
     term.curs.x = 0;
   else
     term.curs.x = term.marg_left;
+  enable_progress();
 }
 
 #define write_linefeed(...) (write_linefeed)(term_p, ##__VA_ARGS__)
@@ -2764,14 +2774,17 @@ static void
       }
       else
         move(curs->x - arg0_def1, curs->y, 1);
+      enable_progress();
     when 'E':        /* CNL: move down N lines and CR */
       move(0, curs->y + arg0_def1, 1);
     when 'F':        /* CPL: move up N lines and CR */
       move(0, curs->y - arg0_def1, 1);
-    when 'G' case_or '`': /* CHA or HPA: set horizontal position */
-      move((curs->origin ? term.marg_left : 0) + arg0_def1 - 1,
-           curs->y, 
-           curs->origin ? 2 : 0);
+    when 'G' or '`': { /* CHA or HPA: set horizontal position */
+      short x = (curs->origin ? term.marg_left : 0) + arg0_def1 - 1;
+      if (x < curs->x)
+        enable_progress();
+      move(x, curs->y, curs->origin ? 2 : 0);
+    }
     when 'd':        /* VPA: set vertical position */
       move(curs->x,
            (curs->origin ? term.marg_top : 0) + arg0_def1 - 1,
@@ -3039,6 +3052,7 @@ static void
           curs->x--;
         while (curs->x > 0 && !term.tabs[curs->x]);
       }
+      enable_progress();
     }
     when CPAIR('$', 'w'):     /* DECTABSR: tab stop report */
       if (arg0 == 2) {
@@ -3301,6 +3315,31 @@ static void
         term.repeat_rate = arg0;
     when CPAIR('%', 'q'):  /* setup progress indicator on taskbar icon */
       set_taskbar_progress(arg0, term.csi_argc > 1 ? arg1 : -1);
+    when 'y':  /* DECTST */
+      if (arg0 == 4) {
+        cattr attr = (cattr)
+                     {.attr = ATTR_DEFFG | (TRUE_COLOUR << ATTR_BGSHIFT),
+                      .truebg = 0, .truefg = 0, .ulcolr = (colour)-1,
+                      .link = -1, .imgi = 0
+                     };
+        switch (arg1) {
+          when 10: attr.truebg = RGB(0, 0, 255);
+          when 11: attr.truebg = RGB(255, 0, 0);
+          when 12: attr.truebg = RGB(0, 255, 0);
+          when 13: attr.truebg = RGB(255, 255, 255);
+                   break;
+          default: return;
+        }
+        for (int i = 0; i < term.rows; i++) {
+          termline *line = term.lines[i];
+          for (int j = 0; j < term.cols; j++) {
+            line->chars[j] =
+              (termchar) {.cc_next = 0, .chr = ' ', attr};
+          }
+          line->lattr = LATTR_NORM;
+        }
+        term.disptop = 0;
+      }
   }
 }
 
@@ -4221,6 +4260,9 @@ static void
 {
   TERM_VAR_REF(true)
   
+  //check e.g. if progress indication is following by CR
+  //printf("[%ld] write %02X...%02X\n", mtime(), *buf, buf[len - 1]);
+
   // Reset cursor blinking.
   term.cblinker = 1;
   term_schedule_cblink();

@@ -778,40 +778,6 @@ void
   }
 }
 
-static char *
-matchconf(char * conf, char * item)
-{
-  char * cmdp = conf;
-  char sepch = ';';
-  if ((uchar)*cmdp <= (uchar)' ')
-    sepch = *cmdp++;
-
-  char * paramp;
-  while ((paramp = strchr(cmdp, ':'))) {
-    *paramp = '\0';
-    paramp++;
-    char * sepp = strchr(paramp, sepch);
-    if (sepp)
-      *sepp = '\0';
-
-    if (!strcmp(cmdp, item))
-      return paramp;
-
-    if (sepp) {
-      cmdp = sepp + 1;
-      // check for multi-line separation
-      if (*cmdp == '\\' && cmdp[1] == '\n') {
-        cmdp += 2;
-        while (iswspace(*cmdp))
-          cmdp++;
-      }
-    }
-    else
-      break;
-  }
-  return 0;
-}
-
 static uint buf_len, buf_pos;
 static char * buf;
 
