@@ -11,6 +11,8 @@ extern "C" {
 #include "winpriv.h"
 #include "charset.h"  // wcscpy
 
+#include "res.h"  // DIALOG_FONT, DIALOG_FONTSIZE
+
 #define _RPCNDR_H
 #define _WTYPES_H
 #define _OLE2_H
@@ -40,14 +42,56 @@ extern "C" {
 #define PUSHBTNHEIGHT 14
 #define PROGBARHEIGHT 14
 
+
+static HFONT _diafont = 0;
+static int diafontsize = 0;
+
+static void
+calc_diafontsize(void)
+{
+  cfg.options_fontsize = cfg.options_fontsize ?: DIALOG_FONTSIZE;
+
+  int fontsize = - MulDiv(cfg.options_fontsize, dpi, 72);
+  if (fontsize != diafontsize && _diafont) {
+    DeleteObject(_diafont);
+    _diafont = 0;
+  }
+  diafontsize = fontsize;
+}
+
+int
+scale_dialog(int x)
+{
+  calc_diafontsize();
+
+  return MulDiv(x, cfg.options_fontsize, DIALOG_FONTSIZE);
+  // scale by another * 1.2 for Comic Sans MS ...?
+}
+
+WPARAM
+diafont(void)
+{
+  calc_diafontsize();
+
+  if (!_diafont && (*cfg.options_font || cfg.options_fontsize != DIALOG_FONTSIZE))
+    _diafont = CreateFontW(
+                 diafontsize, 0, 0, 0,
+                 400, false, false, false,
+                 DEFAULT_CHARSET, OUT_DEFAULT_PRECIS,
+                 CLIP_DEFAULT_PRECIS, DEFAULT_QUALITY, 0,
+                 *cfg.options_font ? cfg.options_font : W(DIALOG_FONT)
+               );
+  return (WPARAM)_diafont;
+}
+
 void
 ctrlposinit(ctrlpos * cp, HWND wnd, int leftborder, int rightborder,
             int topborder)
 {
   RECT r, r2;
   cp->wnd = wnd;
-  cp->font = SendMessage(wnd, WM_GETFONT, 0, 0);
-  cp->ypos = topborder;
+  cp->font = diafont() ?: (WPARAM)SendMessage(wnd, WM_GETFONT, 0, 0);
+  cp->ypos = topborder;  // don't scale_dialog this; would move OK buttons out
   GetClientRect(wnd, &r);
   r2.left = r2.top = 0;
   r2.right = 4;
@@ -55,8 +99,9 @@ ctrlposinit(ctrlpos * cp, HWND wnd, int leftborder, int rightborder,
   MapDialogRect(wnd, &r2);
   cp->dlu4inpix = r2.right;
   cp->width = (r.right * 4) / (r2.right) - 2 * GAPBETWEEN;
-  cp->xoff = leftborder;
-  cp->width -= leftborder + rightborder;
+  // scale Options dialog items horizontally with custom font
+  cp->xoff = scale_dialog(leftborder);
+  cp->width -= cp->xoff + scale_dialog(rightborder);
 }
 
 #ifdef darken_dialog_elements
@@ -81,14 +126,23 @@ doctl(control * ctrl,
       string text, int wid)
 {
   HWND ctl;
+
  /*
   * Note nonstandard use of RECT. This is deliberate: by
   * transforming the width and height directly we arrange to
   * have all supposedly same-sized controls really same-sized.
   */
-
   r.left += cp->xoff;
   MapDialogRect(cp->wnd, &r);
+
+  // scale Options dialog items vertical position and size with custom font
+  r.top = scale_dialog(r.top);
+  r.bottom = scale_dialog(r.bottom);
+#if 0
+  // don't scale Options dialog items horizontally, done elsewhere
+  r.left = scale_dialog(cp->xoff) + scale_dialog(r.left - scale_dialog(cp->xoff));
+  r.right = scale_dialog(r.right);
+#endif
 
  /*
   * We can pass in cp->wnd == null, to indicate a dry run
@@ -102,8 +156,9 @@ doctl(control * ctrl,
       wchar * wtext = text ? cs__utftowcs(text) : 0;
       wchar * wclassname = classname ? cs__utftowcs(classname) : 0;
       ctl =
-        CreateWindowExW(exstyle, wclassname, wtext, wstyle, r.left, r.top, r.right,
-                        r.bottom, cp->wnd, (HMENU)(INT_PTR)wid, inst, null);
+        CreateWindowExW(exstyle, wclassname, wtext, wstyle,
+                        r.left, r.top, r.right, r.bottom,
+                        cp->wnd, (HMENU)(INT_PTR)wid, inst, null);
       if (wtext)
         free(wtext);
       if (wclassname)
@@ -111,8 +166,9 @@ doctl(control * ctrl,
     }
     else {
       ctl =
-        CreateWindowExA(exstyle, classname, text, wstyle, r.left, r.top, r.right,
-                        r.bottom, cp->wnd, (HMENU)(INT_PTR)wid, inst, null);
+        CreateWindowExA(exstyle, classname, text, wstyle,
+                        r.left, r.top, r.right, r.bottom,
+                        cp->wnd, (HMENU)(INT_PTR)wid, inst, null);
     }
 #ifdef darken_dialog_elements
     // apply dark mode to dialog buttons
@@ -696,10 +752,9 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
     * `ctrl' (a pointer to the control we have to create, or
     * think about creating, in this iteration of the loop),
     * `pos' (a suitable ctrlpos with which to position it), and
-    * `c' (a winctrl structure to receive details of the
-    * dialog IDs). Or we'll have done a `continue', if it was
-    * CTRL_COLUMNS and doesn't require any control creation at
-    * all.
+    * `c' (a winctrl structure to receive details of the dialog IDs).
+    * Or we'll have done a `continue', if it was CTRL_COLUMNS 
+    * and doesn't require any control creation at all.
     */
     if (ctrl->type == CTRL_COLUMNS) {
       assert((ctrl->columns.ncols == 1) ^ (ncols == 1));
@@ -1020,9 +1075,17 @@ set_labels(bool font_chooser, int nCode, WPARAM wParam, LPARAM lParam)
     bool from_mouse = ((CBTACTIVATESTRUCT *)lParam)->fMouse;
     trace_hook(" mou %d\n", from_mouse);
   }
-  else
+  else {
     trace_hook("\n");
+  }
 #endif
+
+  auto setfont = [&](int id)
+  {
+    HWND button = GetDlgItem((HWND)wParam, id);
+    if (diafont())
+      SendMessage(button, WM_SETFONT, diafont(), MAKELPARAM(true, 0));
+  };
 
   auto setlabel = [&](int id, wstring label)
   {
@@ -1033,6 +1096,9 @@ set_labels(bool font_chooser, int nCode, WPARAM wParam, LPARAM lParam)
 #endif
       SetWindowTextW(button, label);
     }
+
+    // adjust custom font
+    setfont(id);
   };
 
   static int adjust_sample = 0;  /* pre-adjust (here) vs post-adjust (below)
@@ -1252,7 +1318,7 @@ set_labels(bool font_chooser, int nCode, WPARAM wParam, LPARAM lParam)
         GetWindowTextW(basic_colors, lbl, size);
       }
 
-      LRESULT fnt = SendMessage(basic_colors, WM_GETFONT, 0, 0);
+      WPARAM fnt = diafont() ?: (WPARAM)SendMessage(basic_colors, WM_GETFONT, 0, 0);
       DestroyWindow(basic_colors);
       //__ Colour chooser:
       basic_colors = CreateWindowExW(4, W("Static"), lbl ?: _W("B&asic colours:"), 0x50020000, 6, 7, 210, 15, (HWND)wParam, 0, inst, 0);
@@ -1364,6 +1430,25 @@ set_labels(bool font_chooser, int nCode, WPARAM wParam, LPARAM lParam)
 
     hooked_window_activated = true;
   }
+
+#ifdef debug_dlgitems
+    char * s = getenv("s");
+    int n;
+    while (s && (n = strtol(s, &s, 0))) {
+      printf("?%d\n", n);
+      setfont(n);
+    }
+#endif
+    // adjust custom font for anonymous system menu fields
+    setfont(703);  // Hue
+    setfont(704);  // Sat
+    setfont(705);  // Lum
+    setfont(706);  // Red
+    setfont(707);  // Green
+    setfont(708);  // Blue
+    setfont(1136);  // Font
+    setfont(1137);  // Font style
+    setfont(1138);  // Size
 
   if (do_next_hook) {
     trace_hook(" -> NextHook\n");
@@ -1613,6 +1698,7 @@ dlg_text_paint(control *ctrl)
     SendMessage(wnd, WM_SETFONT, (WPARAM)fnt, MAKELPARAM(false, 0));
     SetWindowTextW(wnd, *new_cfg.font_sample ? new_cfg.font_sample : _W("Ferqœm’4€"));
   }
+  DeleteObject(fnt);
 }
 
 /*

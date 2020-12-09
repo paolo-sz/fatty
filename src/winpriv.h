@@ -11,6 +11,13 @@
 #define SB_PRIOR 100
 #define SB_NEXT 101
 
+#ifndef WM_DPICHANGED
+#define WM_DPICHANGED 0x02E0
+#endif
+#ifndef WM_GETDPISCALEDSIZE
+#define WM_GETDPISCALEDSIZE 0x02E4
+#endif
+
 extern HINSTANCE inst;  // The all-important instance handle
 extern HWND wnd, fatty_tab_wnd;        // the main terminal window
 extern char *home;
