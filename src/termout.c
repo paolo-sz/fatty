@@ -1051,30 +1051,36 @@ static void
 
 #define dont_debug_scriptfonts
 
-static struct {
+struct rangefont {
   ucschar first, last;
   uchar font;
   char * scriptname;
-} scriptfonts[] = {
+};
+static struct rangefont scriptfonts[] = {
 #include "scripts.t"
 };
+static struct rangefont blockfonts[] = {
+#include "blocks.t"
+};
 static bool scriptfonts_init = false;
+static bool use_blockfonts = false;
 
 static void
-mapfont(char * script, uchar f)
+mapfont(struct rangefont * ranges, uint len, char * script, uchar f)
 {
-  for (uint i = 0; i < lengthof(scriptfonts); i++)
-    if (0 == strcmp(scriptfonts[i].scriptname, script))
-      scriptfonts[i].font = f;
+  for (uint i = 0; i < len; i++) {
+    if (0 == strcmp(ranges[i].scriptname, script))
+      ranges[i].font = f;
+  }
   if (0 == strcmp(script, "CJK")) {
-    mapfont(const_cast<char *>("Han"), f);
-    mapfont(const_cast<char *>("Hangul"), f);
-    mapfont(const_cast<char *>("Katakana"), f);
-    mapfont(const_cast<char *>("Hiragana"), f);
-    mapfont(const_cast<char *>("Bopomofo"), f);
-    mapfont(const_cast<char *>("Kanbun"), f);
-    mapfont(const_cast<char *>("Fullwidth"), f);
-    mapfont(const_cast<char *>("Halfwidth"), f);
+    mapfont(ranges, len, const_cast<char *>("Han"), f);
+    mapfont(ranges, len, const_cast<char *>("Hangul"), f);
+    mapfont(ranges, len, const_cast<char *>("Katakana"), f);
+    mapfont(ranges, len, const_cast<char *>("Hiragana"), f);
+    mapfont(ranges, len, const_cast<char *>("Bopomofo"), f);
+    mapfont(ranges, len, const_cast<char *>("Kanbun"), f);
+    mapfont(ranges, len, const_cast<char *>("Fullwidth"), f);
+    mapfont(ranges, len, const_cast<char *>("Halfwidth"), f);
   }
 }
 
@@ -1095,7 +1101,10 @@ cfg_apply(char * conf, char * item)
       *sepp = '\0';
 
     if (!item || !strcmp(cmdp, item)) {
-      mapfont(cmdp, atoi(paramp));
+      if (*cmdp == '|')
+        mapfont(blockfonts, lengthof(blockfonts), cmdp + 1, atoi(paramp));
+      else
+        mapfont(scriptfonts, lengthof(scriptfonts), cmdp, atoi(paramp));
     }
 
     if (sepp) {
@@ -1120,6 +1129,7 @@ init_scriptfonts(void)
     char * cfg_scriptfonts = cs__wcstombs(cfg.font_choice);
     cfg_apply(cfg_scriptfonts, 0);
     free(cfg_scriptfonts);
+    use_blockfonts = wcschr(cfg.font_choice, '|');
   }
   scriptfonts_init = true;
 }
@@ -1134,9 +1144,26 @@ scriptfont(ucschar ch)
 
   int i, j, k;
 
+  if (use_blockfonts) {
+    i = -1;
+    j = lengthof(blockfonts);
+    while (j - i > 1) {
+      k = (i + j) / 2;
+      if (ch < blockfonts[k].first)
+        j = k;
+      else if (ch > blockfonts[k].last)
+        i = k;
+      else {
+        uchar f = blockfonts[k].font;
+        if (f)
+          return f;
+        break;
+      }
+    }
+  }
+
   i = -1;
   j = lengthof(scriptfonts);
-
   while (j - i > 1) {
     k = (i + j) / 2;
     if (ch < scriptfonts[k].first)
@@ -1159,8 +1186,8 @@ static void
   ucschar c = hwc ? combine_surrogates(hwc, wc) : wc;
   uchar cf = scriptfont(c);
 #ifdef debug_scriptfonts
-  if (c && cf)
-    printf("scriptfont %04X: %d\n", c, cf);
+  if (c && (cf || c > 0xFF))
+    printf("write_ucschar %04X scriptfont %d\n", c, cf);
 #endif
   if (cf && cf <= 10 && !(attr & FONTFAM_MASK))
     term.curs.attr.attr = attr | ((cattrflags)cf << ATTR_FONTFAM_SHIFT);
@@ -4311,7 +4338,7 @@ static void
         if (term.curs.oem_acs && !memchr("\e\n\r\b", c, 4)) {
           if (term.curs.oem_acs == 2)
             c |= 0x80;
-          write_char(cs_btowc_glyph(c), 1);
+          write_ucschar(0, cs_btowc_glyph(c), 1);
           continue;
         }
 
@@ -4329,8 +4356,6 @@ static void
           // tune C1 behaviour to mimic xterm
           if (c < 0xA0)
             continue;
-          // TODO: if we'd ever support 96 character sets (other than 'A')
-          // 0xFF should be handled specifically
 
           c &= 0x7F;
           cset = term.curs.csets[term.curs.gr];
@@ -4409,76 +4434,13 @@ static void
           continue;
         }
 
-        // Control characters
-        if (wc < 0x20 || wc == 0x7F) {
-          if (!do_ctrl(wc) && c == wc) {
-            wc = cs_btowc_glyph(c);
-            if (wc != c)
-              write_char(wc, 1);
-            else if (cfg.printable_controls > 1)
-              goto goon;
-          }
-          continue;
-          goon:;
-        }
-
         // Non-characters
         if (wc == 0xFFFE || wc == 0xFFFF) {
           write_error();
           continue;
         }
 
-        cattrflags asav = term.curs.attr.attr;
-
         // Everything else
-        int width;
-        if (term.wide_indic && wc >= 0x0900 && indicwide(wc))
-          width = 2;
-        else if (term.wide_extra && wc >= 0x2000 && extrawide(wc)) {
-          width = 2;
-          // Note: this check is currently not implemented for
-          // non-BMP characters (see case if is_low_surrogate(wc) above)
-          if (win_char_width(wc, term.curs.attr.attr) < 2)
-            term.curs.attr.attr |= TATTR_EXPAND;
-        }
-        else {
-#if HAS_LOCALES
-          if (cfg.charwidth % 10)
-            width = xcwidth(wc);
-          else
-            width = wcwidth(wc);
-#ifdef support_triple_width
-          // do not handle triple-width here
-          //if (term.curs.width)
-          //  width = term.curs.width % 10;
-#endif
-# ifdef hide_isolate_marks
-          // force bidi isolate marks to be zero-width;
-          // however, this is inconsistent with locale width
-          if (wc >= 0x2066 && wc <= 0x2069)
-            width = 0;  // bidi isolate marks
-# endif
-#else
-          width = xcwidth(wc);
-#endif
-        }
-        if (width < 0 && cfg.printable_controls) {
-          if (wc >= 0x80 && wc < 0xA0)
-            width = 1;
-          else if (wc < ' ' && cfg.printable_controls > 1)
-            width = 1;
-        }
-
-        if (width == 2
-            // && wcschr(W("〈〉《》「」『』【】〒〓〔〕〖〗〘〙〚〛"), wc)
-            && wc >= 0x3008 && wc <= 0x301B && (wc | 1) != 0x3013
-            && win_char_width(wc, term.curs.attr.attr) < 2
-            // ensure symmetric handling of matching brackets
-            && win_char_width(wc ^ 1, term.curs.attr.attr) < 2)
-        {
-          term.curs.attr.attr |= TATTR_EXPAND;
-        }
-
         auto NRC = [&](wchar * map) -> wchar
         {
           static char * rpl = const_cast<char *>("#@[\\]^_`{|}~");
@@ -4488,6 +4450,8 @@ static void
           else
             return wc;
         };
+
+        cattrflags asav = term.curs.attr.attr;
 
         switch (cset) {
           when CSET_VT52DRW:  // VT52 "graphics" mode
@@ -4662,6 +4626,7 @@ static void
           default: ;
         }
 
+        // Some more special graphic renderings
         if (wc >= 0x2580 && wc <= 0x259F) {
           // Block Elements (U+2580-U+259F)
           // ▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟
@@ -4682,6 +4647,72 @@ static void
         }
 #endif
 
+        // Determine width of character to be rendered
+        int width;
+        if (term.wide_indic && wc >= 0x0900 && indicwide(wc))
+          width = 2;
+        else if (term.wide_extra && wc >= 0x2000 && extrawide(wc)) {
+          width = 2;
+          // Note: this check is currently not implemented for
+          // non-BMP characters (see case if is_low_surrogate(wc) above)
+          if (win_char_width(wc, term.curs.attr.attr) < 2)
+            term.curs.attr.attr |= TATTR_EXPAND;
+        }
+        else {
+#if HAS_LOCALES
+          if (cfg.charwidth % 10)
+            width = xcwidth(wc);
+          else
+            width = wcwidth(wc);
+#ifdef support_triple_width
+          // do not handle triple-width here
+          //if (term.curs.width)
+          //  width = term.curs.width % 10;
+#endif
+# ifdef hide_isolate_marks
+          // force bidi isolate marks to be zero-width;
+          // however, this is inconsistent with locale width
+          if (wc >= 0x2066 && wc <= 0x2069)
+            width = 0;  // bidi isolate marks
+# endif
+#else
+          width = xcwidth(wc);
+#endif
+        }
+        if (width < 0 && cfg.printable_controls) {
+          if (wc >= 0x80 && wc < 0xA0)
+            width = 1;
+          else if (wc < ' ' && cfg.printable_controls > 1)
+            width = 1;
+        }
+
+        // Auto-expanded glyphs
+        if (width == 2
+            // && wcschr(W("〈〉《》「」『』【】〒〓〔〕〖〗〘〙〚〛"), wc)
+            && wc >= 0x3008 && wc <= 0x301B && (wc | 1) != 0x3013
+            && win_char_width(wc, term.curs.attr.attr) < 2
+            // ensure symmetric handling of matching brackets
+            && win_char_width(wc ^ 1, term.curs.attr.attr) < 2)
+        {
+          term.curs.attr.attr |= TATTR_EXPAND;
+        }
+
+        // Control characters
+        if (wc < 0x20 || wc == 0x7F) {
+          if (!do_ctrl(wc) && c == wc) {
+            wc = cs_btowc_glyph(c);
+            if (wc != c)
+              write_ucschar(0, wc, 1);
+            else if (cfg.printable_controls > 1)
+              goto goon;
+          }
+          term.curs.attr.attr = asav;
+          continue;
+
+          goon:;
+        }
+
+        // Finally, write it and restore cursor attribute
         write_ucschar(0, wc, width);
         term.curs.attr.attr = asav;
       } // end term_write switch (term.state) when NORMAL
