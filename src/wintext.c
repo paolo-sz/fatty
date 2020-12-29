@@ -624,6 +624,12 @@ win_init_fontfamily(HDC dc, int findex)
   GetCharWidthFloatW(dc, 0x2500, 0x2500, &line_char_width);
   GetCharWidthFloatW(dc, 0x4E00, 0x4E00, &cjk_char_width);
 
+  // avoid trouble with non-text font (#777, Noto Sans Symbols2)
+  if (!latin_char_width) {
+    //GetCharWidthFloatW(dc, 0x0020, 0x0020, &latin_char_width);
+    latin_char_width = (float)font_size / 16;
+  }
+
   if (!findex) {
     //?int ilead = tm.tmInternalLeading - (dpi - 96) / 48;
     int idpi = dpi;  // avoid coercion of tm.tmInternalLeading to unsigned
@@ -4397,7 +4403,9 @@ win_char_width(xchar c, cattrflags attr)
     return wid;
   };
 
-  if (c >= 0x2160 && c <= 0x2179) {  // Roman Numerals
+  if ((c >= 0x2160 && c <= 0x2179)   // Roman Numerals
+     )
+  {
     ReleaseDC(wnd, dc);
     return 2;
   }
@@ -4414,6 +4422,9 @@ win_char_width(xchar c, cattrflags attr)
   }
 
   if ((c >= 0x3000 && c <= 0x303F)   // CJK Symbols and Punctuation
+
+   || (c >= 0x01C4 && c <= 0x01CC)   // double letters
+   || (c >= 0x01F1 && c <= 0x01F3)   // double letters
 
    || (c >= 0x2460 && c <= 0x24FF)   // Enclosed Alphanumerics, to cover:
    //|| (c >= 0x249C && c <= 0x24E9)   // parenthesized/circled letters

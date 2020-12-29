@@ -3383,6 +3383,8 @@ bool
         (cfg.compose_key == MDK_CTRL && key == VK_CONTROL) ||
         (cfg.compose_key == MDK_SHIFT && key == VK_SHIFT) ||
         (cfg.compose_key == MDK_ALT && key == VK_MENU)
+        || (cfg.compose_key == MDK_SUPER && key == super_key)
+        || (cfg.compose_key == MDK_HYPER && key == hyper_key)
        )
     {
       if (comp_state >= 0)

@@ -275,6 +275,7 @@ typedef enum {
   OPT_MIDDLECLICK, OPT_RIGHTCLICK, OPT_SCROLLBAR, OPT_WINDOW, OPT_HOLD,
   OPT_INT, OPT_COLOUR, OPT_STRING, OPT_WSTRING,
   OPT_CHARWIDTH, OPT_EMOJIS, OPT_EMOJI_PLACEMENT,
+  OPT_COMPOSE_KEY,
   OPT_TYPE_MASK = 0x1F,
   OPT_LEGACY = 0x20,
   OPT_KEEPCR = 0x40
@@ -389,7 +390,7 @@ options[] = {
   {"CtrlShiftShortcuts", OPT_BOOL, offcfg(ctrl_shift_shortcuts)},
   {"CtrlExchangeShift", OPT_BOOL, offcfg(ctrl_exchange_shift)},
   {"CtrlControls", OPT_BOOL, offcfg(ctrl_controls)},
-  {"ComposeKey", OPT_MOD, offcfg(compose_key)},
+  {"ComposeKey", OPT_COMPOSE_KEY, offcfg(compose_key)},
   {"Key_PrintScreen", OPT_STRING, offcfg(key_prtscreen)},
   {"Key_Pause", OPT_STRING, offcfg(key_pause)},
   {"Key_Break", OPT_STRING, offcfg(key_break)},
@@ -693,6 +694,15 @@ static opt_val
     //__ Options - Text - Emojis - Placement
     {__("full"), EMPL_FULL},
     {0, 0}
+  },
+  [OPT_COMPOSE_KEY] = (opt_val[]) {
+    {"off", 0},
+    {"shift", MDK_SHIFT},
+    {"alt", MDK_ALT},
+    {"ctrl", MDK_CTRL},
+    {"super", MDK_SUPER},
+    {"hyper", MDK_HYPER},
+    {0, 0}
   }
 };
 
@@ -850,6 +860,11 @@ parse_colour(string s, colour *cp)
   float c, m, y, k = 0;
   if (sscanf(s, "%u,%u,%u", &r, &g, &b) == 3)
     ;
+  else if (sscanf(s, "#%4x%4x%4x", &r, &g, &b) == 3) {
+    r >>= 8;
+    g >>= 8;
+    b >>= 8;
+  }
   else if (sscanf(s, "#%2x%2x%2x", &r, &g, &b) == 3)
     ;
   else if (sscanf(s, "rgb:%2x/%2x/%2x", &r, &g, &b) == 3)
@@ -3177,6 +3192,12 @@ emoji_placement_handler(control *ctrl, int event)
   opt_handler(ctrl, event, &new_cfg.emoji_placement, opt_vals[OPT_EMOJI_PLACEMENT]);
 }
 
+static void
+compose_key_handler(control *ctrl, int event)
+{
+  opt_handler(ctrl, event, &new_cfg.compose_key, opt_vals[OPT_COMPOSE_KEY]);
+}
+
 static bool bold_like_xterm;
 
 static void
@@ -3602,22 +3623,29 @@ setup_config_box(controlbox * b)
     dlg_stdcheckbox_handler, &new_cfg.ctrl_shift_shortcuts
   );
 
-  s = ctrl_new_set(b, _("Keys"), null, 
-  //__ Options - Keys: section title
-                      _("Compose key"));
-  ctrl_radiobuttons(
-    s, null, 4,
-    dlg_stdradiobutton_handler, &new_cfg.compose_key,
-    //__ Options - Keys:
-    _("&Shift"), MDK_SHIFT,
-    //__ Options - Keys:
-    _("&Ctrl"), MDK_CTRL,
-    //__ Options - Keys:
-    _("&Alt"), MDK_ALT,
-    //__ Options - Keys:
-    _("&Off"), 0,
-    null
-  );
+  if (strstr(cfg.old_options, "composekey")) {
+    s = ctrl_new_set(b, _("Keys"), null, 
+    //__ Options - Keys: section title
+                        _("Compose key"));
+    ctrl_radiobuttons(
+      s, null, 4,
+      dlg_stdradiobutton_handler, &new_cfg.compose_key,
+      //__ Options - Keys:
+      _("&Shift"), MDK_SHIFT,
+      //__ Options - Keys:
+      _("&Ctrl"), MDK_CTRL,
+      //__ Options - Keys:
+      _("&Alt"), MDK_ALT,
+      //__ Options - Keys:
+      _("&Off"), 0,
+      null
+    );
+  }
+  else {
+    s = ctrl_new_set(b, _("Keys"), null, null);
+    ctrl_combobox(
+      s, _("Compose key"), 50, compose_key_handler, 0);
+  }
 
  /*
   * The Mouse panel.

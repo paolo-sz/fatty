@@ -2671,6 +2671,10 @@ void
               p += f * (chars[j].chr - '0');
               f *= 10;
             }
+            else if (chars[j].chr == '.' || chars[j].chr == ',') {
+              p = 0;
+              f = 1;
+            }
             else {
               j++;
               break;
