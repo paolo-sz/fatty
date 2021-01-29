@@ -1715,9 +1715,15 @@ static int last_i = 0;
   ITaskbarList3 * tbl;
   HRESULT hres = CoCreateInstance(CLSID_TaskbarList, NULL,
                                   CLSCTX_INPROC_SERVER,
-                                  IID_ITaskbarList, (void **) &tbl);
+                                  IID_ITaskbarList3, (void **) &tbl);
   if (!SUCCEEDED(hres))
     return;
+
+  hres = tbl->lpVtbl->HrInit(tbl);
+  if (!SUCCEEDED(hres)) {
+    tbl->lpVtbl->Release(tbl);
+    return;
+  }
 
   if (i >= 0)
     hres = tbl->lpVtbl->SetProgressValue(tbl, wnd, i, 100);
@@ -3165,6 +3171,13 @@ static struct {
       win_update_search();
       // support tabbar
       win_update_tabbar();
+      // update dark mode
+      if (message == WM_WININICHANGE) {
+        // SetWindowTheme will cause an asynchronous WM_THEMECHANGED message,
+        // so guard it by WM_WININICHANGE;
+        // this will switch from Light to Dark mode immediately but not back!
+        //win_dark_mode(wnd);
+      }
 
     when WM_FONTCHANGE:
       font_cs_reconfig(true);
