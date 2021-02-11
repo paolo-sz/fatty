@@ -714,6 +714,7 @@ win_set_title(wchar *wtitle)
     GetWindowTextW(wnd, oldtitle, len + 1);
     if (0 != wcscmp(wtitle, oldtitle)) {
       SetWindowTextW(wnd, wtitle);
+      usleep(1000);
       update_tab_titles();
     }
   }
@@ -4529,7 +4530,7 @@ static char help[] =
   "See manual page for further command line options and configuration.\n"
 );
 
-static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVdD~";
+static const char short_opts[] = "+:b:c:C:eh:i:l:o:p:s:t:T:B:R:uw:HVdD~P:";
 
 enum {
   OPT_FG       = 0x80,
@@ -4575,6 +4576,7 @@ opts[] = {
   {"WSL",        optional_argument, 0, ''},  // short option not enabled
   {"WSLmode",    optional_argument, 0, ''},  // short option not enabled
 #endif
+  {"pcon",       required_argument, 0, 'P'},
   {"rootfs",     required_argument, 0, ''},  // short option not enabled
   {"dir~",       no_argument,       0, '~'},
   {"help",       no_argument,       0, 'H'},
@@ -5031,6 +5033,8 @@ main(int argc, char *argv[])
         dup(tfd);
         close(tfd);
       }
+      when 'P':
+        set_arg_option("ConPTY", optarg);
     }
   }
 
@@ -5797,6 +5801,24 @@ main(int argc, char *argv[])
   win_get_pixels(&ini_height, &ini_width, false);
   if (*cfg.background == '%')
     scale_to_image_ratio();
+
+  // Adjust ConPTY support if requested
+  if (cfg.conpty_support != (uchar)-1) {
+    char * env = 0;
+#ifdef __MSYS__
+    env = const_cast<char *>("MSYS");
+#else
+#ifdef __CYGWIN__
+    env = const_cast<char *>("CYGWIN");
+#endif
+#endif
+    if (env) {
+      const char * val = cfg.conpty_support ? "enable_pcon" : "disable_pcon";
+      val = asform("%s %s", getenv(env) ?: "", val);
+      //printf("%d %s=%s\n", cfg.conpty_support, env, val);
+      setenv(env, val, true);
+    }
+  }
 
   // Create child process.
 //  child_create(

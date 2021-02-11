@@ -96,6 +96,8 @@ typedef struct {
   bool altgr_is_alt;
   int ctrl_alt_delay_altgr;
   bool old_altgr_detection;
+  int old_modify_keys;
+  int format_other_keys;
   bool auto_repeat;
   int external_hotkeys;
   bool clip_shortcuts;
@@ -203,6 +205,7 @@ typedef struct {
   wstring user_commands_path;
   wstring session_commands;
   wstring task_commands;
+  int conpty_support;
   string menu_mouse;
   string menu_ctrlmouse;
   string menu_altmouse;
