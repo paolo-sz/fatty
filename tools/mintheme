@@ -249,8 +249,24 @@ query() {
 }
 
 conftheme() {
-	themefile=`cygpath -wa "$1"`
-	for conffile in ~/.fattyrc ~/.config/fatty/config "$APPDATA/fatty/config" /etc/fattyrc
+	if [ `uname` = "Linux" ] && type wslpath 2> /dev/null 1>&2
+	then
+		themefile=`wslpath -ma "$1"`
+	elif type cygpath 2> /dev/null 1>&2
+	then
+		themefile=`cygpath -wa "$1"`
+	else
+		echo "cannot save to config file in this system environment"
+		exit
+	fi
+	if [ `uname` = "Linux" ] && type wslpath 1>&2
+	then
+		ls "$APPDATA/fatty/config"
+	elif type cygpath 1>&2
+	then
+		ls ~/.fattyrc ~/.config/fatty/config "$APPDATA/fatty/config" /etc/fattyrc
+	fi 2> /dev/null |
+	while read conffile
 	do	if [ -w "$conffile" ]
 		then
 			newconf=/tmp/fattyrc.$$
