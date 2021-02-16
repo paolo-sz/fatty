@@ -85,7 +85,8 @@ static int
 
 #define scroll_to_result(...) (scroll_to_result)(term_p, ##__VA_ARGS__)
 static void
-(scroll_to_result)(struct term* term_p, result res) {
+(scroll_to_result)(struct term* term_p, result res)
+{
   TERM_VAR_REF(true)
   
   if (res.len == 0) {

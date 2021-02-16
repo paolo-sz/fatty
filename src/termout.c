@@ -4,7 +4,7 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
-#define _XOPEN_SOURCE
+#define _XOPEN_SOURCE 600
 #include <wchar.h>
 #include <algorithm>
 #include <string>
@@ -2665,6 +2665,7 @@ static void
         win_maximise(0);
         win_set_chars(rows0, cols0);
       }
+      usleep(1000);
     }
     when 10:
       if (term.csi_argc != 2)
@@ -2676,6 +2677,7 @@ static void
         win_maximise(-2);
       else if (arg1 == 1 || arg1 == 0)
         win_maximise(arg1 ? 2 : 0);
+      usleep(1000);
     when 11: child_write(win_is_iconic() ? "\e[2t" : "\e[1t", 4);
     when 13: {
       int x, y;
