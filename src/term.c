@@ -426,6 +426,8 @@ void
   term_schedule_cblink();
   term_clear_scrollback();
 
+  term.iso_guarded_area = false;
+
   term.detect_progress = cfg.progress_bar;
   taskbar_progress(-9);
 
@@ -737,10 +739,11 @@ void
 #define do_search(...) (do_search)(term_p, ##__VA_ARGS__)
 // return search results contained by [begin, end)
 static void
-(do_search)(struct term* term_p, int begin, int end) {
+(do_search)(struct term* term_p, int begin, int end)
+{
   TERM_VAR_REF(true)
   
-//printf("do_search %d %d\n", begin, end);
+  //printf("do_search %d %d\n", begin, end);
   if (term.results.xquery_length == 0) {
     return;
   }
@@ -1907,6 +1910,11 @@ fallback:;
       sep = const_cast<char *>("-");
       zwj = false;
       sel = false;
+    when EMOJIS_ZOOM:
+      pre = "zoom/";
+      sep = "-";
+      zwj = false;
+      sel = false;
     when EMOJIS_ONE:
       pre = const_cast<char *>("emojione/");
     when EMOJIS_APPLE:
@@ -2459,15 +2467,24 @@ void
       }
 
      /* 'Real' blinking ? */
-      if (term.blink_is_real && (tattr.attr & ATTR_BLINK)) {
-        if (term.has_focus && term.tblinker)
-          tchar = ' ';
-        tattr.attr &= ~ATTR_BLINK;
-      }
-      if (term.blink_is_real && (tattr.attr & ATTR_BLINK2)) {
-        if (term.has_focus && term.tblinker2)
-          tchar = ' ';
-        tattr.attr &= ~ATTR_BLINK2;
+#define UNLINED (UNDER_MASK | ATTR_STRIKEOUT | ATTR_OVERL | ATTR_OVERSTRIKE)
+#define UNBLINK (FONTFAM_MASK | GRAPH_MASK | UNLINED | TATTR_EMOJI)
+      if (term.blink_is_real) {
+        if (tattr.attr & ATTR_BLINK2) {
+          if (term.has_focus && term.tblinker2) {
+            tchar = ' ';
+            tattr.attr &= ~(UNBLINK | ATTR_BLINK2);
+            tattr.attr |= ATTR_BLINK;  // trigger combined unblinking below
+          }
+        }
+        // ATTR_BLINK2 should override ATTR_BLINK to avoid chaotic dual blink
+        else if (tattr.attr & ATTR_BLINK) {
+          if (term.has_focus && term.tblinker) {
+            tchar = ' ';
+            tattr.attr &= ~UNBLINK;
+            //tattr.attr |= ATTR_BLINK;  // trigger combined unblinking below
+          }
+        }
       }
 
      /* Mark box drawing, block and some other characters 
@@ -3099,7 +3116,8 @@ void
 
 #define dont_debug_surrogates
 
-      if (d->cc_next) {
+     /* Append combining and overstrike characters, combine surrogates */
+      if (d->cc_next && !(tattr.attr & ATTR_BLINK)) {
         termchar *dd = d;
         while (dd->cc_next && textlen < maxtextlen) {
 #ifdef debug_surrogates

@@ -221,6 +221,7 @@ const config default_cfg = {
   session_commands : W(""),
   task_commands : W(""),
   conpty_support : -1,
+  login_from_shortcut : true,
   menu_mouse : "b",
   menu_ctrlmouse : "e|ls",
   menu_altmouse : "ls",
@@ -512,6 +513,7 @@ options[] = {
   {"SessionCommands", OPT_WSTRING | OPT_KEEPCR, offcfg(session_commands)},
   {"TaskCommands", OPT_WSTRING | OPT_KEEPCR, offcfg(task_commands)},
   {"ConPTY", OPT_BOOL, offcfg(conpty_support)},
+  {"LoginFromShortcut", OPT_BOOL, offcfg(login_from_shortcut)},
   {"MenuMouse", OPT_STRING, offcfg(menu_mouse)},
   {"MenuCtrlMouse", OPT_STRING, offcfg(menu_ctrlmouse)},
   {"MenuMouse5", OPT_STRING, offcfg(menu_altmouse)},
@@ -690,6 +692,7 @@ static opt_val
     {"facebook", EMOJIS_FB},
     {"samsung", EMOJIS_SAMSUNG},
     {"windows", EMOJIS_WINDOWS},
+    {"zoom", EMOJIS_ZOOM},
     {0, 0}
   },
   [OPT_EMOJI_PLACEMENT] = (opt_val[]) {
@@ -1003,8 +1006,9 @@ set_option(string name, string val_str, bool from_file)
     }
   }
   //__ %2$s: option name, %1$s: invalid value
-  opterror(_("Ignoring invalid value '%s' for option '%s'"), 
-           from_file, val_str, name);
+  if (!wnd)  // report errors only during initialisation
+    opterror(_("Ignoring invalid value '%s' for option '%s'"), 
+             from_file, val_str, name);
   return -1;
 }
 

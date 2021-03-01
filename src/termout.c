@@ -1381,6 +1381,7 @@ static bool
     when '\e':   /* ESC: Escape */
       term.state = ESCAPE;
       term.esc_mod = 0;
+      return true;  // keep preceding char for REP
     when '\a':   /* BEL: Bell */
       write_bell();
     when '\b':     /* BS: Back space */
@@ -1421,6 +1422,7 @@ static bool
     default:
       return false;
   }
+  last_char = 0;  // cancel preceding char for REP
   return true;
 }
 
@@ -1637,6 +1639,7 @@ static void
     if (cs) {
       curs->csets[gi] = cs;
       term_update_cs();
+      last_char = 0;  // cancel preceding char for REP
       return;
     }
   }
@@ -1648,6 +1651,7 @@ static void
       memset(term.csi_argv, 0, sizeof(term.csi_argv));
       memset(term.csi_argv_defined, 0, sizeof(term.csi_argv_defined));
       term.esc_mod = 0;
+      return;  // keep preceding char for REP
     when ']':  /* OSC: operating system command */
       term.state = OSC_START;
     when 'P':  /* DCS: device control string */
@@ -1691,15 +1695,16 @@ static void
         term.marg_top = curs->y;
     when 'm':  /* HP Memory Unlock */
       term.marg_top = 0;
-    when CPAIR('#', '8'):    /* DECALN: fills screen with Es :-) */
+    when CPAIR('#', '8'): {  /* DECALN: fills screen with Es :-) */
       term.curs.origin = false;
       term.curs.wrapnext = false;
-      term.curs.attr = CATTR_DEFAULT;
       term.marg_top = 0;
       term.marg_bot = term.rows - 1;
       term.marg_left = 0;
       term.marg_right = term.cols - 1;
       move(0, 0, 0);
+      cattr savattr = term.curs.attr;
+      term.curs.attr = CATTR_DEFAULT;
       for (int i = 0; i < term.rows; i++) {
         termline *line = term.lines[i];
         for (int j = 0; j < term.cols; j++) {
@@ -1708,7 +1713,9 @@ static void
         }
         line->lattr = LATTR_NORM;
       }
+      term.curs.attr = savattr;
       term.disptop = 0;
+    }
     when CPAIR('#', '3'):  /* DECDHL: 2*height, top */
       if (!term.lrmargmode) {
         term.lines[curs->y]->lattr &= LATTR_BIDIMASK;
@@ -1762,7 +1769,14 @@ static void
         insdel_column(term.marg_left, true, 1);
       else
         move(curs->x + 1, curs->y, 1);
+    when 'V':  /* Start of Guarded Area (SPA) */
+      term.curs.attr.attr |= ATTR_PROTECTED;
+      term.iso_guarded_area = true;
+    when 'W':  /* End of Guarded Area (EPA) */
+      term.curs.attr.attr &= ~ATTR_PROTECTED;
+      term.iso_guarded_area = true;
   }
+  last_char = 0;  // cancel preceding char for REP
 }
 
 #define do_sgr(...) (do_sgr)(term_p, ##__VA_ARGS__)
@@ -2767,8 +2781,9 @@ static void
       cattr cur_attr = term.curs.attr;
       term.curs.attr = last_attr;
       wchar h = last_high, c = last_char;
-      for (int i = 0; i < arg0_def1; i++)
-        write_ucschar(h, c, last_width);
+      if (last_char)
+        for (int i = 0; i < arg0_def1; i++)
+          write_ucschar(h, c, last_width);
       term.curs.attr = cur_attr;
     }
     when 'A':        /* CUU: move up N lines */
@@ -2834,14 +2849,31 @@ static void
       else if (arg0 <= 2) {
         bool above = arg0 == 1 || arg0 == 2;
         bool below = arg0 == 0 || arg0 == 2;
-        term_erase(term.esc_mod, false, above, below);
+        term_erase(term.esc_mod | term.iso_guarded_area, false, above, below);
       }
     when 'K' case_or CPAIR('?', 'K'):  /* EL/DECSEL: (selective) erase in line */
       if (arg0 <= 2) {
         bool right = arg0 == 0 || arg0 == 2;
         bool left  = arg0 == 1 || arg0 == 2;
-        term_erase(term.esc_mod, true, left, right);
+        term_erase(term.esc_mod | term.iso_guarded_area, true, left, right);
       }
+    when 'X': {      /* ECH: write N spaces w/o moving cursor */
+      termline *line = term.lines[curs->y];
+      int cols = min(line->cols, line->size);
+      int n = min(arg0_def1, cols - curs->x);
+      if (n > 0) {
+        int p = curs->x;
+        term_check_boundary(curs->x, curs->y);
+        term_check_boundary(curs->x + n, curs->y);
+        while (n--) {
+          if (!term.iso_guarded_area ||
+              !(line->chars[p].attr.attr & ATTR_PROTECTED)
+             )
+            line->chars[p] = term.erase_char;
+          p++;
+        }
+      }
+    }
     when 'L':        /* IL: insert lines */
       if (curs->y >= term.marg_top && curs->y <= term.marg_bot
        && curs->x >= term.marg_left && curs->x <= term.marg_right
@@ -3059,18 +3091,6 @@ static void
       */
       win_set_chars(term.rows, arg0 ?: cfg.cols);
       term.selected = false;
-    when 'X': {      /* ECH: write N spaces w/o moving cursor */
-      termline *line = term.lines[curs->y];
-      int cols = min(line->cols, line->size);
-      int n = min(arg0_def1, cols - curs->x);
-      if (n > 0) {
-        int p = curs->x;
-        term_check_boundary(curs->x, curs->y);
-        term_check_boundary(curs->x + n, curs->y);
-        while (n--)
-          line->chars[p++] = term.erase_char;
-      }
-    }
     when 'x':        /* DECREQTPARM: report terminal characteristics */
       if (arg0 <= 1)
         child_printf("\e[%u;1;1;120;120;1;0x", arg0 + 2);
@@ -3120,8 +3140,12 @@ static void
       term.cursor_size = arg0;
     when CPAIR('"', 'q'):  /* DECSCA: select character protection attribute */
       switch (arg0) {
-        when 0 case_or 2: term.curs.attr.attr &= ~ATTR_PROTECTED;
-        when 1: term.curs.attr.attr |= ATTR_PROTECTED;
+        when 0 case_or 2:
+          term.curs.attr.attr &= ~ATTR_PROTECTED;
+          term.iso_guarded_area = false;
+        when 1:
+          term.curs.attr.attr |= ATTR_PROTECTED;
+          term.iso_guarded_area = false;
       }
     when 'n':        /* DSR: device status report */
       if (arg0 == 6)  // CPR
@@ -3370,6 +3394,7 @@ static void
         term.disptop = 0;
       }
   }
+  last_char = 0;  // cancel preceding char for REP
 }
 
 #define fill_image_space(...) (fill_image_space)(term_p, ##__VA_ARGS__)
@@ -4031,6 +4056,10 @@ static void
           }
         }
       }
+    when 7750:
+      set_arg_option("Emojis", strdup(s));
+      clear_emoji_data();
+      win_invalidate_all(false);
     when 8: {  // hyperlink attribute
       char * link = s;
       char * url = strchr(s, ';');

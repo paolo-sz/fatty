@@ -21,7 +21,7 @@ enum { FLASH_FRAME = 1, FLASH_BORDER = 2, FLASH_FULL = 4, FLASH_REVERSE = 8 };
 enum { EMOJIS_NONE = 0, EMOJIS_ONE = 1, EMOJIS_NOTO = 2, EMOJIS_APPLE = 3, 
        EMOJIS_GOOGLE = 4, EMOJIS_TWITTER = 5, EMOJIS_FB = 6, 
        EMOJIS_SAMSUNG = 7, EMOJIS_WINDOWS = 8, EMOJIS_JOYPIXELS = 9, 
-       EMOJIS_OPENMOJI = 10 };
+       EMOJIS_OPENMOJI = 10, EMOJIS_ZOOM = 11 };
 enum { EMPL_STRETCH = 0, EMPL_ALIGN = 1, EMPL_MIDDLE = 2, EMPL_FULL = 3 };
 
 // Colour values.
@@ -206,6 +206,7 @@ typedef struct {
   wstring session_commands;
   wstring task_commands;
   int conpty_support;
+  bool login_from_shortcut;
   string menu_mouse;
   string menu_ctrlmouse;
   string menu_altmouse;
