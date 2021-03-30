@@ -502,6 +502,7 @@ bool
     }
     if (mods & MDK_SHIFT)
       c ^= ' ';
+    c |= 0x80;
     child_send(&c, 1);
     tek_send_address();
   }

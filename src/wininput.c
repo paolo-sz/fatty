@@ -1492,12 +1492,18 @@ mflags_zoomed(__attribute__((unused))struct term *term_p)
   return IsZoomed(wnd) ? MF_CHECKED: MF_UNCHECKED;
 }
 
+#define mflags_always_top(...) (mflags_always_top)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_always_top)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return win_is_always_on_top ? MF_CHECKED: MF_UNCHECKED;
+}
+
 //static uint
 //mflags_flipscreen()
 //{
-//  struct term* term_p = win_active_terminal();
-//  TERM_VAR_REF(true)
-//    
 //  return term.show_other_screen ? MF_CHECKED : MF_UNCHECKED;
 //}
 
@@ -1610,6 +1616,7 @@ static struct function_def cmd_defs[] = {
   {"win-restore", {.fct = window_restore}, 0},
   {"win-icon", {.fct = window_min}, 0},
   {"close", {.fct = (win_close)}, 0},
+  {"win-toggle-always-on-top", {.fct = (win_toggle_on_top)}, mflags_always_top},
 
   {"new", {.fct_key = newwin_begin}, 0},  // deprecated
   {"new-key", {.fct_key = newwin_begin}, 0},

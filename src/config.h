@@ -59,6 +59,7 @@ typedef struct {
   colour tek_write_thru_colour, tek_defocused_colour;
   colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
   int tek_glow;
+  int tek_strap;
   colour underl_colour, hover_colour;
   int disp_space, disp_clear, disp_tab;
   bool underl_manual;
@@ -180,6 +181,7 @@ typedef struct {
   // "Hidden"
   int bidi;
   bool disable_alternate_screen;
+  bool erase_to_scrollback;
   int display_speedup;
   string suppress_sgr;
   string suppress_dec;
@@ -217,6 +219,7 @@ typedef struct {
   int geom_sync;
   int tabbar;
   int col_spacing, row_spacing;
+  int auto_leading;
   int padding;
   int ligatures;
   int ligatures_support;

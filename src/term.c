@@ -431,6 +431,8 @@ void
   term.detect_progress = cfg.progress_bar;
   taskbar_progress(-9);
 
+  term.suspend_update = 0;
+
   term_schedule_search_update();
 
   win_reset_colours();
@@ -1670,19 +1672,17 @@ void
   if (!from_begin || !to_end)
     term_check_boundary(curs->x, curs->y);
 
-#ifdef scrollback_erase_lines
-#warning this behaviour is not compatible with xterm
  /* Lines scrolled away shouldn't be brought back on if the terminal resizes. */
   bool erasing_lines_from_top =
     start.y == 0 && start.x == 0 && end.x == 0 && !line_only && !selective;
 
-  if (erasing_lines_from_top && 
+  if (cfg.erase_to_scrollback && erasing_lines_from_top && 
       !(term.lrmargmode && (term.marg_left || term.marg_right != term.cols - 1))
      )
   {
    /* If it's a whole number of lines, starting at the top, and
     * we're fully erasing them, erase by scrolling and keep the
-    * lines in the scrollback. */
+    * lines in the scrollback. This behaviour is not compatible with xterm. */
     int scrolllines = end.y;
     if (end.y == term.rows) {
      /* Shrink until we find a non-empty row. */
@@ -1697,9 +1697,7 @@ void
     if (!term.on_alt_screen)
       term.tempsblines = 0;
   }
-  else
-#endif
-  {
+  else {
     termline *line = term.lines[start.y];
     while (poslt(start, end)) {
       int cols = min(line->cols, line->size);
@@ -1911,8 +1909,8 @@ fallback:;
       zwj = false;
       sel = false;
     when EMOJIS_ZOOM:
-      pre = "zoom/";
-      sep = "-";
+      pre = const_cast<char *>("zoom/");
+      sep = const_cast<char *>("-");
       zwj = false;
       sel = false;
     when EMOJIS_ONE:
@@ -2707,8 +2705,10 @@ void
             }
           }
         }
-        if (p <= 100)
+        if (p <= 100) {
+          taskbar_progress(- term.detect_progress);
           taskbar_progress(p);
+        }
       }
     }
 

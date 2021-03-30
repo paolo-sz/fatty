@@ -71,6 +71,7 @@ extern bool report_child_pid;
 
 extern int ini_width, ini_height;
 extern bool win_is_fullscreen;
+extern bool win_is_always_on_top;
 extern bool clipboard_token;
 extern uint dpi;
 extern int per_monitor_dpi_aware;
@@ -234,6 +235,8 @@ struct child** win_get_child_list(int* n);
 bool win_should_die();
 #define win_close(...) (win_close)(term_p, ##__VA_ARGS__)
 extern void (win_close)(struct term *term_p);
+#define win_toggle_on_top(...) (win_toggle_on_top)(term_p, ##__VA_ARGS__)
+extern void (win_toggle_on_top)(struct term *term_p);
 extern void win_tab_close(struct term** term_pp);
 void win_tab_close_all();
 

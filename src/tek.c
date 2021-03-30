@@ -1,3 +1,8 @@
+#include <algorithm>
+
+using std::max;
+using std::min;
+  
 extern "C" {
 
 #include <cygwin/version.h>
@@ -9,6 +14,7 @@ extern "C" {
 #include "child.h"
 
 enum tekmode tek_mode = TEKMODE_OFF;
+static enum tekmode tek_mode_pre_gin;
 bool tek_bypass = false;
 static uchar intensity = 0x7F; // for point modes
 static uchar style = 0;        // for vector modes
@@ -20,7 +26,7 @@ static bool plotpen = false;
 static bool apl_mode = false;
 
 static short tek_y, tek_x;
-static short gin_y, gin_x;
+static short gin_y, gin_x = -1;
 static uchar lastfont = 0;
 static int lastwidth = -1;
 static wchar * tek_dyn_font = 0;
@@ -123,8 +129,12 @@ void
 }
 
 void
-tek_gin(void)
+(tek_gin)(struct term* term_p)
 {
+  TERM_VAR_REF(true)
+
+  tek_mode_pre_gin = tek_mode;
+  tek_mode = TEKMODE_GIN;
   //gin_y = tek_y;
   //gin_x = tek_x;
   tek_move_by(0, 0);
@@ -278,6 +288,16 @@ tek_address(char * code)
 	01 11 11 10	High Y	Extra	Low Y	Low X
 	more unseen
 	01 01 10	High Y	High X	Low X
+
+	10 Bits border coordinates
+	0100000	1100000	0100000	1000000	y 0 x 0
+	0x20	0x60	0x20	0x40	" ` @"
+	0100000	1100000	0111111	1011111	y 0 x 1023 (0 3FF)
+	0x20	0x60	0x3F	0x5F	" `?_"
+	0111000	1101011	0100000	1000000	y 779 x 0 (30B 0)
+	0x38	0x6B	0x20	0x40	"8k @"
+	0111000	1101011	0111111	1011111	y 779 x 1023 (30B 3FF)
+	0x38	0x6B	0x3F	0x5F	"8k?_"
   */
   // accumulate tags for switching; clear tags from input
   short tag = 0;
@@ -367,6 +387,8 @@ tek_address(char * code)
   tekchar_tmp.style = style;
   tekchar_tmp.intensity = intensity;
   tek_buf_append(&tekchar_tmp);
+  // 3-10, ALPHA MODE 22.
+  margin = 0;
 }
 
 /*	DEAIHJBF
@@ -457,18 +479,21 @@ fix_gin()
 }
 
 void
-tek_move_by(int dy, int dx)
+(tek_move_by)(struct term* term_p, int dy, int dx)
 {
+  TERM_VAR_REF(true)
+
   //printf("tek_move_by %d:%d\n", dy, dx);
   if (dy || dx) {
     gin_y += dy;
     gin_x += dx;
     fix_gin();
   }
-  else {
+  else if (gin_x < 0) {
     gin_y = 1560;
     gin_x = 2048;
   }
+  tek_paint();  // Smooth GIN mode crosshair cursor movement.
 }
 
 void
@@ -497,27 +522,8 @@ void
   gin_y = 3119 - (y - pad_t) * 3120 / height;
   gin_x = (x - pad_l) * 4096 / width;
   fix_gin();
+  tek_paint();  // Smooth GIN mode crosshair cursor movement.
 }
-
-void
-(tek_send_address)(struct child* child_p)
-{
-  CHILD_VAR_REF(true)
-
-  child_printf("%c%c%c%c",
-               0x20 | (tek_y >> 7), 0x60 | ((tek_y >> 2) & 0x1F),
-               0x20 | (tek_x >> 7), 0x40 | ((tek_x >> 2) & 0x1F));
-  tek_mode = TEKMODE_ALPHA;
-}
-
-void
-(tek_enq)(struct child* child_p)
-{
-  child_write("4", 1);
-  tek_send_address();
-}
-
-colour fg;
 
 static uint
 get_font_quality(void)
@@ -553,6 +559,79 @@ init_font(short f)
                   fn);
 }
 
+static colour fg;
+static short txt_y, txt_x;
+static short out_y, out_x;
+static wchar * txt = 0;
+static int txt_len = 0;
+static int txt_wid = 0;
+
+#define tek_send_address_0(...) (tek_send_address_0)(child_p, ##__VA_ARGS__)
+static void
+(tek_send_address_0)(struct child* child_p, int strap)
+{
+  CHILD_VAR_REF(true)
+
+  short y, x;
+  if (tek_mode == TEKMODE_GIN) {
+    y = gin_y;
+    x = gin_x;
+  }
+  else {
+    y = out_y;
+    x = out_x;
+  }
+
+  child_printf("%c%c%c%c",
+               0x20 | (x >> 7), 0x60 | ((x >> 2) & 0x1F),
+               0x20 | (y >> 7), 0x40 | ((y >> 2) & 0x1F));
+  if (strap) {
+    if (strap > 1)
+      child_write("\r\003", 2);
+    else
+      child_write("\r", 1);
+  }
+}
+
+void
+(tek_send_address)(struct child* child_p)
+{
+  CHILD_VAR_REF(true)
+
+  tek_send_address_0(cfg.tek_strap);
+  // 3-18, GIN MODE 45.: return to Alpha mode
+  tek_mode = TEKMODE_ALPHA;
+  // or rather restore previous mode for smooth interactive drawing?
+  tek_mode = tek_mode_pre_gin;
+  // 3-10, ALPHA MODE 22.
+  margin = 0;
+}
+
+void
+(tek_enq)(struct child* child_p)
+{
+  CHILD_VAR_REF(true)
+
+  if (tek_mode == TEKMODE_GIN) {
+    // 3-17, GIN MODE 44.: ENQ while in GIN mode
+    tek_send_address_0(false);
+    return;
+  }
+
+  char status = 0x30;
+  if (cfg.tek_strap)
+    status |= 0x80;
+  if (tek_mode == TEKMODE_ALPHA)
+    status |= 0x04;
+  else
+    status |= 0x08;
+  if (margin)
+    status |= 0x02;
+  child_write(&status, 1);
+  tek_send_address_0(cfg.tek_strap);
+  // 3-17, GIN MODE 41., 42.: stay in current mode
+}
+
 static void
 out_text(HDC dc, short x, short y, wchar * s, uchar f)
 {
@@ -566,12 +645,6 @@ out_text(HDC dc, short x, short y, wchar * s, uchar f)
     dxs[i] = tekfonts[f].wid * lastwidth;
   ExtTextOutW(dc, x, y, 0, 0, s, len, dxs);
 }
-
-static short txt_y, txt_x;
-static short out_y, out_x;
-static wchar * txt = 0;
-static int txt_len = 0;
-static int txt_wid = 0;
 
 static void
 out_flush(HDC dc)
@@ -800,6 +873,7 @@ void
 
   auto tx = [&](int x) -> int
   {
+    x -= 1;  // heuristic adjustment to compensate for coordinate rounding
     if (scale_mode)
       return x;
     else
@@ -807,6 +881,7 @@ void
   };
   auto ty = [&](int y) -> int
   {
+    y += 2;  // heuristic adjustment to compensate for coordinate rounding
     if (scale_mode)
       return 3119 - y;
     else
@@ -836,6 +911,7 @@ void
   margin = 0;
   lastfont = 4;
   //printf("tek_paint %d %p\n", tek_buf_len, tek_buf);
+  //static int trc = -1;
   for (int i = 0; i < tek_buf_len; i++) {
     struct tekchar * tc = &tek_buf[i];
 
@@ -848,6 +924,21 @@ void
       //fg = glowfg;
       if (cfg.tek_defocused_colour != (colour)-1)
         fg = cfg.tek_defocused_colour;
+      else {  // bolden colour
+        int r = red(fg);
+        int g = green(fg);
+        int b = blue(fg);
+        int _r = red(bg);
+        int _g = green(bg);
+        int _b = blue(bg);
+        r = (r - _r) * 150 / 100 + _r;
+        g = (g - _g) * 150 / 100 + _g;
+        b = (b - _b) * 150 / 100 + _b;
+        r = min(255, max(0, r));
+        g = min(255, max(0, g));
+        b = min(255, max(0, b));
+        fg = RGB(r, g, b);
+      }
 
       // display defocused by wider pen
       pen_width = (pen_width ?: 1) * 12;
@@ -861,8 +952,11 @@ void
         // simulate Write-Thru by distinct colour?
         //fg = RGB(200, 100, 0);
         // fade out?
-        if (tc->recent <= (thru_glow + 1) / 2)
+        if (tc->recent <= (thru_glow + 1) / 2) {
+          //printf("fade %06X", fg);
           fg = ((fg & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
+          //printf(" -> %06X\n", fg);
+        }
 
         tc->recent--;
       }
@@ -872,8 +966,11 @@ void
         if (cfg.tek_write_thru_colour != (colour)-1)
           fg = cfg.tek_write_thru_colour;
         else {
+          //printf("fade %06X", fg);
           fg = ((fg & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
+          //printf(" -> %06X", fg);
           fg = RGB(green(fg), blue(fg), red(fg));
+          //printf(" -> %06X\n", fg);
         }
         // fade away?
         //fg = bg;
@@ -893,10 +990,14 @@ void
       if (tc->font != lastfont)
         out_flush(hdc);
       out_char(hdc, &tek_buf[i]);
+      // update graphic cursor in case of subsequent written first vector
+      MoveToEx(hdc, tx(out_x), ty(out_y), null);
     }
 
-    if (tc->type == TEKMODE_GRAPH0)
+    if (tc->type == TEKMODE_GRAPH0) {
+      //printf("MoveTo (%d:%d) %d:%d\n", tc->y, tc->x, ty(tc->y), tx(tc->x));
       MoveToEx(hdc, tx(tc->x), ty(tc->y), null);
+    }
     else if (tc->type == TEKMODE_GRAPH) {
       HPEN pen;
       auto create_pen = [&](DWORD style) -> HPEN
@@ -928,14 +1029,21 @@ void
       }
       HPEN oldpen = (HPEN)SelectObject(hdc, pen);
       SetBkMode(hdc, TRANSPARENT);  // stabilize broken vector styles
+      //printf("LineTo (%d:%d) %d:%d\n", tc->y, tc->x, ty(tc->y), tx(tc->x));
       LineTo(hdc, tx(tc->x), ty(tc->y));
       oldpen = (HPEN)SelectObject(hdc, oldpen);
       DeleteObject(oldpen);
       // add final point
-      SetPixel(hdc, tx(tc->x), ty(tc->y), fg);
+      //SetPixel(hdc, tx(tc->x), ty(tc->y), fg);
+      pen = CreatePen(PS_SOLID, pen_width / 4, fg);
+      oldpen = (HPEN)SelectObject(hdc, pen);
+      int delta = pen_width / 4;
+      Ellipse(hdc, tx(tc->x - delta), ty(tc->y - delta), tx(tc->x + delta), ty(tc->y + delta));
+      oldpen = (HPEN)SelectObject(hdc, oldpen);
+      DeleteObject(oldpen);
     }
     else if (tc->type == TEKMODE_POINT_PLOT || tc->type == TEKMODE_SPECIAL_PLOT) {
-      if (tc->intensity == 0x7F)
+      if (tc->intensity == 0x7F && !tc->defocused)
         SetPixel(hdc, tx(tc->x), ty(tc->y), fg);
       else {
         static short intensify[64] =
@@ -950,17 +1058,42 @@ void
         int _r = red(bg);
         int _g = green(bg);
         int _b = blue(bg);
+#ifdef linear_intensify
+        short i = tc->intensity & 0x3F;
+        if (i > 55)
+          i -= 8;
+        r = (r - _r) * i / 55 + _r;
+        g = (g - _g) * i / 55 + _g;
+        b = (b - _b) * i / 55 + _b;
+#else
         r = (r - _r) * intensify[tc->intensity & 0x3F] / 100 + _r;
         g = (g - _g) * intensify[tc->intensity & 0x3F] / 100 + _g;
         b = (b - _b) * intensify[tc->intensity & 0x3F] / 100 + _b;
+#endif
         colour fgpix = RGB(r, g, b);
-        SetPixel(hdc, tx(tc->x), ty(tc->y), fgpix);
+        //trc *= trc;
+        //if (trc) printf("fg %06X bg %06X (wt %d df %d) int [%2d]*%3d -> %06X (w %d)\n", fg, bg, tc->writethru, tc->defocused, tc->intensity, intensify[tc->intensity & 0x3F], fgpix, pen_width);
+        if (tc->defocused) {
+          HPEN pen = CreatePen(PS_SOLID, pen_width, fgpix);
+          HPEN oldpen = (HPEN)SelectObject(hdc, pen);
+          int delta = 4;
+          Ellipse(hdc, tx(tc->x - delta), ty(tc->y - delta), tx(tc->x + delta), ty(tc->y + delta));
+          oldpen = (HPEN)SelectObject(hdc, oldpen);
+          DeleteObject(oldpen);
+        }
+        else
+          SetPixel(hdc, tx(tc->x), ty(tc->y), fgpix);
       }
     }
   }
+  //if (trc == 1) trc = false;
 
   // text cursor
-  if (!copyfn && lastfont < 4 && term.cblinker) {
+  if ((tek_mode == TEKMODE_ALPHA ||
+       (tek_mode == TEKMODE_GIN && tek_mode_pre_gin == TEKMODE_ALPHA)
+      ) && !copyfn && lastfont < 4 && term.cblinker
+     )
+  {
     if (cc != fg)
       out_flush(hdc);
     fg = cc;
@@ -973,7 +1106,7 @@ void
   }
   out_flush(hdc);
 
-  // GIN mode
+  // GIN mode crosshair cursor
   if (tek_mode == TEKMODE_GIN) {
     fg = ((fg0 & 0xFEFEFEFE) >> 1) + ((bg & 0xFEFEFEFE) >> 1);
     HPEN pen = CreatePen(PS_SOLID, pen_width0, fg);

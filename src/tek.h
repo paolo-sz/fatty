@@ -21,7 +21,8 @@ extern void (tek_page)(struct term* term_p);
 extern void (tek_reset)(struct term* term_p);
 #define tek_init(...) (tek_init)(term_p, ##__VA_ARGS__)
 extern void (tek_init)(struct term* term_p, bool reset, int glow);
-extern void tek_gin(void);
+#define tek_gin(...) (tek_gin)(term_p, ##__VA_ARGS__)
+extern void (tek_gin)(struct term* term_p);
 
 extern void tek_font(short f);
 extern void tek_write(wchar c, int width);
@@ -35,7 +36,8 @@ extern void tek_set_font(wchar * fn);
 
 #define tek_move_to(...) (tek_move_to)(term_p, ##__VA_ARGS__)
 extern void (tek_move_to)(struct term* term_p, int y, int x);
-extern void tek_move_by(int dy, int dx);
+#define tek_move_by(...) (tek_move_by)(term_p, ##__VA_ARGS__)
+extern void (tek_move_by)(struct term* term_p, int dy, int dx);
 #define tek_send_address(...) (tek_send_address)(child_p, ##__VA_ARGS__)
 extern void (tek_send_address)(struct child* child_p);
 

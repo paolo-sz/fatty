@@ -1244,6 +1244,13 @@ contains(string s, int i)
 
 static state_t prev_state = (state_t)0;
 
+static void
+tek_gin_fin(void)
+{
+  if (tek_mode == TEKMODE_GIN)
+    tek_mode = TEKMODE_ALPHA;
+}
+
 #define tek_esc(...) (tek_esc)(term_p, ##__VA_ARGS__)
 /* Process Tek mode ESC control */
 static void
@@ -1282,11 +1289,12 @@ static void
     when CTRL('W'):   /* ETB: Make Copy */
       term_save_image();
       tek_bypass = false;
+      tek_gin_fin();
     when CTRL('X'):   /* CAN: Set Bypass */
       tek_bypass = true;
     when CTRL('Z'):   /* SUB: Gin mode */
-      tek_mode = TEKMODE_GIN;
       tek_gin();
+      tek_mode = TEKMODE_GIN;
       term.state = NORMAL;
       tek_bypass = true;
     when 0x1C:   /* FS: Special Plot mode */
@@ -1338,17 +1346,21 @@ static void
     when '\a':   /* BEL: Bell */
       write_bell();
       tek_bypass = false;
+      tek_gin_fin();
     when '\b' or '\t' or '\v':     /* BS or HT or VT */
       if (tek_mode == TEKMODE_ALPHA)
         tek_write(c, -2);
     when '\n':   /* LF: Line feed */
       tek_bypass = false;
       tek_write(c, -2);
+      tek_gin_fin();
     when '\r':   /* CR: Carriage return */
       tek_mode = TEKMODE_ALPHA;
       term.state = NORMAL;
       tek_bypass = false;
       tek_write(c, -2);
+    when CTRL('O'):   /* SI */
+      tek_gin_fin();
     when 0x1C:   /* FS: Point Plot mode */
       tek_mode = TEKMODE_POINT_PLOT;
       term.state = TEK_ADDRESS0;
@@ -2144,6 +2156,12 @@ static void
         when 25: /* DECTCEM: enable/disable cursor */
           term.cursor_on = state;
           // Should we set term.cursor_invalid or call term_invalidate ?
+#ifdef end_suspend_output_by_enabling_cursor
+          if (state) {
+            term.suspend_update = false;
+            do_update();
+          }
+#endif
         when 30: /* Show/hide scrollbar */
           if (state != term.show_scrollbar) {
             term.show_scrollbar = state;
@@ -2737,7 +2755,9 @@ static void
 {
   TERM_VAR_REF(true)
   
-  if (state == 0) {  // disable progress indication
+  //printf("set_taskbar_progress (%d) %d %d%%\n", term.detect_progress, state, percent);
+  if (state == 0 && percent < 0) {  // disable progress indication
+    // skipping this if percent < 0 to allow percent-only setting with state 0
     taskbar_progress(-9);
     term.detect_progress = 0;
   }
@@ -2745,9 +2765,18 @@ static void
     taskbar_progress(-8);
     term.detect_progress = 0;
   }
+  else if (state == 10) {  // reset to default
+    term.detect_progress = cfg.progress_bar;
+    taskbar_progress(-9);
+  }
   else if (state <= 3) {
-    taskbar_progress(- state);
+    if (state > 0)
+      taskbar_progress(- state);
     if (percent >= 0) {
+      // if we disable (above), then request percentage only (here), 
+      // colour will be 1/green regardless of previous/configured setting;
+      // to improve this, we'd have to introduce another variable,
+      // term.previous_progress
       taskbar_progress(percent);
       term.detect_progress = 0;
     }
@@ -3153,7 +3182,7 @@ static void
                      curs->y + 1 - (curs->origin ? term.marg_top : 0),
                      curs->x + 1 - (curs->origin ? term.marg_left : 0));
       else if (arg0 == 5)
-        child_write("\e[0n", 4);
+        child_write("\e[0n", 4);  // "in good operating condition"
     when CPAIR('?', 'n'):  /* DSR, DEC specific */
       switch (arg0) {
         when 6:  // DECXCPR
@@ -3162,6 +3191,8 @@ static void
                        curs->x + 1 - (curs->origin ? term.marg_left : 0));
         when 15:
           child_printf("\e[?%un", 11 - !!*cfg.printer);
+        when 26:  // Keyboard Report
+          child_printf("\e[?27;0;%cn", term.has_focus ? '0' : '8');
         // DEC Locator
         when 53 case_or 55:
           child_printf("\e[?53n");
@@ -3393,6 +3424,17 @@ static void
         }
         term.disptop = 0;
       }
+#ifdef suspend_display_update_via_CSI
+    when CPAIR('&', 'q'):  /* suspend display update (ms) */
+      term.suspend_update = min(arg0, term.rows * term.cols / 8);
+      //printf("susp = %d\n", term.suspend_update);
+      if (term.suspend_update == 0) {
+        do_update();
+        // mysteriously, a delay here makes the output flush 
+        // more likely to happen, yet not reliably...
+        usleep(1000);
+      }
+#endif
   }
   last_char = 0;  // cancel preceding char for REP
 }
@@ -3461,6 +3503,7 @@ static void
   char *s = term.cmd_buf;
   if (!term.cmd_len)
     *s = 0;
+  //printf("DCS %04X state %d <%s>\n", term.dcs_cmd, term.state, s);
 
   switch (term.dcs_cmd) {
 
@@ -3625,7 +3668,7 @@ static void
   }
 
   when CPAIR('$', 'q'):
-    switch (term.state) {
+   switch (term.state) {
     when DCS_ESCAPE: {     // DECRQSS
       cattr attr = term.curs.attr;
       if (!strcmp(s, "m")) { // SGR
@@ -3743,7 +3786,35 @@ static void
     break;
     default:
       return;
+   }
+
+  // https://gitlab.com/gnachman/iterm2/-/wikis/synchronized-updates-spec
+  // Begin synchronized update (BSU): ESC P = 1 s Parameters ST
+  // End synchronized update (ESU): ESC P = 2 s Parameters ST
+  when CPAIR('=', 's'): {
+    //printf("DCS =[%u]%u;%us term.state %d <%s>\n", term.csi_argc, term.csi_argv[0], term.csi_argv[1], term.state, s);
+    int susp = -1;
+    if (term.csi_argv[0] == 1) {
+      // calculate default and max timeout
+      //susp = term.rows * term.cols / (10 + cfg.display_speedup);
+      susp = 420;  // limit of user-requested delay
+      // limit timeout if requested
+      if (term.csi_argc > 1 && term.csi_argv[1])
+        susp = min((int)term.csi_argv[1], susp);
+      else
+        susp = 150;  // constant default
     }
+    else if (term.csi_argv[0] == 2)
+      susp = 0;
+    if (susp < 0)
+      return;
+
+    term.suspend_update = susp;
+    if (susp == 0) {
+      do_update();
+      //usleep(1000);  // flush update not needed here...
+    }
+  }
 
   }
 }
@@ -4270,6 +4341,8 @@ typedef struct {
       s++;
       int state;
       paramap paramap_tmp2[] = {{const_cast<char *>("off"), 0},
+                                {const_cast<char *>("default"), 10},
+                                {const_cast<char *>(""), 10},
                                 {const_cast<char *>("green"), 1},
                                 {const_cast<char *>("yellow"), 2},
                                 {const_cast<char *>("red"), 3},
@@ -4380,10 +4453,13 @@ static void
           cset = term.curs.cset_single;
           term.curs.cset_single = CSET_ASCII;
         }
-        else if (term.decnrc_enabled
-         && term.curs.gr && term.curs.csets[term.curs.gr] != CSET_ASCII
-         && !term.curs.oem_acs && !term.curs.utf
-         && c >= 0x80 && c < 0xFF) {
+        else if (term.curs.gr
+              //&& (term.decnrc_enabled || !term.decnrc_enabled)
+              && term.curs.csets[term.curs.gr] != CSET_ASCII
+              && !term.curs.oem_acs && !term.curs.utf
+              && c >= 0x80 && c < 0xFF
+                )
+        {
           // tune C1 behaviour to mimic xterm
           if (c < 0xA0)
             continue;
@@ -4767,7 +4843,10 @@ static void
         tek_esc(c);
 
       when TEK_ADDRESS0 case_or TEK_ADDRESS:
-        if (c < ' ')
+        if (c == '\a' && tek_mode == TEKMODE_GRAPH0 && term.state == TEK_ADDRESS0) {
+          tek_mode= TEKMODE_GRAPH;
+        }
+        else if (c < ' ')
           tek_ctrl(c);
         else if (tek_mode == TEKMODE_SPECIAL_PLOT && term.state == TEK_ADDRESS0) {
           term.state = TEK_ADDRESS;
@@ -4982,6 +5061,11 @@ static void
         term.cmd_num = -1;
         term.cmd_len = 0;
         term.dcs_cmd = 0;
+        // use csi_arg vars also for DCS parameters
+        term.csi_argc = 0;
+        memset(term.csi_argv, 0, sizeof(term.csi_argv));
+        memset(term.csi_argv_defined, 0, sizeof(term.csi_argv_defined));
+
         switch (c) {
           when '@' ... '~':  /* DCS cmd final byte */
             term.dcs_cmd = c;
@@ -4990,13 +5074,17 @@ static void
           when '\e':
             term.state = DCS_ESCAPE;
           when '0' ... '9':  /* DCS parameter */
+            //printf("DCS start %c\n", c);
             term.state = DCS_PARAM;
           when ';':          /* DCS separator */
+            //printf("DCS sep %c\n", c);
             term.state = DCS_PARAM;
           when ':':
+            //printf("DCS sep %c\n", c);
             term.state = DCS_IGNORE;
           when '<' ... '?':
             term.dcs_cmd = c;
+            //printf("DCS sep %c\n", c);
             term.state = DCS_PARAM;
           when ' ' ... '/':  /* DCS intermediate byte */
             term.dcs_cmd = c;
@@ -5010,17 +5098,29 @@ static void
         switch (c) {
           when '@' ... '~':  /* DCS cmd final byte */
             term.dcs_cmd = term.dcs_cmd << 8 | c;
+            if (term.csi_argv[term.csi_argc])
+              term.csi_argc ++;
             do_dcs();
             term.state = DCS_PASSTHROUGH;
           when '\e':
             term.state = DCS_ESCAPE;
             term.esc_mod = 0;
-          when '0' ... '9' case_or ';' case_or ':':  /* DCS parameter */
-            term.state = DCS_PARAM;
+          when '0' ... '9':  /* DCS parameter */
+            //printf("DCS param %c\n", c);
+            if (term.csi_argc < 2) {
+              uint i = term.csi_argc;
+              term.csi_argv[i] = 10 * term.csi_argv[i] + c - '0';
+            }
+          when ';' case_or ':':  /* DCS parameter separator */
+            //printf("DCS param sep %c\n", c);
+            if (term.csi_argc + 1 < lengthof(term.csi_argv))
+              term.csi_argc ++;
           when '<' ... '?':
             term.dcs_cmd = term.dcs_cmd << 8 | c;
+            //printf("DCS param %c\n", c);
             term.state = DCS_PARAM;
           when ' ' ... '/':  /* DCS intermediate byte */
+            //printf("DCS param->inter %c\n", c);
             term.dcs_cmd = term.dcs_cmd << 8 | c;
             term.state = DCS_INTERMEDIATE;
             break;
@@ -5038,6 +5138,7 @@ static void
             term.state = DCS_ESCAPE;
             term.esc_mod = 0;
           when '0' ... '?':  /* DCS parameter byte */
+            //printf("DCS inter->ignore %c\n", c);
             term.state = DCS_IGNORE;
           when ' ' ... '/':  /* DCS intermediate byte */
             term.dcs_cmd = term.dcs_cmd << 8 | c;

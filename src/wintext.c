@@ -631,15 +631,37 @@ win_init_fontfamily(HDC dc, int findex)
   }
 
   if (!findex) {
-    //?int ilead = tm.tmInternalLeading - (dpi - 96) / 48;
-    int idpi = dpi;  // avoid coercion of tm.tmInternalLeading to unsigned
-    int ilead = tm.tmInternalLeading * 96 / idpi;
-    ff->row_spacing = row_padding(ilead, tm.tmExternalLeading);
-    //printf("row_sp dpi %d int %d -> ild %d (ext %d) -> pad %d + cfg %d\n", dpi, (int)tm.tmInternalLeading, ilead, (int)tm.tmExternalLeading, ff->row_spacing, cfg.row_spacing);
-    trace_font(("00 height %d avwidth %d asc %d dsc %d intlead %d extlead %d %ls\n", 
-               (int)tm.tmHeight, (int)tm.tmAveCharWidth, (int)tm.tmAscent, (int)tm.tmDescent, 
-               (int)tm.tmInternalLeading, (int)tm.tmExternalLeading, 
-               ff->name));
+    ff->row_spacing = 0;
+    if (cfg.auto_leading == 1) {
+      //?int ilead = tm.tmInternalLeading - (dpi - 96) / 48;
+      int idpi = dpi;  // avoid coercion of tm.tmInternalLeading to unsigned
+      int ilead = tm.tmInternalLeading * 96 / idpi;
+      ff->row_spacing = row_padding(ilead, tm.tmExternalLeading);
+      //printf("row_sp dpi %d int %d -> ild %d (ext %d) -> pad %d + cfg %d\n", dpi, (int)tm.tmInternalLeading, ilead, (int)tm.tmExternalLeading, ff->row_spacing, cfg.row_spacing);
+      trace_font(("00 height %d avwidth %d asc %d dsc %d intlead %d extlead %d %ls\n", 
+                 (int)tm.tmHeight, (int)tm.tmAveCharWidth, (int)tm.tmAscent, (int)tm.tmDescent, 
+                 (int)tm.tmInternalLeading, (int)tm.tmExternalLeading, 
+                 ff->name));
+    }
+    else if (cfg.auto_leading == 2) {
+      /*
+      	–	tmIntLeading	|	|
+      	M			|ascent	| tmHeight
+      	Mg			|	|
+      	 g	tmDescent		|
+      	–	tmExtLeading
+      */
+      if (tm.tmInternalLeading < 2)
+        ff->row_spacing += 2 - tm.tmInternalLeading;
+      else if (tm.tmInternalLeading > 7)
+        ff->row_spacing -= tm.tmExternalLeading;
+      trace_font(("vert geom: (int %d) asc %d + dsc %d -> hei %d, + ext %d; -> spc (%d) %d %ls\n", 
+                (int)tm.tmInternalLeading, (int)tm.tmAscent, (int)tm.tmDescent,
+                (int)tm.tmHeight, (int)tm.tmExternalLeading, 
+                row_spacing_1, ff->row_spacing,
+                ff->name));
+    }
+
     ff->row_spacing += cfg.row_spacing;
     if (ff->row_spacing < -tm.tmDescent)
       ff->row_spacing = -tm.tmDescent;
@@ -1233,6 +1255,7 @@ void
 
   TERM_VAR_REF(true)
   
+  //printf("do_update state %d susp %d\n", update_state, term.suspend_update);
   if (update_state == UPDATE_BLOCKED) {
     update_state = UPDATE_IDLE;
     return;
@@ -1243,13 +1266,20 @@ void
   lines_scrolled = 0;
   if ((update_skipped < cfg.display_speedup && cfg.display_speedup < 10
        && output_speed > update_skipped
-      ) || win_is_iconic()
+       //&& !term.smooth_scroll ?
+      ) || (!term.detect_progress && win_is_iconic())
+        //|| win_is_hidden() ?
+        // suspend display update:
+        //|| (update_skipped < term.suspend_update * cfg.display_speedup)
+        || (update_skipped * update_timer < term.suspend_update)
      )
   {
+    //printf("skip %d susp %d\n", update_skipped, term.suspend_update);
     win_set_timer(do_update_cb, null, update_timer);
     return;
   }
   update_skipped = 0;
+  term.suspend_update = 0;
 
   update_state = UPDATE_BLOCKED;
 
