@@ -66,6 +66,7 @@ extern char * fontpropinfo(void);
 
 extern bool title_settable;
 extern bool support_wsl;
+extern wchar * wslname;
 extern wstring wsl_basepath;
 extern bool report_child_pid;
 
@@ -75,6 +76,7 @@ extern bool win_is_always_on_top;
 extern bool clipboard_token;
 extern uint dpi;
 extern int per_monitor_dpi_aware;
+extern bool keep_screen_on;
 
 extern bool click_focus_token;
 extern pos last_pos;
@@ -96,6 +98,8 @@ extern wstring win_get_font(uint findex);
 extern void win_change_font(uint findex, wstring fn);
 #define win_font_cs_reconfig(...) (win_font_cs_reconfig)(term_p, ##__VA_ARGS__)
 extern void (win_font_cs_reconfig)(struct term* term_p, bool font_changed);
+
+extern void win_keep_screen_on(bool);
 
 #define win_update_scrollbar(...) (win_update_scrollbar)(term_p, ##__VA_ARGS__)
 extern void (win_update_scrollbar)(struct term* term_p, bool inner);
@@ -123,6 +127,8 @@ extern void win_show_tip(int x, int y, int cols, int rows);
 extern void win_destroy_tip(void);
 
 extern void taskbar_progress(int percent);
+extern HCURSOR win_get_cursor(bool appmouse);
+extern void set_cursor_style(bool appmouse, wchar * style);
 
 extern void win_init_menus(void);
 #define win_update_menus(...) (win_update_menus)(term_p, ##__VA_ARGS__)

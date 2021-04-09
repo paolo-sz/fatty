@@ -141,6 +141,8 @@ const config default_cfg = {
   hide_mouse : true,
   elastic_mouse : false,
   lines_per_notch : 0,
+  mouse_pointer : W("ibeam"),
+  appmouse_pointer : W("arrow"),
   // Selection
   input_clears_selection : true,
   copy_on_select : true,
@@ -423,6 +425,8 @@ options[] = {
   {"HideMouse", OPT_BOOL, offcfg(hide_mouse)},
   {"ElasticMouse", OPT_BOOL, offcfg(elastic_mouse)},
   {"LinesPerMouseWheelNotch", OPT_INT, offcfg(lines_per_notch)},
+  {"MousePointer", OPT_WSTRING, offcfg(mouse_pointer)},
+  {"AppMousePointer", OPT_WSTRING, offcfg(appmouse_pointer)},
 
   // Selection
   {"ClearSelectionOnInput", OPT_BOOL, offcfg(input_clears_selection)},
@@ -582,8 +586,7 @@ typedef const struct {
   char val;
 } opt_val;
 
-static opt_val
-*const opt_vals[] = {
+static opt_val * const opt_vals[] = {
   [OPT_BOOL] = (opt_val[]) {
     {"no", false},
     {"yes", true},
@@ -2276,12 +2279,35 @@ term_handler(control *ctrl, int event)
     auto terminfo_exists_in = [&](char * dir, char * sub, char * ti) -> bool {
       char * terminfo = asform("%s%s/%x/%s", dir, sub ?: "", *ti, ti);
       bool exists = !access(terminfo, R_OK);
+      //printf("exists %d <%s>\n", exists, terminfo);
       free(terminfo);
+      if (support_wsl && !exists) {
+        terminfo = asform("%s%s/%c/%s", dir, sub ?: "", *ti, ti);
+        exists = !access(terminfo, R_OK);
+        //printf("exists %d <%s>\n", exists, terminfo);
+        free(terminfo);
+      }
       return exists;
     };
-    return terminfo_exists_in(const_cast<char *>("/usr/share/terminfo"), 0, ti)
-        || terminfo_exists_in(home, const_cast<char *>("/.terminfo"), ti)
-         ;
+    if (support_wsl) {
+      char * wslroot;
+      if (wslname) {
+        char * wslnamec = cs__wcstombs(wslname);
+        wslroot = asform("//wsl$/%s", wslnamec);
+        free(wslnamec);
+      }
+      else if (*wsl_basepath)
+        wslroot = path_win_w_to_posix(wsl_basepath);
+      else
+        wslroot = strdup("");
+      bool ex = terminfo_exists_in(wslroot, const_cast<char *>("/usr/share/terminfo"), ti);
+      free(wslroot);
+      return ex;
+    }
+    else
+      return terminfo_exists_in(const_cast<char *>("/usr/share/terminfo"), 0, ti)
+          || terminfo_exists_in(home, const_cast<char *>("/.terminfo"), ti)
+           ;
   };
   switch (event) {
     when EVENT_REFRESH:
@@ -3372,6 +3398,34 @@ compose_key_handler(control *ctrl, int event)
   opt_handler(ctrl, event, &new_cfg.compose_key, opt_vals[OPT_COMPOSE_KEY]);
 }
 
+static void
+smoothing_handler(control *ctrl, int event)
+{
+  opt_handler(ctrl, event, &new_cfg.font_smoothing, opt_vals[OPT_FONTSMOOTH]);
+}
+
+static opt_val * const showbold_vals =
+(opt_val[]) {
+    {__("as font"), 1},
+    {__("as colour"), 2},
+    {__("as font & as colour"), 3},
+    {__("xterm"), 0},
+    {0, 0}
+};
+
+static char showbold;
+
+static void
+showbold_handler(control *ctrl, int event)
+{
+  showbold = new_cfg.bold_as_font | ((char)new_cfg.bold_as_colour) << 1;
+  //printf("bold as font %d as colour %d event %d\n", new_cfg.bold_as_font, new_cfg.bold_as_colour, event);
+  opt_handler(ctrl, event, &showbold, showbold_vals);
+  new_cfg.bold_as_font = showbold & 1;
+  new_cfg.bold_as_colour = showbold & 2;
+  //printf("bold as font %d as colour %d\n", new_cfg.bold_as_font, new_cfg.bold_as_colour);
+}
+
 static bool bold_like_xterm;
 
 static void
@@ -3598,6 +3652,7 @@ setup_config_box(controlbox * b)
       )->column = 1;
     }
     else {
+     if (0 != strstr(cfg.old_options, "blinking")) {
       s = ctrl_new_set(b, _("Text"), null, 
                        //__ Options - Text:
                        _("Show bold"));
@@ -3617,6 +3672,17 @@ setup_config_box(controlbox * b)
         s, _("xterm"),
         bold_handler, &bold_like_xterm
       )->column = 2;
+     }
+     else {
+      ctrl_combobox(
+        //__ Options - Text:
+        s, _("Show bold"),
+        50, showbold_handler, 0);
+      ctrl_checkbox(
+        //__ Options - Text:
+        s, _("&Allow blinking"),
+        dlg_stdcheckbox_handler, &new_cfg.allow_blinking);
+     }
     }
   }
   else {
@@ -3661,6 +3727,7 @@ setup_config_box(controlbox * b)
       )->column = 0;
     }
     else {
+     if (0 != strstr(cfg.old_options, "blinking")) {
       ctrl_radiobuttons(
         //__ Options - Text:
         s, _("Font smoothing"), 4,
@@ -3695,6 +3762,21 @@ setup_config_box(controlbox * b)
         s, _("xterm"),
         bold_handler, &bold_like_xterm
       )->column = 2;
+     }
+     else {
+      ctrl_combobox(
+        s, _("Font smoothing"), 50, smoothing_handler, 0);
+
+      s = ctrl_new_set(b, _("Text"), null, null);
+      ctrl_combobox(
+        //__ Options - Text:
+        s, _("Show bold"),
+        50, showbold_handler, 0);
+      ctrl_checkbox(
+        //__ Options - Text:
+        s, _("&Allow blinking"),
+        dlg_stdcheckbox_handler, &new_cfg.allow_blinking);
+     }
     }
   }
 

@@ -910,18 +910,6 @@ get_mods(void)
 
 /* Mouse handling */
 
-static void
-set_app_cursor(bool use_app_mouse)
-{
-  static bool app_mouse = -1;
-  if (use_app_mouse != app_mouse) {
-    HCURSOR cursor = LoadCursor(null, use_app_mouse ? IDC_ARROW : IDC_IBEAM);
-    SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR)cursor);
-    SetCursor(cursor);
-    app_mouse = use_app_mouse;
-  }
-}
-
 static bool is_tab_bar_area(int y) {
   if (y == -1) {
     POINT p;
@@ -941,10 +929,23 @@ static void
 {
   TERM_VAR_REF(true)
     
+  static bool last_app_mouse = false;
+
   bool new_app_mouse =
-    (term.mouse_mode && !term.show_other_screen &&
-    cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)) || is_tab_bar_area(-1);
-  set_app_cursor(new_app_mouse);
+    ((term.mouse_mode || term.locator_1_enabled)
+    // disable app mouse pointer while showing "other" screen (flipped)
+    && !term.show_other_screen
+    // disable app mouse pointer while not targetting app
+    && (cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)))
+    || is_tab_bar_area(-1);
+
+  if (new_app_mouse != last_app_mouse) {
+    //HCURSOR cursor = LoadCursor(null, new_app_mouse ? IDC_ARROW : IDC_IBEAM);
+    HCURSOR cursor = win_get_cursor(new_app_mouse);
+    SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR)cursor);
+    SetCursor(cursor);
+    last_app_mouse = new_app_mouse;
+  }
 }
 
 void
@@ -1319,6 +1320,14 @@ window_toggle_max(struct term *term_p)
 }
 
 static void
+win_toggle_screen_on(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  win_keep_screen_on(!keep_screen_on);
+}
+
+static void
 window_restore(struct term *term_p)
 {
   win_maximise(0);
@@ -1501,6 +1510,14 @@ static uint
   return win_is_always_on_top ? MF_CHECKED: MF_UNCHECKED;
 }
 
+static uint
+mflags_screen_on(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return keep_screen_on ? MF_CHECKED: MF_UNCHECKED;
+}
+
 //static uint
 //mflags_flipscreen()
 //{
@@ -1617,6 +1634,7 @@ static struct function_def cmd_defs[] = {
   {"win-icon", {.fct = window_min}, 0},
   {"close", {.fct = (win_close)}, 0},
   {"win-toggle-always-on-top", {.fct = (win_toggle_on_top)}, mflags_always_top},
+  {"win-toggle-keep-screen-on", {.fct = win_toggle_screen_on}, mflags_screen_on},
 
   {"new", {.fct_key = newwin_begin}, 0},  // deprecated
   {"new-key", {.fct_key = newwin_begin}, 0},

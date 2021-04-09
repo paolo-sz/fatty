@@ -112,6 +112,7 @@ static bool disable_poschange = true;
 static int zoom_token = 0;  // for heuristic handling of Shift zoom (#467, #476)
 static bool default_size_token = false;
 bool clipboard_token = false;
+bool keep_screen_on = false;
 
 // Options
 bool title_settable = true;
@@ -401,6 +402,21 @@ set_per_monitor_dpi_aware(void)
 #endif
   return res;
 }
+
+//void
+//win_set_timer(void (*cb)(void), uint ticks)
+//{ SetTimer(wnd, (UINT_PTR)cb, ticks, null); }
+
+void
+win_keep_screen_on(bool on)
+{
+  keep_screen_on = on;
+  if (on)
+    SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_DISPLAY_REQUIRED /*| ES_AWAYMODE_REQUIRED*/);
+  else
+    SetThreadExecutionState(ES_CONTINUOUS);
+}
+
 
 /*
   Session management: maintain list of window titles.
@@ -2435,6 +2451,83 @@ win_tab_close(struct term** term_pp)
   } else {
     (win_close)(*term_pp);
   }
+}
+
+
+/*
+   Mouse pointer style.
+ */
+
+static struct {
+  void * tag;
+  wchar * name;
+} cursorstyles[] = {
+  {IDC_APPSTARTING, const_cast<wchar *>(W("appstarting"))},
+  {IDC_ARROW, const_cast<wchar *>(W("arrow"))},
+  {IDC_CROSS, const_cast<wchar *>(W("cross"))},
+  {IDC_HAND, const_cast<wchar *>(W("hand"))},
+  {IDC_HELP, const_cast<wchar *>(W("help"))},
+  {IDC_IBEAM, const_cast<wchar *>(W("ibeam"))},
+  {IDC_ICON,const_cast<wchar *>( W("icon"))},
+  {IDC_NO, const_cast<wchar *>(W("no"))},
+  {IDC_SIZE, const_cast<wchar *>(W("size"))},
+  {IDC_SIZEALL, const_cast<wchar *>(W("sizeall"))},
+  {IDC_SIZENESW, const_cast<wchar *>(W("sizenesw"))},
+  {IDC_SIZENS, const_cast<wchar *>(W("sizens"))},
+  {IDC_SIZENWSE, const_cast<wchar *>(W("sizenwse"))},
+  {IDC_SIZEWE, const_cast<wchar *>(W("sizewe"))},
+  {IDC_UPARROW, const_cast<wchar *>(W("uparrow"))},
+  {IDC_WAIT, const_cast<wchar *>(W("wait"))},
+};
+
+static HCURSOR cursors[2] = {0, 0};
+
+HCURSOR
+win_get_cursor(bool appmouse)
+{
+  return cursors[appmouse];
+}
+
+void
+set_cursor_style(bool appmouse, wchar * style)
+{
+  HCURSOR c = 0;
+  if (wcschr(style, '.')) {
+    char * pf = get_resource_file(W("pointers"), style, false);
+    wchar * wpf = 0;
+    if (pf) {
+      wpf = path_posix_to_win_w(pf);
+      free(pf);
+    }
+    if (wpf) {
+      c = (HCURSOR)LoadImageW(null, wpf, IMAGE_CURSOR, 
+                           0, 0,
+                           LR_DEFAULTSIZE |
+                           LR_LOADFROMFILE | LR_LOADTRANSPARENT);
+      free(wpf);
+    }
+  }
+  if (!c)
+    for (uint i = 0; i < lengthof(cursorstyles); i++)
+      if (0 == wcscmp(style, cursorstyles[i].name)) {
+        c = LoadCursor(null, (LPCSTR)cursorstyles[i].tag);
+        break;
+      }
+  if (!c)
+    c = LoadCursor(null, appmouse ? IDC_ARROW : IDC_IBEAM);
+
+  if (!IS_INTRESOURCE(cursors[appmouse]))
+    DestroyCursor(cursors[appmouse]);
+  cursors[appmouse] = c;
+  SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR)c);
+  SetCursor(c);
+}
+
+static void
+win_init_cursors()
+{
+  set_cursor_style(true, const_cast<wchar *>(W("arrow")));
+  set_cursor_style(false, const_cast<wchar *>(W("ibeam")));
 }
 
 
@@ -5163,7 +5256,7 @@ main(int argc, char *argv[])
 #ifdef wslbridge2
     argc += start_home;
 #endif
-    argc += 6;  // LANG, LC_CTYPE, LC_ALL
+    argc += 10;  // -e parameters
 
     char ** new_argv = newn(char *, argc + 8 + start_home + (wsltty_appx ? 2 : 0));
     char ** pargv = new_argv;
@@ -5199,6 +5292,8 @@ main(int argc, char *argv[])
 #ifdef wslbridge_t
     *pargv++ = "-t";
 #endif
+    *pargv++ = const_cast<char *>("-e");
+    *pargv++ = const_cast<char *>("TERM");
     *pargv++ = const_cast<char *>("-e");
     *pargv++ = const_cast<char *>("APPDATA");
     if (!cfg.old_locale) {
@@ -5785,6 +5880,7 @@ main(int argc, char *argv[])
   CreateCaret(wnd, caretbm, 0, 0);
 
   // Initialise various other stuff.
+  win_init_cursors();
   win_init_drop_target();
   win_init_menus();
   win_update_transparency(cfg.opaque_when_focused);
