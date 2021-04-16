@@ -559,6 +559,7 @@ static char *
   colour fg_colour = win_get_colour(FG_COLOUR_I);
   colour bg_colour = win_get_colour(BG_COLOUR_I);
   colour bold_colour = win_get_colour(BOLD_COLOUR_I);
+  colour blink_colour = win_get_colour(BLINK_COLOUR_I);
   hprintf(hf,
     "<head>\n"
     "  <meta name='generator' content='fatty'/>\n"
@@ -667,6 +668,9 @@ static char *
   if (bold_colour != (colour)-1)
     hprintf(hf, "  .bold-color { color: #%02X%02X%02X }\n",
             red(bold_colour), green(bold_colour), blue(bold_colour));
+  else if (blink_colour != (colour)-1)
+    hprintf(hf, "  .blink-color { color: #%02X%02X%02X }\n",
+            red(blink_colour), green(blink_colour), blue(blink_colour));
   for (int i = 0; i < 16; i++) {
     colour ansii = win_get_colour((colour_i)(ANSI0 + i));
     uchar r = red(ansii), g = green(ansii), b = blue(ansii);
@@ -750,6 +754,10 @@ static char *
       if ((ca->attr & ATTR_BOLD) && fga < 8 && term.enable_bold_colour && !rev) {
         if (bold_colour != (colour)-1)
           fg = bold_colour;
+      }
+      else if ((ca->attr & (ATTR_BLINK | ATTR_BLINK2)) && term.enable_blink_colour) {
+        if (blink_colour != (colour)-1)
+          fg = blink_colour;
       }
       if (dim) {
         fg = ((fg & 0xFEFEFEFE) >> 1)
@@ -841,6 +849,18 @@ static char *
             }
             else
               hprintf(hf, " bold-color");
+            fg = (colour)-1;
+          }
+        }
+        else if (ca->attr & (ATTR_BLINK | ATTR_BLINK2) && term.enable_blink_colour) {
+          if (fg == blink_colour) {
+            if (enhtml) {
+              add_style(const_cast<char *>("color: "));
+              hprintf(hf, "#%02X%02X%02X;",
+                      red(blink_colour), green(blink_colour), blue(blink_colour));
+            }
+            else
+              hprintf(hf, " blink-color");
             fg = (colour)-1;
           }
         }

@@ -3572,7 +3572,7 @@ static void
       //printf("w %d/%d %d h %d/%d %d\n", pixelwidth, st->grid_width, width, pixelheight, st->grid_height, height);
 
       imglist * img;
-      if (!winimg_new(&img, 0, pixels, 0, left, top, width, height, pixelwidth, pixelheight, false, 0, 0, 0, 0)) {
+      if (!winimg_new(&img, 0, pixels, 0, left, top, width, height, pixelwidth, pixelheight, false, 0, 0, 0, 0, term.curs.attr.attr & (ATTR_BLINK | ATTR_BLINK2))) {
         free(pixels);
         sixel_parser_deinit(st);
         //printf("free state 4 %p\n", term.imgs.parser_state);
@@ -3842,11 +3842,11 @@ do_osc_control:
     if (osc % 100 == 5) {
       if (i == 0)
         i = BOLD_COLOUR_I;
+      else if (i == 2)
+        i = BLINK_COLOUR_I;
 #ifdef other_color_substitutes
       else if (i == 1)
         i = UNDERLINE_COLOUR_I;
-      else if (i == 2)
-        i = BLINK_COLOUR_I;
       else if (i == 3)
         i = REVERSE_COLOUR_I;
       else if (i == 4)
@@ -3991,9 +3991,12 @@ static void
     when 5:   do_colour_osc(true, 5, false);
     when 6 case_or 106: {
       int col, on;
-      if (sscanf(term.cmd_buf, "%u;%u", &col, &on) == 2)
+      if (sscanf(term.cmd_buf, "%u;%u", &col, &on) == 2) {
         if (col == 0)
           term.enable_bold_colour = on;
+        else if (col == 2)
+          term.enable_blink_colour = on;
+      }
     }
     when 104: do_colour_osc(true, 4, true);
     when 105: do_colour_osc(true, 5, true);
@@ -4284,7 +4287,7 @@ static void
           imglist * img;
           short left = term.curs.x;
           short top = term.virtuallines + term.curs.y;
-          if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height)) {
+          if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height, term.curs.attr.attr & (ATTR_BLINK | ATTR_BLINK2))) {
             fill_image_space(img);
 
             if (term.imgs.first == NULL) {
