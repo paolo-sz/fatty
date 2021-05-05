@@ -2315,6 +2315,12 @@ static void
             term.curs.bidimode &= ~LATTR_BIDISEL;
           else
             term.curs.bidimode |= LATTR_BIDISEL;
+        when 2026:
+          term.suspend_update = state ? 150 : 0;
+          if (!state) {
+            do_update();
+            usleep(1000);  // flush update
+          }
       }
     }
     else { /* SM/RM: set/reset mode */
