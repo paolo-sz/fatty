@@ -1814,13 +1814,11 @@ flash_border()
 /*
  * Bell.
  */
-void
+static void
 (do_win_bell)(struct term* term_p, config * conf, bool margin_bell)
 {
   TERM_VAR_REF(true)
   
-  do_update();
-
   term_bell * bellstate = margin_bell ? &term.marginbell : &term.bell;
   unsigned long now = mtime();
 
@@ -1830,6 +1828,8 @@ void
       )
      )
   {
+    do_update();
+
     bellstate->last_bell = now;
     bellstate->last_vol = bellstate->vol;
 
