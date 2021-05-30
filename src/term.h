@@ -146,9 +146,9 @@ enum char_attr_t {
   FONTFAM_MASK    = 0x000F000000000000u,
   ATTR_FONTFAM_SHIFT = 48,
 
-  TATTR_WIDE       = 0x40000000u,
-  TATTR_NARROW     = 0x80000000u,
-  TATTR_EXPAND     = 0x0000000100000000u,
+  TATTR_WIDE      = 0x40000000u,
+  TATTR_NARROW    = 0x80000000u,
+  TATTR_EXPAND    = 0x0000000100000000u,
   TATTR_EMOJI     = 0x1000000000000000u,
 
   TATTR_COMBINING = 0x0000000200000000u, /* combining characters */
@@ -167,12 +167,13 @@ enum char_attr_t {
 
   TATTR_SELECTED  = 0x2000000000000000u, /* highlighted */
   TATTR_CLEAR     = 0x4000000000000000u, /* erased / unwritten */
+  TATTR_OVERHANG  = 0x0080000000000000u, /* visual double-width overhang */
 
   DATTR_STARTRUN  = 0x8000000000000000u, /* start of redraw run */
   DATTR_MASK      = TATTR_RIGHTCURS | TATTR_PASCURS | TATTR_ACTCURS
                     | DATTR_STARTRUN
   // unassigned bits:
-  //                0x0080000000000000u
+  // - none
 };
 
 /* Line attributes.
