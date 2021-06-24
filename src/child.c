@@ -43,6 +43,7 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 // http://www.tldp.org/LDP/abs/html/exitcodes.html
 #define mexit 126
 
+static struct winsize prev_winsize = (struct winsize){0, 0, 0, 0};
 bool logging = false;
 
 #if CYGWIN_VERSION_API_MINOR >= 66
@@ -217,6 +218,7 @@ void
   child_dir = null;
   pty_fd = -1;
   term_p = term_in;
+  prev_winsize = *winp;
 
   string lang = cs_lang();
 
@@ -630,8 +632,10 @@ void
 {
   CHILD_VAR_REF(true)
 
-  if (pty_fd >= 0)
+  if (pty_fd >= 0 && 0 != memcmp(&prev_winsize, winp, sizeof(struct winsize))) {
+    prev_winsize = *winp;
     ioctl(pty_fd, TIOCSWINSZ, winp);
+  }
 }
 
 #define foreground_pid(...) (foreground_pid)(child_p, ##__VA_ARGS__)
