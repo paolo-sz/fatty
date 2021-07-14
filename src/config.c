@@ -131,6 +131,7 @@ const config default_cfg = {
   key_menu : "",	// VK_APPS
   key_scrlock : "",	// VK_SCROLL
   key_commands : W(""),
+  manage_leds : 7,
   // Mouse
   clicks_place_cursor : false,
   middle_click_action : MC_PASTE,
@@ -208,6 +209,7 @@ const config default_cfg = {
   suppress_nrc : "",  // unused
   suppress_wheel : "",
   filter_paste : "",
+  bracketed_paste_split : 1,
   suspbuf_max : 8080,
   printable_controls : 0,
   char_narrowing : 75,
@@ -415,6 +417,7 @@ options[] = {
   {"Break", OPT_STRING | OPT_LEGACY, offcfg(key_break)},
   {"Pause", OPT_STRING | OPT_LEGACY, offcfg(key_pause)},
   {"KeyFunctions", OPT_WSTRING | OPT_KEEPCR, offcfg(key_commands)},
+  {"ManageLEDs", OPT_INT, offcfg(manage_leds)},
 
   // Mouse
   {"ClicksPlaceCursor", OPT_BOOL, offcfg(clicks_place_cursor)},
@@ -505,6 +508,7 @@ options[] = {
   {"SuppressNRC", OPT_STRING, offcfg(suppress_nrc)},  // unused
   {"SuppressMouseWheel", OPT_STRING, offcfg(suppress_wheel)},
   {"FilterPasteControls", OPT_STRING, offcfg(filter_paste)},
+  {"BracketedPasteByLine", OPT_INT, offcfg(bracketed_paste_split)},
   {"SuspendWhileSelecting", OPT_INT, offcfg(suspbuf_max)},
   {"PrintableControls", OPT_INT, offcfg(printable_controls)},
   {"CharNarrowing", OPT_INT, offcfg(char_narrowing)},

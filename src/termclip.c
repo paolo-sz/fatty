@@ -260,9 +260,15 @@ void
   term.paste_buffer = newn(wchar, len);
   term.paste_len = term.paste_pos = 0;
 
+  bool bracketed_paste_split_by_line = term.bracketed_paste 
+       && cfg.bracketed_paste_split
+       && (cfg.bracketed_paste_split > 1 || !term.on_alt_screen);
+
   // Copy data to the paste buffer, converting both Windows-style \r\n and
   // Unix-style \n line endings to \r, because that's what the Enter key sends.
   for (uint i = 0; i < len; i++) {
+    // swallow closing paste bracket if included in clipboard contents,
+    // in order to prevent (malicious) premature end of bracketing
     if (term.bracketed_paste) {
       if (i + 6 <= len && wcsncmp(W("\e[201~"), &data[i], 6) == 0) {
         i += 6 - 1;
@@ -283,7 +289,8 @@ void
     else
       continue;
 
-    if (term.bracketed_paste && wc == '\r' && i + 1 < len
+    // split bracket embedding by line
+    if (bracketed_paste_split_by_line && wc == '\r' && i + 1 < len
      && (i + 2 != len || 0 != wcsncmp(&data[i], W("\r\n"), 2))
        )
     {

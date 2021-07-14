@@ -75,6 +75,9 @@ void child_proc() {
     FD_SET(win_fd, &fds);
     int highfd = win_fd;
     for (Tab& t : win_tabs()) {
+      if (t.terminal->no_scroll)
+        continue;
+        
       if (t.chld->pty_fd > highfd) highfd = t.chld->pty_fd;
       if (t.chld->pty_fd >= 0)
         FD_SET(t.chld->pty_fd, &fds);
@@ -127,6 +130,9 @@ void child_proc() {
 
     if (select(highfd + 1, &fds, 0, 0, timeout_p) > 0) {
       for (Tab& t : win_tabs()) {
+        if (t.terminal->no_scroll)
+          continue;
+        
         struct child* child_p = t.chld.get();
         if (child_p->pty_fd >= 0 && FD_ISSET(child_p->pty_fd, &fds)) {
           // Pty devices on old Cygwin versions (pre 1005) deliver only 4 bytes
