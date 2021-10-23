@@ -43,8 +43,12 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 // http://www.tldp.org/LDP/abs/html/exitcodes.html
 #define mexit 126
 
-static struct winsize prev_winsize = (struct winsize){0, 0, 0, 0};
 bool logging = false;
+#if CYGWIN_VERSION_API_MINOR >= 74
+static struct winsize prev_winsize = (struct winsize){0, 0, 0, 0};
+#else
+static struct winsize prev_winsize;
+#endif
 
 #if CYGWIN_VERSION_API_MINOR >= 66
 #include <langinfo.h>
@@ -632,7 +636,7 @@ void
 {
   CHILD_VAR_REF(true)
 
-  if (pty_fd >= 0 && 0 != memcmp(&prev_winsize, winp, sizeof(struct winsize))) {
+  if (pty_fd >= 0 && memcmp(&prev_winsize, winp, sizeof(struct winsize)) != 0) {
     prev_winsize = *winp;
     ioctl(pty_fd, TIOCSWINSZ, winp);
   }
@@ -647,15 +651,10 @@ static int
   return (pty_fd >= 0) ? tcgetpgrp(pty_fd) : 0;
 }
 
-char *
-(foreground_cwd)(struct child* child_p)
+#define get_foreground_cwd(...) (get_foreground_cwd)(child_p, ##__VA_ARGS__)
+static char *
+(get_foreground_cwd)(struct child* child_p)
 {
-  CHILD_VAR_REF(true)
-
-  // if working dir is communicated interactively, use it
-  if (child_dir && *child_dir)
-    return strdup(child_dir);
-
   // for WSL, do not check foreground process; hope start dir is good
   if (support_wsl) {
     char cwd[MAX_PATH];
@@ -674,6 +673,17 @@ char *
   }
 #endif
   return 0;
+}
+
+char *
+(foreground_cwd)(struct child* child_p)
+{
+  CHILD_VAR_REF(true)
+
+  // if working dir is communicated interactively, use it
+  if (child_dir && *child_dir)
+    return strdup(child_dir);
+  return get_foreground_cwd();
 }
 
 char *
@@ -893,7 +903,7 @@ setup_sync()
   Called from Alt+F2 (or session launcher via child_launch).
  */
 static void
-(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch, bool config_size)
+(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch, bool config_size, bool in_cwd)
 {
   CHILD_VAR_REF(true)
 
@@ -932,15 +942,21 @@ static void
   }
 
   if (clone == 0) {  // prepare child process to spawn new terminal
+    string set_dir = 0;
+    if (in_cwd)
+      set_dir = get_foreground_cwd();  // do this before close(pty_fd)!
+
     if (pty_fd >= 0)
       close(pty_fd);
     if (log_fd >= 0)
       close(log_fd);
     close(win_fd);
 
-    if (child_dir && *child_dir) {
-      string set_dir = child_dir;
-      if (support_wsl) {
+    if ((child_dir && *child_dir) || set_dir) {
+      if (set_dir) {
+        // use cwd of foreground process if requested via in_cwd
+      }
+      else if (support_wsl) {
         wchar * wcd = cs__utftowcs(child_dir);
 #ifdef debug_wsl
         printf("fork wsl <%ls>\n", wcd);
@@ -952,23 +968,26 @@ static void
         set_dir = (string)cs__wcstombs(wcd);
         std_delete(wcd);
       }
+      else
+        set_dir = strdup(child_dir);
 
-      chdir(set_dir);
-      trace_dir(asform("child: %s", set_dir));
-      setenv("PWD", set_dir, true);  // avoid softlink resolution
-      // prevent shell startup from setting current directory to $HOME
-      // unless cloned/Alt+F2 (!launch)
-      if (!launch) {
-        setenv("CHERE_INVOKING", "fatty", true);
-        // if cloned and then launched from Windows shortcut (!shortcut) 
-        // (by sanitizing taskbar icon grouping, #784, mintty/wsltty#96) 
-        // indicate to set proper directory
-        if (shortcut)
-          setenv("FATTY_PWD", set_dir, true);
-      }
+      if (set_dir) {
+        chdir(set_dir);
+        trace_dir(asform("child: %s", set_dir));
+        setenv("PWD", set_dir, true);  // avoid softlink resolution
+        // prevent shell startup from setting current directory to $HOME
+        // unless cloned/Alt+F2 (!launch)
+        if (!launch) {
+          setenv("CHERE_INVOKING", "fantty", true);
+          // if cloned and then launched from Windows shortcut (!shortcut) 
+          // (by sanitizing taskbar icon grouping, #784, mintty/wsltty#96) 
+          // indicate to set proper directory
+          if (shortcut)
+            setenv("FATTY_PWD", set_dir, true);
+        }
 
-      if (support_wsl)
         std_delete(set_dir);
+      }
     }
 
 #ifdef add_child_parameters
@@ -1051,9 +1070,9 @@ static void
   Called from Alt+F2.
  */
 void
-child_fork(struct child* child_p, int argc, char *argv[], int moni, bool config_size)
+child_fork(struct child* child_p, int argc, char *argv[], int moni, bool config_size, bool in_cwd)
 {
-  do_child_fork(argc, argv, moni, false, config_size);
+  do_child_fork(argc, argv, moni, false, config_size, in_cwd);
 }
 
 /*
@@ -1096,7 +1115,7 @@ void
           }
         }
         new_argv[argc] = 0;
-        do_child_fork(argc, new_argv, moni, true, true);
+        do_child_fork(argc, new_argv, moni, true, true, false);
         free(new_argv);
         break;
       }

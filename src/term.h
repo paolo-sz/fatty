@@ -545,6 +545,8 @@ struct term {
   uint suspbuf_size, suspbuf_pos;
 
   int suspend_update;
+  short no_scroll;
+  short scroll_mode;
 
   bool rvideo;            /* global reverse video flag */
   bool cursor_on;         /* cursor enabled flag */
