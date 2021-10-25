@@ -2195,7 +2195,7 @@ static void
             term.marg_right = term.cols - 1;
           }
         when 80: /* DECSDM: SIXEL display mode */
-          term.sixel_display = !state;
+          term.sixel_display = state;
         when 1000: /* VT200_MOUSE */
           term.mouse_mode = state ? MM_VT200 : (mouse_mode_t)0;
           win_update_mouse();
@@ -2410,7 +2410,7 @@ static int
       when 69: /* DECLRMM: enable left and right margin mode DECSLRM */
         return 2 - term.lrmargmode;
       when 80: /* DECSDM: SIXEL display mode */
-        return 2 - !term.sixel_display;
+        return 2 - term.sixel_display;
       when 1000: /* VT200_MOUSE */
         return 2 - (term.mouse_mode == MM_VT200);
       when 1002: /* BTN_EVENT_MOUSE */
@@ -3441,7 +3441,20 @@ static void
         usleep(1000);
       }
 #endif
+    when CPAIR(',', '~'):  /* DECPS: VT520 Play Sound */
+      // CSI vol;duration;note ,~
+      if (term.csi_argv[2] <= 25) {
+        static unsigned short freq_C5_C7[26] =
+               {0,
+                523, 554, 587, 622, 659, 698, 740, 784, 831, 880, 932, 988, 
+                1047, 1109, 1175, 1245, 1319, 1397, 
+                1480, 1568, 1661, 1760, 1865, 1976, 2093};
+        uint ms = term.csi_argv[1] * 1000 / 32;
+        for (uint i = 2; i < term.csi_argc; i++)
+          win_beep(freq_C5_C7[term.csi_argv[i]], ms);
+      }
   }
+
   last_char = 0;  // cancel preceding char for REP
 }
 
@@ -4311,6 +4324,33 @@ static void
         else
           free(data);
       }
+    }
+    when 440: {  // Audio / sound file output
+      // experimental, for a proposal see
+      // https://gitlab.freedesktop.org/terminal-wg/specifications/-/issues/14
+      char * p = s;
+      uint opt = 0;
+      while (p) {
+        char * pn = strchr(p, ':');
+        if (pn)
+          *pn++ = 0;
+        if (p != s) {
+          // handle parameter p
+          //printf("OSC 440 <%s> param <%s>\n", s, p);
+#define SND_ASYNC	0x0001
+#define SND_LOOP	0x0008
+#define SND_NOSTOP	0x0010
+          if (0 == strcmp(p, "async"))
+            opt |= SND_ASYNC;
+          if (0 == strcmp(p, "nostop"))
+            opt |= SND_NOSTOP;
+          if (0 == strcmp(p, "loop"))
+            opt |= SND_LOOP | SND_ASYNC;
+        }
+        // proceed to next or end
+        p = pn;
+      }
+      win_sound(s, opt);
     }
     when 9: {
 typedef struct {

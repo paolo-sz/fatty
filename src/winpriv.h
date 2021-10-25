@@ -34,10 +34,12 @@ enum {
   WIN_FULLSCREEN = -2,
   WIN_TOP = 1,
   WIN_TITLE = 4,
-  WIN_INIT_POS = 5
+  WIN_INIT_POS = 5,
+  WIN_HIDE = 8,
 };
 // support tabbar
-extern void win_to_top(HWND top_wnd);
+#define win_to_top(...) (win_to_top)(term_p, ##__VA_ARGS__)
+extern void (win_to_top)(struct term* term_p, HWND top_wnd);
 extern void win_post_sync_msg(HWND target, int level);
 struct tabinfo {
   unsigned long tag;
@@ -93,7 +95,7 @@ extern void win_flush_background(bool clearbg);
 #define win_paint(...) (win_paint)(term_p, ##__VA_ARGS__)
 extern void (win_paint)(struct term* term_p);
 
-extern void win_init_fonts(int size);
+extern void win_init_fonts(int size, bool allfonts);
 extern wstring win_get_font(uint findex);
 extern void win_change_font(uint findex, wstring fn);
 #define win_font_cs_reconfig(...) (win_font_cs_reconfig)(term_p, ##__VA_ARGS__)
@@ -116,7 +118,7 @@ extern void * load_library_func(string lib, string func);
 extern void update_available_version(bool ok);
 extern void set_dpi_auto_scaling(bool on);
 #define win_update_transparency(...) (win_update_transparency)(term_p, ##__VA_ARGS__)
-extern void (win_update_transparency)(struct term* term_p, bool opaque);
+extern void (win_update_transparency)(struct term* term_p, int transparency, bool opaque);
 #define win_tab_prefix_title(...) (win_tab_prefix_title)(term_p, ##__VA_ARGS__)
 extern void (win_tab_prefix_title)(struct term* term_p, const wstring);
 #define win_tab_unprefix_title(...) (win_tab_unprefix_title)(term_p, ##__VA_ARGS__)
@@ -172,7 +174,8 @@ extern wstring wslicon(wchar * params);
 #define foreground_cwd(...) (foreground_cwd)(child_p, ##__VA_ARGS__)
 extern char * (foreground_cwd)(struct child* child_p);
 
-extern void win_switch(bool back, bool alternate);
+#define win_switch(...) (win_switch)(term_p, ##__VA_ARGS__)
+extern void (win_switch)(struct term *term_p, bool back, bool alternate);
 extern int sync_level(void);
 
 extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MONITORINFO *mip);

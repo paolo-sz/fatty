@@ -65,6 +65,8 @@ void child_proc() {
     // this code is ripped from child.c
   for (;;) {
     for (Tab& t : win_tabs()) {
+      if (t.terminal->no_scroll)
+        continue;
       if (t.terminal->paste_buffer)
         (term_send_paste)(t.terminal.get());
     }
@@ -77,7 +79,6 @@ void child_proc() {
     for (Tab& t : win_tabs()) {
       if (t.terminal->no_scroll)
         continue;
-        
       if (t.chld->pty_fd > highfd) highfd = t.chld->pty_fd;
       if (t.chld->pty_fd >= 0)
         FD_SET(t.chld->pty_fd, &fds);
@@ -132,7 +133,6 @@ void child_proc() {
       for (Tab& t : win_tabs()) {
         if (t.terminal->no_scroll)
           continue;
-        
         struct child* child_p = t.chld.get();
         if (child_p->pty_fd >= 0 && FD_ISSET(child_p->pty_fd, &fds)) {
           // Pty devices on old Cygwin versions (pre 1005) deliver only 4 bytes
