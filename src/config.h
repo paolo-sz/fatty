@@ -165,6 +165,7 @@ typedef struct {
   bool bell_taskbar; // xterm: bellIsUrgent
   bool bell_popup;   // xterm: popOnBell
   int bell_interval;
+  int play_tone;
   wstring printer;
   bool confirm_exit;
   // Command line

@@ -38,7 +38,7 @@ extern void win_capture_mouse(void);
 #define win_get_locator_info(...) (win_get_locator_info)(term_p, ##__VA_ARGS__)
 extern void (win_get_locator_info)(struct term *term_p, int *x, int *y, int *buttons, bool by_pixels);
 
-extern void win_beep(uint freq, uint ms);
+extern void win_beep(uint tone, float vol, float freq, uint ms);
 extern void win_sound(char * sound_name, uint options);
 #define win_bell(...) (win_bell)(term_p, ##__VA_ARGS__)
 extern void (win_bell)(struct term* term_p, config *);

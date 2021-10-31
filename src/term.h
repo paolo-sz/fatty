@@ -574,6 +574,7 @@ struct term {
   bool focus_reported;
   bool in_vbell;
 
+  int play_tone;
   term_bell bell, marginbell;
   bool margin_bell;
   bool ring_enabled;
