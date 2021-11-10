@@ -15,6 +15,8 @@
 extern bool icon_is_from_shortcut;
 extern wstring shortcut;
 
+extern bool cygver_ge(uint major, uint minor);
+
 extern void exit_fatty(int exit_val);
 #define report_pos(...) (report_pos)(term_p, ##__VA_ARGS__)
 extern void (report_pos)(struct term* term_p);

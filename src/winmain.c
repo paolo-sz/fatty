@@ -2090,7 +2090,8 @@ aolib_beep(uint tone, float vol, float freq, uint ms)
              (sin(2 * M_PI * freq * ((float) i / ao_format.rate)) >= 0.4
               ? 1 : -1
              );
-      otherwise:
+        break;
+      default:
         sample = 0;
     }
     // provide an audible stroke to separate the start of each note:
@@ -4973,6 +4974,24 @@ DEFINE_PROPERTYKEY(PKEY_AppUserModel_StartPinOption, 0x9f4c2855,0x9f79,0x4B39,0x
     }
   }
 #endif
+}
+
+
+/*
+   Check minimum cygwin version.
+ */
+bool
+cygver_ge(uint v1, uint v2)
+{
+  static uint _v1 = 0, _v2 = 0;
+
+  if (!_v1) {
+    struct utsname name;
+    if (uname(&name) >= 0)
+      sscanf(name.release, "%d.%d.", &_v1, &_v2);
+  }
+
+  return _v1 > v1 || (_v1 == v1 && _v2 >= v2);
 }
 
 

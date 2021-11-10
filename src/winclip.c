@@ -451,10 +451,17 @@ void
       GlobalFree(clipdata2);
     return;
   }
-  if (!(lock = GlobalLock(clipdata)))
+  if (!(lock = GlobalLock(clipdata))) {
+    GlobalFree(clipdata);
+    GlobalFree(clipdata2);
     return;
-  if (!(lock2 = GlobalLock(clipdata2)))
+  }
+  if (!(lock2 = GlobalLock(clipdata2))) {
+    GlobalUnlock(clipdata);
+    GlobalFree(clipdata);
+    GlobalFree(clipdata2);
     return;
+  }
 
   memcpy(lock, data, len * sizeof(wchar));
   WideCharToMultiByte(CP_ACP, 0, data, len, (LPSTR)lock2, len2, null, null);
@@ -718,9 +725,11 @@ void
   if (OpenClipboard(wnd)) {
     clipboard_token = true;
     EmptyClipboard();
+
     // copy clipboard text formats
     SetClipboardData(CF_UNICODETEXT, clipdata);
     SetClipboardData(CF_TEXT, clipdata2);
+
     // copy clipboard RTF format
     if (clipdata3)
       SetClipboardData(RegisterClipboardFormat(CF_RTF), clipdata3);
@@ -735,6 +744,7 @@ void
       level = 2;
     else if (what == 'H')
       level = 3;
+
     // copy clipboard HTML format
     UINT CF_HTML = level ? RegisterClipboardFormatA("HTML Format") : 0;
     if (CF_HTML) {
@@ -769,6 +779,54 @@ void
         GlobalFree(clipdatahtml);
       }
     }
+
+#if CYGWIN_VERSION_API_MINOR >= 74
+    // copy clipboard cygwin format, including timestamp
+    UINT CF_CYGCB = RegisterClipboardFormatW(W("CYGWIN_NATIVE_CLIPBOARD"));
+    if (CF_CYGCB &&
+# ifdef __CYGWIN32__
+        cygver_ge(3, 3)  // unified native clipboard/timestamp format
+# else
+        cygver_ge(1, 8)  // actually 1.7.13, according to putclip source
+# endif
+       )
+    {
+      int lenc = WideCharToMultiByte(cs_get_codepage(), 0, data, len, 0, 0, null, null);
+      HGLOBAL clipdatac = GlobalAlloc(GMEM_DDESHARE | GMEM_MOVEABLE, lenc + 24);
+      if (!clipdatac) {
+        goto nocygcb;
+      }
+      void * lockc;
+      lockc = GlobalLock(clipdatac);
+      if (!lockc) {
+        GlobalFree(clipdatac);
+        goto nocygcb;
+      }
+
+      char * textbuf;
+      textbuf = (char *)lockc;
+      textbuf += 24;
+      int buflen;
+      buflen = WideCharToMultiByte(cs_get_codepage(), 0, data, len, textbuf, lenc, null, null);
+
+      struct cygtime_ {
+        u_int64_t cb_sec;
+        u_int64_t cb_nsec;
+        u_int64_t cb_size;
+      } * cygtime;
+      cygtime = (struct cygtime_ *)lockc;
+      struct timespec timebuf;
+      clock_gettime (CLOCK_REALTIME, &timebuf);
+      cygtime->cb_nsec = timebuf.tv_nsec;
+      cygtime->cb_sec = timebuf.tv_sec;
+      cygtime->cb_size = buflen;
+
+      GlobalUnlock(clipdatac);
+      SetClipboardData(CF_CYGCB, clipdatac);
+
+      nocygcb:;
+    }
+#endif
 
     CloseClipboard();
   }

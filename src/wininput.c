@@ -1992,11 +1992,27 @@ static struct {
 };
 
 // simulate a key release/press sequence; reverse of win_key_fake()
+#define win_key_nullify(...) (win_key_nullify)(term_p, ##__VA_ARGS__)
 static int
-win_key_nullify(uchar vk)
+(win_key_nullify)(struct term* term_p, uchar vk)
 {
+  TERM_VAR_REF(true)
+  
   if (!cfg.manage_leds || (cfg.manage_leds < 4 && vk == VK_SCROLL))
     return 0;
+
+#ifdef heuristic_detection_of_ScrollLock_auto_repeat_glitch
+  if (vk == VK_SCROLL) {
+    int st = GetKeyState(VK_SCROLL);
+    //printf("win_key_nullify st %d key %d\n", term.no_scroll || term.scroll_mode, st);
+    // heuristic detection of race condition with auto-repeat
+    // without setting KeyFunctions=ScrollLock:toggle-no-scroll;
+    // handled in common with heuristic compensation in win_key_up
+    if ((st & 1) == (term.no_scroll || term.scroll_mode)) {
+      return 0;  // nothing sent
+    }
+  }
+#endif
 
   INPUT ki[2];
   ki[0].type = INPUT_KEYBOARD;
@@ -3617,6 +3633,10 @@ bool
     super_key = 0;
     hyper_key = 0;
   }
+  else if (key == VK_SCROLL) {
+    // heuristic compensation of race condition with auto-repeat
+    sync_scroll_lock(term.no_scroll || term.scroll_mode);
+  }
 
   win_update_mouse();
 
@@ -3829,6 +3849,7 @@ sync_scroll_lock(bool locked)
   //win_led(3, term.no_scroll);
   //do_win_key_toggle(VK_SCROLL, locked);
   int st = GetKeyState(VK_SCROLL);
+  //printf("sync_scroll_lock %d key %d\n", locked, st);
   if (st ^ locked)
     win_key_fake(VK_SCROLL);
 }
