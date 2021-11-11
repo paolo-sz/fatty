@@ -238,18 +238,18 @@ extern "C" {
       g_home = home;
       g_cmd = cmd;
       g_argv = argv;
+      set_tab_bar_visibility(tabs.size() > 0);
       newtab(cfg.rows, cfg.cols, width, height, nullptr, title);
-      set_tab_bar_visibility(tabs.size() > 1);
   }
 
   void (win_tab_create)(struct term* term_p) {
       std::stringstream cwd_path;
       cwd_path << "/proc/" << term_p->child->pid << "/cwd";
       char* cwd = realpath(cwd_path.str().c_str(), 0);
+      set_tab_bar_visibility(tabs.size() > 0);
       newtab(term_p->rows, term_p->cols, term_p->cols * cell_width, term_p->rows * cell_height, cwd, nullptr);
       free(cwd);
       set_active_tab(tabs.size() - 1);
-      set_tab_bar_visibility(tabs.size() > 1);
   }
 
   void remove_callbacks(struct term* term_p) {
