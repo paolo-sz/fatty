@@ -116,7 +116,7 @@ ifneq ($(platform), msys)
 endif
 extralibs=$(scriptlib) $(downldlib) $(emojilib)
 LDFLAGS := -L$(shell $(CC) -print-file-name=w32api) -static-libgcc -static-libstdc++
-LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid -ld2d1
+LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid -ld2d1 -lmpr
 #override LDFLAGS += -L$(shell $(CC) -print-file-name=w32api) -static-libgcc
 #override LDLIBS += -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid
 

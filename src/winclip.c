@@ -62,7 +62,7 @@ shell_exec(wstring wpath)
   // this frees wpath via shell_exec_thread
 }
 
-#define dont_debug_wsl
+#define dont_debug_wslpath 3
 
 static struct {
   string p;
@@ -122,6 +122,97 @@ skip(char * s)
   return s;
 }
 
+static int
+pathpref(char * x, char * y)
+{
+  char _x = *x;
+  char _y = *y;
+  if (!_x) {
+    if (!_y)
+      return 2;  // equal
+    else
+      return 1;  // prefix
+  }
+  if (_x == '\\')
+    _x = '/';
+  if (_y == '\\')
+    _y = '/';
+  if (_x != _y)
+    return 0;
+  return pathpref(x + 1, y + 1);
+}
+
+#if 0
+static char *
+strsubst(char * str, char c, char d)
+{
+  char * s = str;
+  while ((s = strchr(s, c)))
+    *s = d;
+  return str;
+}
+#endif
+
+#ifdef debug_wslpath
+static inline void
+show_fstab(void)
+{
+#if defined(debug_wslpath) && debug_wslpath > 2
+  for (int i = 0; i < wsl_fstab_len; i++)
+    printf("wslpath[%d] <%s> <%s>\n", i, wsl_fstab[i].dev_fs, wsl_fstab[i].mount_point);
+#endif
+}
+#endif
+
+static void
+windrives(void)
+{
+  HANDLE hnet;
+  if (WNetOpenEnum(RESOURCE_CONNECTED, RESOURCETYPE_DISK, 0, NULL, &hnet))
+    return;
+
+  DWORD bufsiz = 16384;
+  NETRESOURCEW * nr = (NETRESOURCEW *)malloc(bufsiz);
+  for (;;) {
+    //int res = WNetEnumResourceW(hnet, &(DWORD){1}, nr, &bufsiz);
+    DWORD nrn = 1;
+    int res = WNetEnumResourceW(hnet, &nrn, nr, &bufsiz);
+    if (res == NO_ERROR || res == ERROR_MORE_DATA) {
+#if defined(debug_wslpath) && debug_wslpath > 1
+      printf("net use <%ls> <%ls>\n", nr->lpLocalName, nr->lpRemoteName);
+#endif
+      if (!nr->lpLocalName)
+        continue;  // skip false matches on UNC path net mounts
+
+      // we accept some initial memory leak of configuration strings here
+      char * localdrive = cs__wcstoutf(nr->lpLocalName);
+      char * remoteshare = cs__wcstoutf(nr->lpRemoteName);
+      // adjust fstab with {"X:", "\\host\share"}
+      for (int i = 0; i < wsl_fstab_len; i++) {
+        // for {"X:", "\\host\share"},
+        // and all wsl_fstab entries 
+        // {"//host/share", "/mnt/..."} or
+        // {"\\host\share", "/mnt/..."},
+        // replace "//host/share" with "X:",
+        // also with subdir entries like
+        // {"//host/share/subdir", "/mnt/..."}
+        // replace "//host/share/subdir" with "X:\subdir"
+        switch (pathpref(remoteshare, wsl_fstab[i].dev_fs)) {
+          when 2: wsl_fstab[i].dev_fs = localdrive;
+          when 1: {  // prefix
+                  char * subdir = wsl_fstab[i].dev_fs + strlen(remoteshare);
+                  wsl_fstab[i].dev_fs = asform("%s%s", localdrive, subdir);
+          }
+        }
+      }
+    }
+    else
+      break;
+  }
+
+  WNetCloseEnum(hnet);
+}
+
 static bool
 wslmntmapped(void)
 {
@@ -179,6 +270,9 @@ wslmntmapped(void)
           if (x-- > p2 && *x == '/')
             *x = 0;
           if (*p1 && *p2) {
+#if defined(debug_wslpath)
+            printf("fstab <%s> <%s>\n", p1, p2);
+#endif
             wsl_fstab = renewn(wsl_fstab, wsl_fstab_len + 1);
             wsl_fstab[wsl_fstab_len].dev_fs = strdup(p1);
             wsl_fstab[wsl_fstab_len].mount_point = strdup(p2);
@@ -193,6 +287,9 @@ wslmntmapped(void)
     free(wsl$conf);
     free(rootfs);
     wslmnt_init = true;
+
+    // substitute fstab dev_fs entries with Windows notation
+    windrives();
   }
   return wsl_conf_mnt || wsl_fstab;
 }
@@ -206,14 +303,32 @@ unwslpath(wchar * wpath)
     if (wsl_conf_mnt && ispathprefix(wsl_conf_mnt, wslpath))
       res = asform("/cygdrive%s", &wslpath[strlen(wsl_conf_mnt)]);
     else
-      for (int i = 0; i < wsl_fstab_len; i++)
-        if (ispathprefix(wsl_fstab[i].mount_point, wslpath))
+      for (int i = 0; i < wsl_fstab_len; i++) {
+#if defined(debug_wslpath) && debug_wslpath > 2
+        printf("unwslpath <%s> <%s> (%s)\n", wslpath, wsl_fstab[i].mount_point, wsl_fstab[i].dev_fs);
+#endif
+        if (ispathprefix(wsl_fstab[i].mount_point, wslpath)) {
           if (wsl_fstab[i].dev_fs[1] == ':') {
-            res = asform("/cygdrive/%c%s", 
+            res = asform(
+#if defined(__MSYS__) || defined(__MINGW32)
+#else
+                         "/cygdrive"
+#endif
+                         "/%c%s%s", 
                          tolower(wsl_fstab[i].dev_fs[0]), 
+                         &wsl_fstab[i].dev_fs[2], 
                          &wslpath[strlen(wsl_fstab[i].mount_point)]);
             break;
           }
+          else {  // handle UNC path mount
+            res = asform("%s%s", wsl_fstab[i].dev_fs, wslpath + strlen(wsl_fstab[i].mount_point));
+            for (char * r = res; *r; r++)
+              // cygwin path conversion fails on backslash UNC paths
+              if (*r == '\\')
+                *r = '/';
+          }
+        }
+      }
     free(wslpath);
   }
   return res;
@@ -223,19 +338,57 @@ static char *
 wslpath(char * path)
 {
   char * res = null;
-  if (ispathprefix("/cygdrive", path) && wslmntmapped()) {
-    path += 10;  // point to drive letter
-    if (wsl_conf_mnt)
+  if (wslmntmapped() &&
+#if defined(__MSYS__) || defined(__MINGW32)
+      path[2] == '/'
+#else
+      ispathprefix("/cygdrive", path)
+#endif
+     )
+  {  // check drive path
+#if defined(__MSYS__) || defined(__MINGW32)
+#else
+    path += 9;
+#endif
+    if (*path == '/')
+      path++;  // point to drive letter
+    if (wsl_conf_mnt) {  // [automount] configured
       res = asform("%s/%s", wsl_conf_mnt, path);
-    else if (path[1] == '/')
-      for (int i = 0; i < wsl_fstab_len; i++)
+    }
+    else if (path[1] == '/') {
+      for (int i = 0; i < wsl_fstab_len; i++) {
+#if defined(debug_wslpath) && debug_wslpath > 2
+        printf("wslpath <%s> fstab <%s> <%s>\n", path, wsl_fstab[i].dev_fs, wsl_fstab[i].mount_point);
+#endif
         if (tolower(*path) == tolower(wsl_fstab[i].dev_fs[0])
          && wsl_fstab[i].dev_fs[1] == ':'
-         && wsl_fstab[i].dev_fs[2] == 0) {
-            path ++;
-            res = asform("%s%s", wsl_fstab[i].mount_point, path);
+           )
+        {
+          char * dev = &wsl_fstab[i].dev_fs[2];
+          if (strlen(dev) == 1) {
+            //path <x/dir/file> fstab <X:\> </mnt/mountpoint>
+            res = asform("%s%s", wsl_fstab[i].mount_point, path + 1);
             break;
           }
+          else if (pathpref(dev, path + 1)) {
+            //path <x/dir/file> fstab <X:\subdir> </mnt/mountpoint>
+            res = asform("%s%s", wsl_fstab[i].mount_point, path + 1 + strlen(dev));
+            break;
+          }
+        }
+      }
+    }
+  }
+  else if (wslmntmapped()) {  // check UNC path
+    for (int i = 0; i < wsl_fstab_len; i++) {
+#if defined(debug_wslpath) && debug_wslpath > 2
+      printf("wslpath <%s> <%s> (%s)\n", path, wsl_fstab[i].mount_point, wsl_fstab[i].dev_fs);
+#endif
+      if (pathpref(wsl_fstab[i].dev_fs, path)) {
+        res = asform("%s%s", wsl_fstab[i].mount_point, path + strlen(wsl_fstab[i].dev_fs));
+        break;
+      }
+    }
   }
   // cygwin-internal paths not supported
   return res;
@@ -244,8 +397,8 @@ wslpath(char * path)
 wchar *
 dewsl(wchar * wpath)
 {
-#ifdef debug_wsl
-  printf("open <%ls>\n", wpath);
+#ifdef debug_wslpath
+  printf("dewsl <%ls>\n", wpath);
 #endif
   char * unwslp = unwslpath(wpath);
   if (unwslp) {
@@ -365,8 +518,8 @@ void
       wpath = dewsl((wchar *)wpath);
     }
     wstring conv_wpath = child_conv_path(wpath, adjust_dir);
-#ifdef debug_wsl
-    printf("open <%ls> <%ls>\n", wpath, conv_wpath);
+#ifdef debug_wslpath
+    printf("win_open <%ls> <%ls>\n", wpath, conv_wpath);
 #endif
     std_delete(wpath);
     if (conv_wpath)
@@ -808,6 +961,9 @@ void
       textbuf += 24;
       int buflen;
       buflen = WideCharToMultiByte(cs_get_codepage(), 0, data, len, textbuf, lenc, null, null);
+      // strip terminating NUL (#1132)
+      if (!textbuf[buflen - 1])
+        buflen--;
 
       struct cygtime_ {
         u_int64_t cb_sec;
@@ -881,7 +1037,7 @@ buf_path(wchar * wfn, bool convert, bool quote)
       buf_add('\\');
     char *p = fn;
     if (support_wsl) {
-#ifdef debug_wsl
+#ifdef debug_wslpath
       printf("paste <%s>\n", p);
 #endif
       char * wslp = wslpath(p);
