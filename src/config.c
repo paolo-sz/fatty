@@ -544,8 +544,8 @@ options[] = {
   {"MenuTitleCtrlRight", OPT_STRING, offcfg(menu_title_ctrl_r)},
 
   {"SessionGeomSync", OPT_INT, offcfg(geom_sync)},
-  {"TabBar", OPT_BOOL, offcfg(tabbar)},
-  {"NewTabs", OPT_INT, offcfg(new_tabs)},
+//  {"TabBar", OPT_BOOL, offcfg(tabbar)},
+//  {"NewTabs", OPT_INT, offcfg(new_tabs)},
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"AutoLeading", OPT_INT, offcfg(auto_leading)},

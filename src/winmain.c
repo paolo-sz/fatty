@@ -5113,8 +5113,8 @@ opts[] = {
   {"size",       required_argument, 0, 's'},
   {"title",      required_argument, 0, 't'},
   {"Title",      required_argument, 0, 'T'},
-  {"tabbar",     optional_argument, 0, ''},
-  {"newtabs",    no_argument,       0, ''},
+//  {"tabbar",     optional_argument, 0, ''},
+//  {"newtabs",    no_argument,       0, ''},
   {"Border",     required_argument, 0, 'B'},
   {"Report",     required_argument, 0, 'R'},
   {"Reportpos",  required_argument, 0, 'R'},  // compatibility variant
@@ -5438,14 +5438,14 @@ main(int argc, char *argv[])
       when 'T':
         set_arg_option("Title", optarg);
         title_settable = false;
-      when '':
-        set_arg_option("TabBar", strdup("1"));
-        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
-      when '':
-        cfg.new_tabs = 2;
-        // -newtabs implies -tabbar
-        set_arg_option("TabBar", strdup("1"));
-        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
+//      when '':
+//        set_arg_option("TabBar", strdup("1"));
+//        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
+//      when '':
+//        cfg.new_tabs = 2;
+//        // -newtabs implies -tabbar
+//        set_arg_option("TabBar", strdup("1"));
+//        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
       when 'B':
         border_style = strdup(optarg);
       when 'R':
@@ -5648,9 +5648,9 @@ main(int argc, char *argv[])
     run_max = atoi(getenv("FATTY_MAXIMIZE"));
     unsetenv("FATTY_MAXIMIZE");
   }
-  if (getenv("FATTY_TABBAR")) {
-    cfg.tabbar = max(cfg.tabbar, atoi(getenv("FATTY_TABBAR")));
-  }
+//  if (getenv("FATTY_TABBAR")) {
+//    cfg.tabbar = max(cfg.tabbar, atoi(getenv("FATTY_TABBAR")));
+//  }
 
   // if started from console, try to detach from caller's terminal (~daemonizing)
   // in order to not suppress signals
