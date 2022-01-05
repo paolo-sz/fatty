@@ -83,7 +83,7 @@ static clip_workbuf *
   TERM_VAR_REF(true)
   
   // estimate buffer size needed, to give memory allocation a hint
-  int lines = end.y - start.y;
+  int lines = end.y - start.y + 1;
   long hint = (long)lines * term.cols / 8;
   //printf("get_selection %d...%d (%d)\n", start.y, end.y, lines);
 
