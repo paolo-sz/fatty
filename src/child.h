@@ -64,7 +64,7 @@ extern char * (foreground_prog)(struct child* child_p);  // to be free()d
 extern void (user_command)(struct child* child_p, wstring commands, int n);
 #define child_conv_path(...) (child_conv_path)(child_p, ##__VA_ARGS__)
 extern wstring (child_conv_path)(struct child* child_p, wstring, bool adjust_dir);
-extern void child_fork(struct child* child_p, int argc, char * argv[], int moni, bool config_size, bool in_cwd);
+extern void child_fork(struct child* child_p, int argc, char * argv[], int moni, bool config_size, bool in_cwd, bool in_tabs);
 #define child_set_fork_dir(...) (child_set_fork_dir)(child_p, ##__VA_ARGS__)
 extern void (child_set_fork_dir)(struct child* child_p, char *);
 extern void setenvi(char * env, int val);

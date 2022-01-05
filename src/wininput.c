@@ -475,9 +475,15 @@ void
   );
 
   //__ System menu:
-//  modify_menu(sysmenu, IDM_NEW, 0, _W("Ne&w"),
-//    alt_fn ? const_cast<wchar *>(W("Alt+F2")) : ct_sh ? const_cast<wchar *>(W("Ctrl+Shift+N")) : null
+//  modify_menu(sysmenu, IDM_NEW, 0, _W("New &Window"),
+//    alt_fn ? (cfg.tabbar ? W("Sh+Sh+Alt+F2") : W("Alt+F2"))
+//           : ct_sh ? W("Ctrl+Shift+N") : null
 //  );
+//  if (cfg.tabbar)
+//    //__ System menu:
+//    modify_menu(sysmenu, IDM_TAB, 0, _W("New &Tab"),
+//      alt_fn ? W("Alt+F2") : ct_sh ? /*W("Ctrl+Shift+T")*/ null : null
+//    );
 
   uint switch_move_left_enabled = ((win_tab_count() > 1) && (win_active_tab() > 0)) ? MF_ENABLED : MF_GRAYED;
   uint switch_move_right_enabled = ((win_tab_count() > 1) && (win_active_tab() < (win_tab_count() - 1))) ? MF_ENABLED : MF_GRAYED;
@@ -765,6 +771,8 @@ win_init_menus(void)
     //__ System menu:
     InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_OPTIONS, _W("&Options..."));
 //    InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_NEW, 0);
+//    if (cfg.tabbar)
+//      InsertMenuW(sysmenu, SC_CLOSE, MF_ENABLED, IDM_TAB, 0);
   }
 
   InsertMenuW(sysmenu, SC_CLOSE, MF_SEPARATOR, 0, 0);
@@ -1747,7 +1755,8 @@ static struct function_def cmd_defs[] = {
 
   //{"new-window", {IDM_NEW}, 0},
   //{"new-window-cwd", {IDM_NEW_CWD}, 0},
-  //{"new-monitor", {IDM_NEW_MONI}, 0},
+  //{"new-tab", {IDM_TAB}, 0},
+  //{"new-tab-cwd", {IDM_TAB_CWD}, 0},
 
   //{"default-size", {IDM_DEFSIZE}, 0},
   {"default-size", {IDM_DEFSIZE_ZOOM}, mflags_defsize},
@@ -2786,7 +2795,7 @@ static LONG last_key_time = 0;
       if (!ctrl) {
         switch (key) {
 //          when VK_F2:
-//            // defer send_syscommand(IDM_NEW) until key released
+//            // defer send_syscommand(IDM_NEW/IDM_TAB) until key released
 //            // monitor cursor keys to collect parameters meanwhile
 //            newwin_key = key;
 //            newwin_pending = true;
@@ -2815,7 +2824,8 @@ static LONG last_key_time = 0;
         when 'C': term_copy();
         when 'V': win_paste();
 //        when 'I': open_popup_menu(true, "ls", mods);
-//        when 'N': send_syscommand(IDM_NEW);
+//        when 'N': send_syscommand(IDM_TAB);  // deprecated default assignment
+//        when 'W': send_syscommand(SC_CLOSE);
         when 'R': send_syscommand(IDM_RESET);
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
@@ -2823,17 +2833,8 @@ static LONG last_key_time = 0;
         when 'T': win_tab_create();
         when 'W': win_tab_close(&term_p);
         when 'H': send_syscommand(IDM_SEARCH);
-        when 'Y': if (!transparency_pending) {
-                    previous_transparency = cfg.transparency;
-                    transparency_pending = 1;
-                    transparency_tuned = false;
-                  }
-                  if (cfg.opaque_when_focused)
-                    win_update_transparency(cfg.transparency, false);
-#ifdef debug_transparency
-                  printf("++%d\n", transparency_pending);
-#endif
-        when 'P': cycle_pointer_style();
+        when 'Y': transparency_level(term_p);  // deprecated default assignment
+        when 'P': cycle_pointer_style(); // deprecated default assignment
         when 'O': toggle_scrollbar();
       }
       return true;
@@ -3708,10 +3709,15 @@ bool
 //#ifdef debug_multi_monitors
 //      printf("NEW @ %d,%d @ monitor %d\n", pt.x, pt.y, moni);
 //#endif
-//      send_syscommand2(IDM_NEW_MONI, moni);
+//      if (newwin_monix || newwin_moniy ||
+//          (is_key_down(VK_LSHIFT) && is_key_down(VK_RSHIFT))
+//         )
+//        // enforce new window, not tab
+//        send_syscommand2(IDM_NEW_MONI, moni);
+//      else
+//        send_syscommand(IDM_TAB);
 //    }
 //  }
-
   if (transparency_pending) {
     transparency_pending--;
 #ifdef debug_transparency

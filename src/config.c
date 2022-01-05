@@ -11,6 +11,7 @@
 
 #include <algorithm>
 
+using std::min;
 using std::max;
 
 extern "C" {
@@ -160,6 +161,7 @@ const config default_cfg = {
   cols : 80,
   rows : 24,
   scrollback_lines : 10000,
+  max_scrollback_lines : 250000,
   scrollbar : 1,
   scroll_mod : MDK_SHIFT,
   pgupdn_scroll : false,
@@ -239,6 +241,7 @@ const config default_cfg = {
   menu_title_ctrl_r : "Ws",
   geom_sync : 0,
   tabbar : 0,
+  new_tabs : 0,
   col_spacing : 0,
   row_spacing : 0,
   auto_leading : 2,
@@ -451,6 +454,7 @@ options[] = {
   {"Columns", OPT_INT, offcfg(cols)},
   {"Rows", OPT_INT, offcfg(rows)},
   {"ScrollbackLines", OPT_INT, offcfg(scrollback_lines)},
+  {"MaxScrollbackLines", OPT_INT, offcfg(max_scrollback_lines)},
   {"Scrollbar", OPT_SCROLLBAR, offcfg(scrollbar)},
   {"ScrollMod", OPT_MOD, offcfg(scroll_mod)},
   {"PgUpDnScroll", OPT_BOOL, offcfg(pgupdn_scroll)},
@@ -541,6 +545,7 @@ options[] = {
 
   {"SessionGeomSync", OPT_INT, offcfg(geom_sync)},
   {"TabBar", OPT_BOOL, offcfg(tabbar)},
+  {"NewTabs", OPT_INT, offcfg(new_tabs)},
   {"ColSpacing", OPT_INT, offcfg(col_spacing)},
   {"RowSpacing", OPT_INT, offcfg(row_spacing)},
   {"AutoLeading", OPT_INT, offcfg(auto_leading)},
@@ -1636,6 +1641,18 @@ init_config(void)
   copy_config(const_cast<char *>("init"), &cfg, &default_cfg);
 }
 
+static void
+fix_config(void)
+{
+  // Avoid negative sizes.
+  cfg.rows = max(1, cfg.rows);
+  cfg.cols = max(1, cfg.cols);
+  cfg.scrollback_lines = max(0, cfg.scrollback_lines);
+
+  // Limit size of scrollback buffer.
+  cfg.scrollback_lines = min(cfg.scrollback_lines, cfg.max_scrollback_lines);
+}
+
 void
 finish_config(void)
 {
@@ -1650,10 +1667,7 @@ finish_config(void)
   opterror("Täst U %s %s", true, "böh", "büh€");
 #endif
 
-  // Avoid negative sizes.
-  cfg.rows = max(1, cfg.rows);
-  cfg.cols = max(1, cfg.cols);
-  cfg.scrollback_lines = max(0, cfg.scrollback_lines);
+  fix_config();
 
   // Ignore charset setting if we haven't got a locale.
   if (!*cfg.locale)
@@ -1795,6 +1809,7 @@ apply_config(bool save)
      )
     load_messages(&new_cfg);
   win_reconfig();  // copy_config(&cfg, &new_cfg);
+  fix_config();
   if (save)
     save_config();
   bool had_theme = !!*cfg.theme_file;

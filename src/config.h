@@ -145,6 +145,7 @@ typedef struct {
   // Window
   int cols, rows;
   int scrollback_lines;
+  int max_scrollback_lines;
   char scrollbar;
   char scroll_mod;
   bool pgupdn_scroll;
@@ -223,6 +224,7 @@ typedef struct {
   string menu_title_ctrl_r;
   int geom_sync;
   int tabbar;
+  int new_tabs;
   int col_spacing, row_spacing;
   int auto_leading;
   int padding;

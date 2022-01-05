@@ -2886,6 +2886,11 @@ static void
         bool below = arg0 == 0 || arg0 == 2;
         term_erase(term.esc_mod | term.iso_guarded_area, false, above, below);
       }
+#ifdef debug_selection
+    when CPAIR('!', 'J'):
+      if (arg0 == 3)
+        term_select_all();
+#endif
     when 'K' case_or CPAIR('?', 'K'):  /* EL/DECSEL: (selective) erase in line */
       if (arg0 <= 2) {
         bool right = arg0 == 0 || arg0 == 2;
