@@ -4,6 +4,10 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#include <algorithm>
+
+using std::max;
+
 extern "C" {
   
 #include "termpriv.h"
@@ -37,6 +41,9 @@ destroy_clip_workbuf(clip_workbuf * b)
 static void
 clip_addchar(clip_workbuf * b, wchar chr, cattr * ca, bool tabs, ulong sizehint)
 {
+  // ensure sizehint > 0
+  sizehint = max(sizehint, 8UL);
+
   if (tabs && chr == ' ' && ca && ca->attr & TATTR_CLEAR && ca->attr & ATTR_BOLD) {
     // collapse TAB
     int l0 = b->len;
@@ -83,7 +90,7 @@ static clip_workbuf *
   TERM_VAR_REF(true)
   
   // estimate buffer size needed, to give memory allocation a hint
-  int lines = end.y - start.y + 1;
+  int lines = end.y - start.y;
   long hint = (long)lines * term.cols / 8;
   //printf("get_selection %d...%d (%d)\n", start.y, end.y, lines);
 

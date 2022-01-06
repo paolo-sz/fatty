@@ -2881,6 +2881,7 @@ void
   bool default_bg = (attr.attr & ATTR_BGMASK) >> ATTR_BGSHIFT == BG_COLOUR_I;
   if (attr.attr & ATTR_REVERSE)
     default_bg = false;
+  cattr attr0 = attr;  // need unmodified colour attributes for combinings
   attr = apply_attr_colour(attr, ACM_TERM);
   colour fg = attr.truefg;
   colour bg = attr.truebg;
@@ -3586,7 +3587,7 @@ draw:;
         overwropt = 0;
       }
       // combining characters
-      textattr[0] = attr;
+      textattr[0] = attr0; // need unmodified colour attributes for combinings
       for (int i = ulen; i < len; i += ulen) {
         // separate stacking of combining characters 
         // does not work with Uniscribe
