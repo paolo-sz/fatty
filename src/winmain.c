@@ -1771,7 +1771,7 @@ void
 }
 
 static void
-win_fix_position(void)
+win_fix_position(bool scrollbar)
 {
   // DPI handling V2
   if (is_in_dpi_change)
@@ -1784,12 +1784,19 @@ win_fix_position(void)
   MONITORINFO mi;
   get_my_monitor_info(&mi);
   RECT ar = mi.rcWork;
+  //printf("win l/r %d..%d mon l/r %d %d\n", wr.left, wr.right, ar.left, ar.right);
 
   // Correct edges. Top and left win if the window is too big.
-  wr.top -= max(0, wr.bottom - ar.bottom);
-  wr.top = max(wr.top, ar.top);
-  wr.left -= max(0, wr.right - ar.right);
-  wr.left = max(wr.left, ar.left);
+  if (!scrollbar) {  // skip vertical fixing if just adding scrollbar
+    wr.top -= max(0, wr.bottom - ar.bottom);
+    wr.top = max(wr.top, ar.top);
+  }
+  if (!scrollbar || wr.left > ar.left + GetSystemMetrics(SM_CXVSCROLL)) {
+    // skip fixing for scrollbar near left border of monitor
+    wr.left -= max(0, wr.right - ar.right);
+    wr.left = max(wr.left, ar.left);
+    // could further fine-tune if we're within scrollbar width from left edge..
+  }
 #ifdef workaround_629
   // attempt to workaround left gap (#629); does not seem to work anymore
   WINDOWINFO winfo;
@@ -1817,7 +1824,7 @@ void
   if (rows != term.rows || cols != term.cols) {
     win_set_pixels(rows * cell_height + OFFSET, cols * cell_width);
     if (is_init)  // don't spoil negative position (#1123)
-      win_fix_position();
+      win_fix_position(false);
   }
   trace_winsize("win_set_chars > win_fix_position");
 }
@@ -2432,7 +2439,7 @@ void
     // enforced win_set_chars(term.rows, term.cols):
     win_set_pixels(term.rows * cell_height + OFFSET, term.cols * cell_width);
     if (is_init)  // don't spoil negative position (#1123)
-      win_fix_position();
+      win_fix_position(false);
     trace_winsize("win_adapt_term_size > win_fix_position");
 
     win_invalidate_all(false);
@@ -2624,6 +2631,7 @@ void
   }
 
   LONG style = GetWindowLong(wnd, GWL_STYLE);
+  bool had_scrollbar = style & WS_VSCROLL;
   SetWindowLong(wnd, GWL_STYLE,
                 scrollbar ? style | WS_VSCROLL : style & ~WS_VSCROLL);
 
@@ -2654,7 +2662,9 @@ void
   // confine to screen borders, except in full size (#1126)
   if (!(win_is_fullscreen || IsZoomed(wnd)))
     if (is_init)  // don't spoil negative position (#1123)
-      win_fix_position();
+      if (!inner)  // only adjust if switching outer scrollbar
+        if (scrollbar && !had_scrollbar)  // only if adding outer scrollbar
+          win_fix_position(true);
 }
 
 void
@@ -6415,7 +6425,7 @@ main(int argc, char *argv[])
   // Correct autoplacement, which likes to put part of the window under the
   // taskbar when the window size approaches the work area size.
   if (cfg.x == (int)CW_USEDEFAULT) {
-    win_fix_position();
+    win_fix_position(false);
     trace_winsize("fix_pos");
   }
 
