@@ -1287,7 +1287,7 @@ static void
     when CTRL('O'):   /* LS0: Locking-shift zero */
       tek_alt(false);
     when CTRL('W'):   /* ETB: Make Copy */
-      term_save_image();
+      term_save_image(false);
       tek_bypass = false;
       tek_gin_fin();
     when CTRL('X'):   /* CAN: Set Bypass */
@@ -3050,7 +3050,7 @@ static void
       }
 #endif
       else if (arg0 == 12 && !term.esc_mod) {
-        term_save_image();
+        term_save_image(false);
       }
       else if (arg0 == 0 && !term.esc_mod) {
         print_screen();
