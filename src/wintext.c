@@ -1305,6 +1305,14 @@ void
 
   dc = GetDC(wnd);
 
+  // horizontal scrolling of terminal view
+  int dx = - horclip();
+  if (dx) {
+    XFORM xform = (XFORM){1.0, 0.0, 0.0, 1.0, (float)dx, 0.0};
+    if (SetGraphicsMode(dc, GM_ADVANCED))
+      SetWorldTransform(dc, &xform);
+  }
+
   win_paint_exclude_search(dc);
   term_update_search();
 

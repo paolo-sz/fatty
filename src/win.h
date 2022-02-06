@@ -64,6 +64,15 @@ extern colour truecolour(cattr *, colour bg);
 
 extern void win_invalidate_all(bool clearbg);
 
+#define horclip(...) (horclip)(term_p, ##__VA_ARGS__)
+extern int (horclip)(struct term* term_p);
+#define horscroll(...) (horscroll)(term_p, ##__VA_ARGS__)
+extern void (horscroll)(struct term* term_p, int cells);
+#define horscrollto(...) (horscrollto)(term_p, ##__VA_ARGS__)
+extern void (horscrollto)(struct term* term_p, int percent);
+#define horsizing(...) (horsizing)(term_p, ##__VA_ARGS__)
+extern void (horsizing)(struct term* term_p, int cells, bool from_right);
+
 extern void win_set_pos(int x, int y);
 #define win_set_chars(...) (win_set_chars)(term_p, ##__VA_ARGS__)
 extern void (win_set_chars)(struct term* term_p, int rows, int cols);

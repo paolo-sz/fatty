@@ -1740,6 +1740,31 @@ mflags_tek_mode(__attribute__((unused))struct term *term_p)
   return tek_mode ? MF_ENABLED : MF_GRAYED;
 }
 
+#define hor_left_1(...) (hor_left_1)(term_p, ##__VA_ARGS__)
+static void (hor_left_1)(struct term* term_p) { TERM_VAR_REF(true) horscroll(-1); }
+#define hor_right_1(...) (hor_right_1)(term_p, ##__VA_ARGS__)
+static void (hor_right_1)(struct term* term_p) { TERM_VAR_REF(true) horscroll(1); }
+#define hor_out_1(...) (hor_out_1)(term_p, ##__VA_ARGS__)
+static void (hor_out_1)(struct term* term_p) { TERM_VAR_REF(true) horsizing(1, false); }
+#define hor_in_1(...) (hor_in_1)(term_p, ##__VA_ARGS__)
+static void (hor_in_1)(struct term* term_p) { TERM_VAR_REF(true) horsizing(-1, false); }
+#define hor_narrow_1(...) (hor_narrow_1)(term_p, ##__VA_ARGS__)
+static void (hor_narrow_1)(struct term* term_p) { TERM_VAR_REF(true) horsizing(-1, true); }
+#define hor_wide_1(...) (hor_wide_1)(term_p, ##__VA_ARGS__)
+static void (hor_wide_1)(struct term* term_p) { TERM_VAR_REF(true) horsizing(1, true); }
+#define hor_left_mult(...) (hor_left_mult)(term_p, ##__VA_ARGS__)
+static void (hor_left_mult)(struct term* term_p) { TERM_VAR_REF(true) horscroll(-term.cols / 10); }
+#define hor_right_mult(...) (hor_right_mult)(term_p, ##__VA_ARGS__)
+static void (hor_right_mult)(struct term* term_p) { TERM_VAR_REF(true) horscroll(term.cols / 10); }
+#define hor_out_mult(...) (hor_out_mult)(term_p, ##__VA_ARGS__)
+static void (hor_out_mult)(struct term* term_p) { TERM_VAR_REF(true) horsizing(term.cols / 10, false); }
+#define hor_in_mult(...) (hor_in_mult)(term_p, ##__VA_ARGS__)
+static void (hor_in_mult)(struct term* term_p) { TERM_VAR_REF(true) horsizing(-term.cols / 10, false); }
+#define hor_narrow_mult(...) (hor_narrow_mult)(term_p, ##__VA_ARGS__)
+static void (hor_narrow_mult)(struct term* term_p) { TERM_VAR_REF(true) horsizing(-term.cols / 10, true); }
+#define hor_wide_mult(...) (hor_wide_mult)(term_p, ##__VA_ARGS__)
+static void (hor_wide_mult)(struct term* term_p) { TERM_VAR_REF(true) horsizing(term.cols / 10, true); }
+
 // user-definable functions
 static struct function_def cmd_defs[] = {
 #ifdef support_sc_defs
@@ -1757,6 +1782,19 @@ static struct function_def cmd_defs[] = {
   //{"new-window-cwd", {IDM_NEW_CWD}, 0},
   //{"new-tab", {IDM_TAB}, 0},
   //{"new-tab-cwd", {IDM_TAB_CWD}, 0},
+
+  {"hor-left-1", {.fct = (hor_left_1)}, 0},
+  {"hor-right-1", {.fct = (hor_right_1)}, 0},
+  {"hor-out-1", {.fct = (hor_out_1)}, 0},
+  {"hor-in-1", {.fct = (hor_in_1)}, 0},
+  {"hor-narrow-1", {.fct = (hor_narrow_1)}, 0},
+  {"hor-wide-1", {.fct = (hor_wide_1)}, 0},
+  {"hor-left-mult", {.fct = (hor_left_mult)}, 0},
+  {"hor-right-mult", {.fct = (hor_right_mult)}, 0},
+  {"hor-out-mult", {.fct = (hor_out_mult)}, 0},
+  {"hor-in-mult", {.fct = (hor_in_mult)}, 0},
+  {"hor-narrow-mult", {.fct = (hor_narrow_mult)}, 0},
+  {"hor-wide-mult", {.fct = (hor_wide_mult)}, 0},
 
   //{"default-size", {IDM_DEFSIZE}, 0},
   {"default-size", {IDM_DEFSIZE_ZOOM}, mflags_defsize},
@@ -3352,10 +3390,8 @@ static LONG last_key_time = 0;
         app_pad_code('M' - '@');
       else if (!extended && term.modify_other_keys && (shift || ctrl))
         other_code('\r');
-#ifdef support_special_key_Enter
-      else if (ctrl)
+      else if (ctrl && (cfg.old_modify_keys & 32))
         ctrl_ch(CTRL('^'));
-#endif
       else
         esc_if(alt),
         term.newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');

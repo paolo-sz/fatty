@@ -224,8 +224,6 @@ void
   term_p = term_in;
   prev_winsize = *winp;
 
-  string lang = cs_lang();
-
   // Create the child process and pseudo terminal.
   pid = forkpty(&pty_fd, 0, 0, winp);
   if (pid < 0) {
@@ -1035,6 +1033,11 @@ static void
     if (!config_size) {
       setenvi(const_cast<char *>("FATTY_ROWS"), term.rows0);
       setenvi(const_cast<char *>("FATTY_COLS"), term.cols0);
+#ifdef support_horizontal_scrollbar_with_tabbar
+      // this does not work, so horizontal scrollbar is disabled with tabbar
+extern int horsqueeze(void);  // should become horsqueeze_cols in win.h
+      setenvi(const_cast<char *>("FATTY_SQUEEZE"), horsqueeze() / cell_width);
+#endif
       // provide environment to maximise window
       if (win_is_fullscreen)
         setenvi(const_cast<char *>("FATTY_MAXIMIZE"), 2);
