@@ -1574,6 +1574,7 @@ void
       for (int i = topline + lines - 1; i >= topline && term.sblines > 0; i--) {
         uchar *cline = scrollback_pop();
         termline *line = decompressline(cline, null);
+        resizeline(line, term.cols);  // ensure sufficient line length
         free(cline);
         line->temporary = false;  /* reconstituted line is now real */
         free(term.lines[i]);
