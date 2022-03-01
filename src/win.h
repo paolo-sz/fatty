@@ -99,6 +99,8 @@ extern void win_set_font_size(int, bool sync_size_with_font);
 extern uint win_get_font_size(void);
 
 extern void win_check_glyphs(wchar *wcs, uint num, cattrflags attr);
+#define get_errch(...) (get_errch)(term_p, ##__VA_ARGS__)
+extern wchar (get_errch)(struct term *term_p, wchar *wcs, cattrflags attr);
 extern int win_char_width(xchar, cattrflags attr);
 extern wchar win_combine_chars(wchar bc, wchar cc, cattrflags attr);
 

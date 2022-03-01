@@ -63,8 +63,6 @@ static struct winsize prev_winsize;
 #define trace_dir(d)	
 #endif
 
-extern bool report_child_tty;
-
 void
 (childerror)(struct term* term_p, char * action, bool from_fork, int errno_code, int code)
 {

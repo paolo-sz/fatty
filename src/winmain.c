@@ -4045,6 +4045,7 @@ static struct {
       font_cs_reconfig(true);
 
     when WM_PAINT:
+      //printsb("WS_PAINT");
       win_paint();
 
 #ifdef handle_default_size_asynchronously
@@ -4284,6 +4285,7 @@ static int olddelta;
 #endif
 
       bool shift = GetKeyState(VK_SHIFT) & 0x80;
+      //printsb("WM_EXITSIZEMOVE");
 
       //printf("WM_EXITSIZEMOVE resizing %d shift %d\n", resizing, shift);
       if (resizing) {

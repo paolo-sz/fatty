@@ -118,6 +118,7 @@ typedef struct {
   string key_scrlock;	// VK_SCROLL
   wstring key_commands;
   int manage_leds;
+  bool enable_remap_ctrls;
   // Mouse
   bool clicks_place_cursor;
   char middle_click_action;
