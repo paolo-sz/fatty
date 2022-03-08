@@ -282,6 +282,7 @@ term_cursor_reset(term_cursor *curs)
   curs->cset_single = CSET_ASCII;
 
   curs->bidimode = 0;
+  curs->rewrap_on_resize = true;
 
   curs->origin = false;
 }
@@ -1252,8 +1253,12 @@ void
 
 #define dont_debug_scrollback 1
 
-#define attr_clear(attr) ((attr & (TATTR_CLEAR | ATTR_BOLD | ATTR_DIM)) == TATTR_CLEAR)
+// mark cursor position in order not to lose it during reflow
 #define TATTR_MARKCURS (TATTR_ACTCURS | TATTR_PASCURS)
+// determine effective line length trimmed to printed characters;
+// need to include ATTR_BOLD | ATTR_DIM for proper TAB unwrapping
+// need to include TATTR_MARKCURS for proper detection of final cursor
+#define attr_clear(attr) ((attr & (TATTR_CLEAR | ATTR_BOLD | ATTR_DIM | TATTR_MARKCURS)) == TATTR_CLEAR)
 
 #ifdef debug_scrollback
 
@@ -1314,9 +1319,13 @@ static void
   TERM_VAR_REF(true)
 
   // First, mark the current cursor position;
-  // also clear old marks elsewhere
+  // also clear old marks elsewhere;
+  // to be sure to catch the cursor position, use the new height 
+  // (lines have already been rearranged) and respective widths of each line;
+  // in case of remaining problems, we couldl further move this marking 
+  // to the beginning of term_resize()
   for (int i = newrows - 1; i >= 0; i--)
-    for (int j = newcols - 1; j >= 0; j--)
+    for (int j = term.lines[i]->cols - 1; j >= 0; j--)
       if (i == term.curs.y && j == term.curs.x)
         term.lines[i]->chars[j].attr.attr |= TATTR_MARKCURS;
       else
@@ -1372,7 +1381,10 @@ static void
     while (actcols && attr_clear(inbuf->chars[actcols - 1].attr.attr))
       actcols --;
 
-    if (!(inbuf->lattr & LATTR_WRAPPED) && actcols <= newcols) {
+    if ((!(inbuf->lattr & LATTR_WRAPPED) && actcols <= newcols)
+        || !(inbuf->lattr & LATTR_REWRAP)
+       )
+    {
       // shortcut: skip multiple lines handling
 
       if (newcols <= inbuf->cols)
@@ -1486,6 +1498,7 @@ static void
         // make a new outbuf line
         lout = 0;
         outbuf = newline(newcols, true);
+        outbuf->lattr = inbuf->lattr & ~(LATTR_WRAPPED | LATTR_WRAPPED2 | LATTR_WRAPCONTD);
         // position output column
         if (incol >= 0) {
           // subsequent lines
@@ -1564,16 +1577,19 @@ static void
 
   // Last, find the marked cursor position and target current cursor to it;
   // go backwards in case an old cursor mark, that had been scrolled out 
-  // and thus not cleared, was now scrolled in again.
+  // and thus not cleared, was now scrolled in again;
+  // use new size for scanning.
   // Fallback in case cursor was wrapped / scrolled out of screen:
   term.curs.y = 0;
   term.curs.x = 0;
   // search for cursor marker
   for (int i = newrows - 1; i >= 0; i--)
-    for (int j = newcols - 1; j >= 0; j--)
+    // need to search whole stored line, even if longer than screen width,
+    // in order to find zoomed-out cursor position
+    for (int j = term.lines[i]->cols - 1; j >= 0; j--)
       if (term.lines[i]->chars[j].attr.attr & TATTR_MARKCURS) {
         term.curs.y = i;
-        term.curs.x = j;
+        term.curs.x = min(j, newcols - 1);
         term.lines[i]->chars[j].attr.attr &= ~TATTR_MARKCURS;
         i = 0;
         break;
@@ -1631,7 +1647,6 @@ void
 
   termlines *lines = term.lines;
   term_cursor *curs = &term.curs;
-  term_cursor *saved_curs = &term.saved_cursors[term.on_alt_screen];
 
   // Shrink the screen if newrows < rows
   if (newrows < term.rows) {
@@ -1656,7 +1671,6 @@ void
 
     // Adjust cursor position
     curs->y = max(0, curs->y - store);
-    saved_curs->y = max(0, saved_curs->y - store);
 
     // Adjust image position
     term.virtuallines += min(0, store);
@@ -1688,7 +1702,6 @@ void
 
     // Adjust cursor position
     curs->y += restore;
-    saved_curs->y += restore;
 
     // Adjust image position
     term.virtuallines -= restore;
@@ -1699,7 +1712,7 @@ void
     resizeline(lines[i], newcols);
 
   // Reflow screen and scrollback buffer to new width
-  if (newcols != term.cols)
+  if (cfg.rewrap_on_resize && newcols != term.cols)
     term_reflow(newrows, newcols);
 
   // Make a new displayed text buffer.
@@ -1733,9 +1746,12 @@ void
     term.tabs[i] = term.newtab && (i % 8 == 0);
 
   // Check that the cursor positions are still valid.
-  assert(0 <= curs->y && curs->y < newrows);
-  assert(0 <= saved_curs->y && saved_curs->y < newrows);
-  curs->x = min((int)(curs->x), newcols - 1);
+  //assert(0 <= curs->y && curs->y < newrows);
+  // rather be on the safe side:
+
+  // Ensure valid cursor positions.
+  curs->y = min((int)curs->y, newrows - 1);
+  curs->x = min((int)curs->x, newcols - 1);
 
   curs->wrapnext = false;
 
