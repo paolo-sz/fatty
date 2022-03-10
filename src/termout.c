@@ -3717,7 +3717,7 @@ static void
       }
 
       short left = term.curs.x;
-      short top = term.virtuallines + (term.sixel_display ? 0: term.curs.y);
+      short top = term.sixel_display ? 0: term.curs.y;
       int width = (st->image.width -1 ) / st->grid_width + 1;
       int height = (st->image.height -1 ) / st->grid_height + 1;
       int pixelwidth = st->image.width;
@@ -4439,7 +4439,7 @@ static void
           // OK
           imglist * img;
           short left = term.curs.x;
-          short top = term.virtuallines + term.curs.y;
+          short top = term.curs.y;
           if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height, term.curs.attr.attr & (ATTR_BLINK | ATTR_BLINK2))) {
             fill_image_space(img);
 

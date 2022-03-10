@@ -1430,6 +1430,7 @@ static void
       cursor_scroll(linebuf[jj]);
       freeline(linebuf[jj]);
     }
+    term.virtuallines += j;
     goto wrapped;
 #endif
 
@@ -1490,6 +1491,7 @@ static void
         if (lout >= 0) {
           outbuf->lattr |= LATTR_WRAPPED;
           scrollback_push(compressline(outbuf), newrows);
+          term.virtuallines++;
           cursor_scroll(outbuf);
           //printline("↑", outbuf, -1);
           freeline(outbuf);
@@ -1540,9 +1542,51 @@ static void
 #endif
 
     i += j + 1;
+    term.virtuallines -= j;
   }
   free(scrollback);
   printsb(">rewrap");
+
+  // Rebase graphics positions.
+  // Make sure the anchor position (top-left cell of image) is registered 
+  // as the new image position:
+  // scan lines right to left, scan scrollback buffer bottom to top, so the 
+  // top-left cell of each image will be checked last and get registered; 
+  // this could be changed to a forward approach (reducing image searches) 
+  // if images already handled were remembered in a cache, or marked in 
+  // the image list somehow...
+  for (int i = term.sblines - 1; i >= 0; i--) {
+    uchar *cline = term.scrollback[(i + term.sbpos) % term.sblines];
+    termline *line = decompressline(cline, null);
+    for (int j = line->cols - 1; j >= 0; j--) {
+      termchar * tc = &line->chars[j];
+      if (tc->chr == SIXELCH) {
+        imglist * cur = 0;
+        for (cur = term.imgs.first; cur; cur = cur->next) {
+          if (cur->imgi == tc->attr.imgi)
+            break;
+          //if (cur->top - term.virtuallines >= topline)
+          //  cur->top += lines;
+        }
+        if (cur) {
+          //printf("%lld:%d -> @%d:%d (virt %lld dtop %d) imgi %d %d\n", cur->top, cur->left, i, j, term.virtuallines, term.disptop, tc->attr.imgi, cur->imgi);
+          cur->left = cur->left;
+          cur->top = cur->top;
+        }
+      }
+    }
+#ifdef change_sixel_cells
+    if (changed_line) {
+      uchar * nline = compressline(line);
+      if (nline) {
+        term.scrollback[(i + term.sbpos) % term.sblines] = nline;
+        free(cline);
+      }
+    }
+#endif
+    free(line);
+  }
+  term.virtuallines = term.sblines - newrows;
 
   // Pop all screen lines back from scrollback buffer;
   // we need to handle the case that, after reflow, there are fewer lines 

@@ -3,9 +3,10 @@
 
 #include "config.h"
 
-extern bool winimg_new(imglist * * ppimg, char * id,
+#define winimg_new(...) (winimg_new)(term_p, ##__VA_ARGS__)
+extern bool (winimg_new)(struct term* term_p, imglist * * ppimg, char * id,
                        unsigned char * pixels, uint len,
-                       int top, int left, int width, int height,
+                       int left, int scrtop, int width, int height,
                        int pixelwidth, int pixelheight, bool preserveAR,
                        int crop_x, int crop_y, int crop_w, int crop_h,
                        int attr);
