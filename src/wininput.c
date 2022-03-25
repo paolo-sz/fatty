@@ -896,7 +896,9 @@ typedef enum {
   ALT_OCT = 8, ALT_DEC = 10, ALT_HEX = 16
 } alt_state_t;
 static alt_state_t alt_state;
-static uint alt_code;
+static alt_state_t old_alt_state;
+static int alt_code;
+static bool alt_uni;
 
 static bool lctrl;  // Is left Ctrl pressed?
 static int lctrl_time;
@@ -1265,6 +1267,18 @@ static void
 /*
    Some auxiliary functions for user-defined key assignments.
  */
+
+#define unicode_char(...) (unicode_char)(term_p, ##__VA_ARGS__)
+static void
+(unicode_char)(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  alt_state = ALT_HEX;
+  old_alt_state = ALT_ALONE;
+  alt_code = 0;
+  alt_uni = true;
+}
 
 static void
 menu_text(struct term *term_p)
@@ -1808,6 +1822,8 @@ static struct function_def cmd_defs[] = {
   {"win-toggle-always-on-top", {.fct = (win_toggle_on_top)}, mflags_always_top},
   {"win-toggle-keep-screen-on", {.fct = win_toggle_screen_on}, mflags_screen_on},
 
+  {"unicode-char", {.fct = (unicode_char)}, 0},
+
   {"new", {.fct_key = newwin_begin}, 0},  // deprecated
   {"new-key", {.fct_key = newwin_begin}, 0},
   {"options", {IDM_OPTIONS}, mflags_options},
@@ -1935,6 +1951,44 @@ win_key_reset(void)
 {
   alt_state = ALT_NONE;
   compose_clear();
+}
+
+wchar *
+char_code_indication(uint * what)
+{
+static wchar cci_buf[13];
+
+  if (alt_state > ALT_ALONE) {
+    int ac = alt_code;
+    int i = lengthof(cci_buf);
+    cci_buf[--i] = 0;
+    do {
+      int digit = ac % alt_state;
+      cci_buf[--i] = digit > 9 ? digit - 10 + 'A' : digit + '0';
+      ac /= alt_state;
+    } while (ac && i);
+    if (alt_state == ALT_HEX && alt_uni && i > 1) {
+      cci_buf[--i] = '+';
+      cci_buf[--i] = 'U';
+    }
+    *what = alt_state;
+    return &cci_buf[i];
+  }
+  else if (alt_state == ALT_ALONE) {
+    *what = 4;
+    return const_cast<wchar *>(W(" "));
+  }
+  else if (comp_state > COMP_NONE) {
+    int i;
+    for (i = 0; i < compose_buflen; i++)
+      cci_buf[i] = compose_buf[i];
+    cci_buf[i++] = ' ';
+    cci_buf[i] = 0;
+    *what = 2;
+    return cci_buf;
+  }
+  else
+    return 0;
 }
 
 // notify margin bell ring enabled
@@ -2338,7 +2392,7 @@ static void
 {
   TERM_VAR_REF(true)
 
-  if (cs_cur_max < 4) {
+  if (cs_cur_max < 4 && !alt_uni) {
     char buf[4];
     int pos = sizeof buf;
     do
@@ -2526,7 +2580,7 @@ static LONG last_key_time = 0;
     return true;
   }
 
-  alt_state_t old_alt_state = alt_state;
+  old_alt_state = alt_state;
   if (alt_state > ALT_NONE)
     alt_state = ALT_CANCELLED;
 
@@ -2909,6 +2963,7 @@ static LONG last_key_time = 0;
         when 'Y': transparency_level(term_p);  // deprecated default assignment
         when 'P': cycle_pointer_style(); // deprecated default assignment
         when 'O': toggle_scrollbar();
+        when 'U': unicode_char();
       }
       return true;
     }
@@ -3071,9 +3126,19 @@ static LONG last_key_time = 0;
   };
 
   auto alt_code_key = [&](char digit) -> bool {
-    if (old_alt_state > ALT_ALONE && digit < old_alt_state) {
-      alt_state = old_alt_state;
-      alt_code = alt_code * alt_state + digit;
+    if (old_alt_state > ALT_ALONE) {
+      alt_state = old_alt_state;  // stay in alt_state, process key
+      if (digit >= 0 && digit < alt_state) {
+        alt_code = alt_code * alt_state + digit;
+        if (alt_code < 0 || alt_code > 0x10FFFF) {
+          win_bell(&cfg);
+          alt_state = ALT_NONE;
+        }
+        else
+          win_update(false);
+      }
+      else
+        win_bell(&cfg);
       return true;
     }
     return false;
@@ -3086,6 +3151,16 @@ static LONG last_key_time = 0;
       return true;
     }
     return alt_code_key(digit);
+  };
+
+  auto alt_code_ignore = [&](void) -> bool {
+    if (old_alt_state > ALT_ALONE) {
+      alt_state = old_alt_state;  // keep alt_state, ignore key
+      win_bell(&cfg);
+      return true;
+    }
+    else
+      return false;
   };
 
   auto app_pad_key = [&](char symbol) -> bool {
@@ -3102,7 +3177,10 @@ static LONG last_key_time = 0;
       app_pad_code(symbol);
       return true;
     }
-    return symbol != '.' && alt_code_numpad_key(symbol - '0');
+    if (symbol == '.')
+      return alt_code_ignore();
+    else
+      return alt_code_numpad_key(symbol - '0');
   };
 
   auto edit_key = [&](uchar code, char symbol) {
@@ -3171,6 +3249,8 @@ static LONG last_key_time = 0;
 #endif
       for (int i = 0; i < wlen; i++)
         compose_buf[compose_buflen++] = wbuf[i];
+      win_update(false);
+
       uint comp_len = min((uint)compose_buflen, (uint)lengthof(composed->kc));
       bool found = false;
       for (uint k = 0; k < lengthof(composed); k++)
@@ -3411,6 +3491,11 @@ static LONG last_key_time = 0;
 
   switch (key) {
     when VK_RETURN:
+      if (old_alt_state > ALT_ALONE) {
+        insert_alt_code();
+        alt_state = ALT_NONE;
+      }
+      else
       if (allow_shortcut && !term.shortcut_override && cfg.window_shortcuts
           && alt && !altgr
          )
@@ -3432,6 +3517,12 @@ static LONG last_key_time = 0;
         esc_if(alt),
         term.newline_mode ? ch('\r'), ch('\n') : ch(shift ? '\n' : '\r');
     when VK_BACK:
+      if (old_alt_state > ALT_ALONE) {
+        alt_state = old_alt_state;  // keep alt_state, process key
+        alt_code = alt_code / alt_state;
+        win_update(false);
+      }
+      else
       if (cfg.old_modify_keys & 1) {
         if (!ctrl)
           esc_if(alt), ch(term.backspace_sends_bs ? '\b' : CDEL);
@@ -3451,6 +3542,9 @@ static LONG last_key_time = 0;
         }
       }
     when VK_TAB:
+      if (alt_code_ignore()) {
+      }
+      else
       if (!(cfg.old_modify_keys & 2) && term.modify_other_keys > 1 && mods) {
         // perhaps also partially if:
         // term.modify_other_keys == 1 && (mods & ~(MDK_SHIFT | MDK_ALT)) ?
@@ -3485,6 +3579,13 @@ static LONG last_key_time = 0;
         mod_csi('I');
       }
     when VK_ESCAPE:
+      if (old_alt_state > ALT_ALONE) {
+        alt_state = ALT_CANCELLED;
+      }
+      else if (comp_state > COMP_NONE) {
+        comp_state = COMP_CLEAR;
+      }
+      else
       if (!(cfg.old_modify_keys & 8) && term.modify_other_keys > 1 && mods)
         other_code('\033');
       else
@@ -3520,12 +3621,18 @@ static LONG last_key_time = 0;
       if (!vk_special(cfg.key_scrlock))
         return false;
     when VK_F1 ... VK_F24:
+      if (alt_code_ignore()) {
+        return true;
+      }
+
       if (key <= VK_F4 && term.vt52_mode) {
         len = sprintf(buf, "\e%c", key - VK_F1 + 'P');
         break;
       }
+
       if (term.vt220_keys && ctrl && VK_F3 <= key && key <= VK_F10)
         key += 10, mods &= ~MDK_CTRL;
+
       if (key <= VK_F4)
         mod_ss3(key - VK_F1 + 'P');
       else {
@@ -3563,14 +3670,16 @@ static LONG last_key_time = 0;
       if (term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?%c", key - VK_MULTIPLY + 'j');
       else if (key == VK_ADD && old_alt_state == ALT_ALONE)
-        alt_state = ALT_HEX, alt_code = 0;
+        alt_state = ALT_HEX, alt_code = 0, alt_uni = false;
+      else if (alt_code_ignore()) {
+      }
       else if (mods || (term.app_keypad && !numlock) || !layout())
         app_pad_code(key - VK_MULTIPLY + '*');
     when VK_NUMPAD0 ... VK_NUMPAD9:
       if (term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?%c", key - VK_NUMPAD0 + 'p');
       else if ((term.app_cursor_keys || !term.app_keypad) &&
-          alt_code_numpad_key(key - VK_NUMPAD0));
+        alt_code_numpad_key(key - VK_NUMPAD0));
       else if (layout())
         ;
       else
@@ -3585,6 +3694,14 @@ static LONG last_key_time = 0;
 #ifdef debug_key
       printf("-- mods %X alt %d altgr %d/%d ctrl %d lctrl %d/%d (modf %d comp %d)\n", mods, alt, altgr, altgr0, ctrl, lctrl, lctrl0, term.modify_other_keys, comp_state);
 #endif
+      if (key == ' ' && old_alt_state > ALT_ALONE) {
+        insert_alt_code();
+        alt_state = ALT_NONE;
+      }
+      else
+      if (key > 'F' && alt_code_ignore()) {
+      }
+      else
       if (allow_shortcut && check_menu) {
         send_syscommand(SC_KEYMENU);
         return true;
@@ -3621,6 +3738,9 @@ static LONG last_key_time = 0;
         ctrl_ch(CTRL(key));
     }
     when '0' ... '9' case_or VK_OEM_1 ... VK_OEM_102:
+      if (key > '9' && alt_code_ignore()) {
+      }
+      else
       if (key <= '9' && alt_code_key(key - '0'))
         ;
       else if (char_key())
@@ -3733,8 +3853,10 @@ bool
         || (cfg.compose_key == MDK_HYPER && key == hyper_key)
        )
     {
-      if (comp_state >= 0)
+      if (comp_state >= 0) {
         comp_state = COMP_ACTIVE;
+        win_update(false);
+      }
     }
   }
   else

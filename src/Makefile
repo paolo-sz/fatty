@@ -198,6 +198,9 @@ $(bin): $(bins)
 WGET=curl -R -O --connect-timeout 55
 WGET+=-z $@
 
+clean-x11:
+	rm -f rgb.t composed.t
+
 rgb.t:	# /usr/share/X11/rgb.txt # X11 color names, from package 'rgb'
 #	255 250 250		snow
 #	->
@@ -358,8 +361,8 @@ $(pdf): ../docs/$(NAME).1
 
 html := ../docs/$(NAME).1.html
 html: $(html)
-$(html): ../docs/$(NAME).1
-	sed -f html.sed $< | groff -t -man -mwww -Thtml > $@
+$(html): ../docs/$(NAME).1 htmlroff.sed htmlhtml.sed
+	sed -f htmlroff.sed $< | groff -t -man -mwww -Thtml | sed -f htmlhtml.sed > $@
 
 clean:
 	#rm -rf *.d *.o $(NAME)*

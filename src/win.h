@@ -34,12 +34,15 @@ extern void (do_update)(struct term* term_p);
 #define win_text(...) (win_text)(term_p, ##__VA_ARGS__)
 extern void (win_text)(struct term* term_p, int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase);
 
+/* input */
 #define win_update_mouse(...) (win_update_mouse)(term_p, ##__VA_ARGS__)
 extern void (win_update_mouse)(struct term* term_p);
 extern void win_capture_mouse(void);
 #define win_get_locator_info(...) (win_get_locator_info)(term_p, ##__VA_ARGS__)
 extern void (win_get_locator_info)(struct term *term_p, int *x, int *y, int *buttons, bool by_pixels);
+extern wchar * char_code_indication(uint * what);
 
+/* beep */
 extern void win_beep(uint tone, float vol, float freq, uint ms);
 extern void win_sound(char * sound_name, uint options);
 #define win_bell(...) (win_bell)(term_p, ##__VA_ARGS__)
@@ -47,6 +50,7 @@ extern void (win_bell)(struct term* term_p, config *);
 #define win_margin_bell(...) (win_margin_bell)(term_p, ##__VA_ARGS__)
 extern void (win_margin_bell)(struct term* term_p, config *);
 
+/* title */
 extern void win_set_title(wchar *wtitle);
 #define win_copy_title(...) (win_copy_title)(term_p, ##__VA_ARGS__)
 extern void (win_copy_title)(struct term *term_p);
@@ -54,6 +58,7 @@ extern char * win_get_title(void);
 #define win_copy_text(...) (win_copy_text)(term_p, ##__VA_ARGS__)
 extern void (win_copy_text)(struct term *term_p, const char *s);
 
+/* colour */
 #define win_get_colour(...) (win_get_colour)(term_p, ##__VA_ARGS__)
 extern colour (win_get_colour)(struct term* term_p, colour_i);
 extern void win_set_colour(colour_i, colour);
@@ -125,8 +130,6 @@ extern int message_box(HWND parwnd, char * wtext, char * wcaption, int type, wst
 extern int message_box_w(HWND parwnd, wchar * wtext, wchar * wcaption, int type, wstring ok);
 
 extern bool win_is_glass_available(void);
-
-extern void win_clear_images(void);
 
 extern int get_tick_count(void);
 extern int cursor_blink_ticks(void);
