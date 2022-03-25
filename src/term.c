@@ -2687,7 +2687,7 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
 #ifdef debug_win_text_invocation
 
 void
-_win_text(int line, int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl, bool clearpad, uchar phase)
+_win_text(int line, int tx, int ty, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, char has_rtl, bool clearpad, uchar phase)
 {
   if (*text != ' ') {
     printf("[%d] %d:%d(len %d) attr %08llX", line, ty, tx, len, attr.attr);
@@ -3382,12 +3382,12 @@ void
           newchars[curs_x].attr.attr &= ~(TATTR_WIDE | TATTR_EXPAND);
           newchars[curs_x].attr = CATTR_DEFAULT;
           if (what >= 4) {
-            newchars[curs_x].attr.attr |= ATTR_ULCOLOUR;
+            newchars[curs_x].attr.attr |= ATTR_ULCOLOUR | ATTR_BOLD;
             newchars[curs_x].attr.ulcolr = RGB(255, 0, 0);
           }
           else {
             newchars[curs_x].attr.attr |= ATTR_REVERSE | ATTR_DIM;
-            newchars[curs_x].attr.attr |= ATTR_ULCOLOUR;
+            newchars[curs_x].attr.attr |= ATTR_ULCOLOUR | ATTR_BOLD;
             newchars[curs_x].attr.ulcolr = RGB(255, 0, 0);
           }
           switch (what) {
@@ -3577,7 +3577,7 @@ void
     cattr textattr[maxtextlen];
     int textlen = 0;
 
-    bool has_rtl = false;
+    char has_rtl = 0;
     uchar bc = 0;
     bool dirty_run = (line->lattr != displine->lattr);
     bool dirty_line = dirty_run;
@@ -3599,7 +3599,7 @@ void
     int ovl_x, ovl_y;
     cattr ovl_attr;
     ushort ovl_lattr;
-    bool ovl_has_rtl;
+    char ovl_has_rtl;
 
     auto flush_text = [&]()
     {
@@ -3617,7 +3617,7 @@ void
 # define debug_out_text
 #endif
 
-    auto out_text = [&](int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, bool has_rtl)
+    auto out_text = [&](int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, char has_rtl)
     {
 #ifdef debug_out_text
       wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
@@ -3827,8 +3827,11 @@ void
       uchar tbc = bidi_class(xtchar);
 
       if (textlen && tbc != bc) {
-        if (!is_sep_class(tbc) && !is_sep_class(bc))
-          // break at RTL and other changes to avoid glyph confusion (#285)
+        if (is_rtl_class(tbc) != is_rtl_class(bc))
+          // break at RTL to support RTL font fallback
+          trace_run("rtl"), break_run = true;
+        else if (!is_sep_class(tbc) && !is_sep_class(bc))
+          // break at other changes to avoid glyph confusion (#285)
           trace_run("bcs"), break_run = true;
         //else if (is_punct_class(tbc) || is_punct_class(bc))
         else if ((tbc == EN) ^ (bc == EN))
@@ -3837,12 +3840,13 @@ void
       }
       bc = tbc;
 
+     /* Flush previous output chunk on break_run */
       if (break_run || cfg.bloom) {
         if ((dirty_run && textlen) || overlaying)
           out_text(start, i, text, textlen, attr, textattr, line->lattr, has_rtl);
         start = j;
         textlen = 0;
-        has_rtl = false;
+        has_rtl = 0;
         attr = tattr;
         dirty_run = dirty_line;
 #if defined(debug_dirty) && debug_dirty > 1
@@ -3875,8 +3879,14 @@ void
       ///textattr[textlen] = tattr;
       textlen++;
 
-      if (!has_rtl)
-        has_rtl = is_rtl_class(tbc);
+      if (is_rtl_class(tbc)) {
+        if (tbc == R)
+          has_rtl |= 1;
+        else if (tbc == AL)
+          has_rtl |= 2;
+        else
+          has_rtl |= 4;
+      }
 
 #define dont_debug_surrogates
 

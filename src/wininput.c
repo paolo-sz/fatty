@@ -3583,7 +3583,7 @@ static LONG last_key_time = 0;
         alt_state = ALT_CANCELLED;
       }
       else if (comp_state > COMP_NONE) {
-        comp_state = COMP_CLEAR;
+        compose_clear();
       }
       else
       if (!(cfg.old_modify_keys & 8) && term.modify_other_keys > 1 && mods)
@@ -3679,7 +3679,8 @@ static LONG last_key_time = 0;
       if (term.vt52_mode && term.app_keypad)
         len = sprintf(buf, "\e?%c", key - VK_NUMPAD0 + 'p');
       else if ((term.app_cursor_keys || !term.app_keypad) &&
-        alt_code_numpad_key(key - VK_NUMPAD0));
+               alt_code_numpad_key(key - VK_NUMPAD0))
+        ;
       else if (layout())
         ;
       else
@@ -3840,6 +3841,7 @@ bool
     return false;
   }
 
+  //printf("comp %d key %02X dn %02X up %02X\n", comp_state, key, last_key_down, last_key_up);
   if (key == last_key_down
       // guard against cases of hotkey injection (#877)
       && (!last_key_up || key == last_key_up)
@@ -3859,8 +3861,6 @@ bool
       }
     }
   }
-  else
-    comp_state = COMP_NONE;
 
   last_key_up = key;
 
