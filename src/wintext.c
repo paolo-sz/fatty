@@ -4788,16 +4788,16 @@ win_set_colour(colour_i i, colour c)
     // ... reset to default ...
     if (i < 16) {
       colour_pair cp = cfg.ansi_colours[i];
-      cc((colour_i)i, cp.fg);
+      cc(i, cp.fg);
       cc((colour_i)(i + ANSI0), cp.fg);
       cc((colour_i)(i + BG_ANSI0), cp.bg);
     }
     else if (i < 256)
-      cc((colour_i)i, xterm_colours[i - 16]);
+      cc(i, xterm_colours[i - 16]);
     else if (i < ANSI0 + 16)
-      cc((colour_i)i, cfg.ansi_colours[i - ANSI0].fg);
+      cc(i, cfg.ansi_colours[i - ANSI0].fg);
     else if (i < BG_ANSI0 + 16)
-      cc((colour_i)i, cfg.ansi_colours[i - BG_ANSI0].bg);
+      cc(i, cfg.ansi_colours[i - BG_ANSI0].bg);
     else switch (i) {
       when BOLD_COLOUR_I: cc(BOLD_COLOUR_I, cfg.bold_colour);
       when BLINK_COLOUR_I: cc(BLINK_COLOUR_I, cfg.blink_colour);
@@ -4829,7 +4829,7 @@ win_set_colour(colour_i i, colour c)
 #ifdef debug_brighten
     printf("colours[%d] = %06X\n", i, c);
 #endif
-    cc((colour_i)i, c);
+    cc(i, c);
     if (i < 16) {
       cc((colour_i)(i + ANSI0), c);
       cc((colour_i)(i + BG_ANSI0), c);
