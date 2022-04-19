@@ -1445,10 +1445,13 @@ static void
     auto advance_inbuf = [&]() -> bool
     {
       if ((inbuf->lattr & LATTR_WRAPPED) && i + j + 1 < sblines) {
+        // drop current line
+        freeline(inbuf);
+        // advance to next line
         j++;
         uchar *cline = scrollback[(i + j + sbpos) % sblines];
         inbuf = decompressline(cline, null);
-        free(cline);
+        //free(cline) unless the fetch is reverted...
         if (!(inbuf->lattr & LATTR_WRAPCONTD)) {
           // drop non-continuing line (could save for later)
           freeline(inbuf);
@@ -1461,9 +1464,14 @@ static void
           inbuf = 0;
           return false;
         }
-        return true;
+        else {
+          free(cline);
+          return true;
+        }
       }
       else {
+        // drop current line
+        freeline(inbuf);
         // finish wrapped lines group
         inbuf = 0;
         return false;
@@ -1659,6 +1667,7 @@ void
   TERM_VAR_REF(true)
   
   trace_resize(("--- term_resize %d %d\n", newrows, newcols));
+
   bool on_alt_screen = term.on_alt_screen;
   term_switch_screen(0, false);
 
