@@ -4050,7 +4050,7 @@ do_osc_control:
     if (has_index_arg)
       child_printf(";%u", index);
     print_osc_colour(colours[i]);
-    child_printf(osc_fini());
+    child_printf("%s", osc_fini());
   }
   else if (parse_colour(s, &c))
     win_set_colour((colour_i)i, c);
@@ -4090,7 +4090,7 @@ do_osc_control:
 
 #define do_ansi_colour_osc(...) (do_ansi_colour_osc)(term_p, ##__VA_ARGS__)
 /*
- * OSC 7765: Control foreground and background variants of the 16 ANSI colours
+ * OSC 7704: Control foreground and background variants of the 16 ANSI colours
  * independently of the first 16 slots in the xterm256 palette.
  */
 static void
@@ -4117,7 +4117,7 @@ static void
     print_osc_colour(fg);
     if (fg != bg)
       print_osc_colour(bg);
-    child_printf(osc_fini());
+    child_printf("%s", osc_fini());
   }
   else {
     char *sep = strchr(s, ';');
@@ -4265,7 +4265,7 @@ static void
         cs_set_locale(s);
     when 7721:  // Copy window title to clipboard.
       win_copy_title();
-    when 7765:  // Change ANSI foreground/background colours.
+    when 7704:  // Change ANSI foreground/background colours.
       do_ansi_colour_osc();
     when 7773: {  // Change icon.
       uint icon_index = 0;

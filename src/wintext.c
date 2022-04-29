@@ -4481,7 +4481,7 @@ win_char_width(xchar c, cattrflags attr)
 
 #define dont_debug_rendering
 
-  auto act_char_width = [&](wchar wc) -> int
+  auto act_char_width = [&](xchar wc) -> int
   {
 # ifdef debug_rendering
 # include <time.h>

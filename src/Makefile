@@ -99,7 +99,7 @@ ifneq ($(platform), msys)
   # some nested functions) as they cause some security software to choke
   SECUR=-Wtrampolines
 endif
-COMMONFLAGS := -Wall -Wextra -Wundef $(SECUR) -D_WIN32_WINNT=0x0601 -DWINVER=0x0601
+COMMONFLAGS := -Wall -Wextra -Wundef -Werror $(SECUR) -Wformat-security -D_WIN32_WINNT=0x0601 -DWINVER=0x0601
 CFLAGS := -std=gnu99
 CXXFLAGS := -std=gnu++11
 
