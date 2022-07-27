@@ -826,7 +826,7 @@ termline *
 
   termline *line;
   if (y >= 0) {
-    assert(y < term.rows);
+    assert(y < term_allrows);
     line = lines[y];
   }
   else {

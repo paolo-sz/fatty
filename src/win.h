@@ -93,7 +93,8 @@ extern bool win_is_iconic(void);
 extern void win_get_scrpos(int *xp, int *yp, bool with_borders);
 #define win_get_pixels(...) (win_get_pixels)(term_p, ##__VA_ARGS__)
 extern void (win_get_pixels)(struct term* term_p, int *height_p, int *width_p, bool with_borders);
-extern void win_get_screen_chars(int *rows_p, int *cols_p);
+#define win_get_screen_chars(...) (win_get_screen_chars)(term_p, ##__VA_ARGS__)
+extern void (win_get_screen_chars)(struct term* term_p, int *rows_p, int *cols_p);
 #define win_popup_menu(...) (win_popup_menu)(term_p, ##__VA_ARGS__)
 extern void (win_popup_menu)(struct term *term_p, mod_keys mods);
 #define win_title_menu(...) (win_title_menu)(term_p, ##__VA_ARGS__)

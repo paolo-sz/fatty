@@ -30,6 +30,10 @@ extern void (term_schedule_vbell)(struct term* term_p, int already_started, int 
 
 #define term_switch_screen(...) (term_switch_screen)(term_p, ##__VA_ARGS__)
 extern void (term_switch_screen)(struct term* term_p, bool to_alt, bool reset);
+#define term_switch_status(...) (term_switch_status)(term_p, ##__VA_ARGS__)
+extern void (term_switch_status)(struct term* term_p, bool status_line);
+#define term_clear_status(...) (term_clear_status)(term_p, ##__VA_ARGS__)
+extern void (term_clear_status)(struct term* term_p);
 #define term_check_boundary(...) (term_check_boundary)(term_p, ##__VA_ARGS__)
 extern void (term_check_boundary)(struct term* term_p, int x, int y);
 #define term_do_scroll(...) (term_do_scroll)(term_p, ##__VA_ARGS__)

@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <string>
 
+using std::max;
 using std::min;
 
 extern "C" {
@@ -42,9 +43,9 @@ extern "C" {
 
 static string primary_da1 = "\e[?1;2c";
 static string primary_da2 = "\e[?62;1;2;4;6;9;15;22;29c";
-static string primary_da3 = "\e[?63;1;2;4;6;9;15;22;29c";
-static string primary_da4 = "\e[?64;1;2;4;6;9;15;21;22;28;29c";
-static string primary_da5 = "\e[?65;1;2;4;6;9;15;21;22;28;29c";
+static string primary_da3 = "\e[?63;1;2;4;6;9;11;15;22;29c";
+static string primary_da4 = "\e[?64;1;2;4;6;9;11;15;21;22;28;29c";
+static string primary_da5 = "\e[?65;1;2;4;6;9;11;15;21;22;28;29c";
 /* Registered Extensions to the Character Cell Display Service Class
 	1	132 Column Display
 	2	Printer Port
@@ -52,6 +53,7 @@ static string primary_da5 = "\e[?65;1;2;4;6;9;15;21;22;28;29c";
 	4	Sixels Display
 	6	Selectively Erasable Characters
 	9	National Replacement Character Sets
+	11	Status Line (DEC STD 070)
 	15	Technical Character Set
 	21	Horizontal Scrolling
 	22	Color Text
@@ -130,10 +132,19 @@ static void
     x = 0;
   if (x >= term.cols)
     x = term.cols - 1;
-  if (y < 0)
-    y = 0;
-  if (y >= term.rows)
-    y = term.rows - 1;
+
+  if (term.st_active) {
+    if (curs->y < term.rows)
+      y = term.rows;
+    if (y >= term_allrows)
+      y = term_allrows - 1;
+  }
+  else {
+    if (y < 0)
+      y = 0;
+    if (y >= term.rows)
+      y = term.rows - 1;
+  }
 
   curs->x = x;
   curs->y = y;
@@ -143,13 +154,23 @@ static void
 #define save_cursor(...) (save_cursor)(term_p, ##__VA_ARGS__)
 /*
  * Save the cursor and SGR mode.
+   About status line save/restore cursor, refer to DEC VT420 p. 271, VT520 p. 5-92:
+	Notes on DECSC and DECRC
+	• The terminal maintains a separate DECSC buffer for the main 
+	  display and the status line. This feature lets you save a 
+	  separate operating state for the main display and the status line.
  */
 static void
 (save_cursor)(struct term* term_p)
 {
   TERM_VAR_REF(true)
   
-  term.saved_cursors[term.on_alt_screen] = term.curs;
+  if (term.st_active) {
+    term.st_saved_curs = term.curs;
+    term.st_saved_curs.y -= term.rows;
+  }
+  else
+    term.saved_cursors[term.on_alt_screen] = term.curs;
 }
 
 #define restore_cursor(...) (restore_cursor)(term_p, ##__VA_ARGS__)
@@ -162,16 +183,24 @@ static void
   TERM_VAR_REF(true)
   
   term_cursor *curs = &term.curs;
-  *curs = term.saved_cursors[term.on_alt_screen];
-  term.erase_char.attr = curs->attr;
-  term.erase_char.attr.attr &= (ATTR_FGMASK | ATTR_BGMASK);
-  term.erase_char.attr.attr |= TATTR_CLEAR;
+
+  if (term.st_active) {
+    *curs = term.st_saved_curs;
+    curs->y += term.rows;
+  }
+  else {
+    *curs = term.saved_cursors[term.on_alt_screen];
+    term.erase_char.attr = curs->attr;
+    term.erase_char.attr.attr &= (ATTR_FGMASK | ATTR_BGMASK);
+    term.erase_char.attr.attr |= TATTR_CLEAR;
+  }
 
  /* Make sure the window hasn't shrunk since the save */
   if (curs->x >= term.cols)
     curs->x = term.cols - 1;
-  if (curs->y >= term.rows)
-    curs->y = term.rows - 1;
+  short rows = term.st_active ? term_allrows : term.rows;
+  if (curs->y >= rows)
+    curs->y = rows - 1;
 
  /* In origin mode, make sure the cursor position is within margins */
   if (curs->origin) {
@@ -179,10 +208,12 @@ static void
       curs->x = term.marg_left;
     else if (curs->x > term.marg_right)
       curs->x = term.marg_right;
-    if (curs->y < term.marg_top)
-      curs->y = term.marg_top;
-    else if (curs->y > term.marg_bot)
-      curs->y = term.marg_bot;
+    if (!term.st_active) {
+      if (curs->y < term.marg_top)
+        curs->y = term.marg_top;
+      else if (curs->y > term.marg_bot)
+        curs->y = term.marg_bot;
+    }
   }
 
  /*
@@ -255,6 +286,10 @@ charwidth(xchar chr)
 #endif
 }
 
+#define top_y (term.st_active ? term.rows : 0)
+#define bot_y (term.st_active ? term_allrows : term.rows)
+#define marg_y (term.st_active ? term_allrows - 1 : term.marg_bot)
+
 #define attr_rect(...) (attr_rect)(term_p, ##__VA_ARGS__)
 static void
 (attr_rect)(struct term* term_p, cattrflags add, cattrflags sub, cattrflags xor_, short y0, short x0, short y1, short x1)
@@ -270,12 +305,12 @@ static void
     y1 += term.marg_top;
     x1 += term.marg_left;
   }
-  if (y0 < 0)
-    y0 = 0;
+  if (y0 < top_y)
+    y0 = top_y;
   if (x0 < 0)
     x0 = 0;
-  if (y1 >= term.rows)
-    y1 = term.rows - 1;
+  if (y1 >= bot_y)
+    y1 = bot_y - 1;
   if (x1 >= term.cols)
     x1 = term.cols - 1;
   //printf("%d,%d..%d,%d\n", y0, x0, y1, x1);
@@ -309,7 +344,23 @@ static void
 
 //static void write_char(wchar c, int width);
 #define term_do_write(...) (term_do_write)(term_p, ##__VA_ARGS__)
-static void (term_do_write)(struct term* term_p, const char *buf, uint len);
+static void (term_do_write)(struct term* term_p, const char *buf, uint len, bool fix_status);
+
+/*
+   Fix cursor position with respect to status area;
+   this final fix saves a lot of detailed checks elsewhere.
+ */
+#define term_fix_status(...) (term_fix_status)(term_p, ##__VA_ARGS__)
+static void
+(term_fix_status)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  if (term.st_active && term.curs.y < term.rows)
+    term.curs.y = term.rows;
+  else if (!term.st_active && term.curs.y >= term.rows)
+    term.curs.y = term.rows - 1;
+}
 
 #define fill_rect(...) (fill_rect)(term_p, ##__VA_ARGS__)
 static void
@@ -335,12 +386,12 @@ static void
     y1 += term.marg_top;
     x1 += term.marg_left;
   }
-  if (y0 < 0)
-    y0 = 0;
+  if (y0 < top_y)
+    y0 = top_y;
   if (x0 < 0)
     x0 = 0;
-  if (y1 >= term.rows)
-    y1 = term.rows - 1;
+  if (y1 >= bot_y)
+    y1 = bot_y - 1;
   if (x1 >= term.cols)
     x1 = term.cols - 1;
   //printf("%d,%d..%d,%d\n", y0, x0, y1, x1);
@@ -385,11 +436,11 @@ static void
         term.curs.cset_single = csav.cset_single;
         if (chr > 0xFF) {
           //write_char(chr, 1); // would skip NRCS handling in term_do_write
-          term_do_write(cbuf, strlen(cbuf));
+          term_do_write(cbuf, strlen(cbuf), false);
         }
         else {
           char c = chr;
-          term_do_write(&c, 1);
+          term_do_write(&c, 1, false);
         }
       }
     }
@@ -459,21 +510,21 @@ static void
     y2 += term.marg_top;
     x2 += term.marg_left;
   }
-  if (y0 < 0)
-    y0 = 0;
+  if (y0 < top_y)
+    y0 = top_y;
   if (x0 < 0)
     x0 = 0;
-  if (y1 >= term.rows)
-    y1 = term.rows - 1;
+  if (y1 >= bot_y)
+    y1 = bot_y - 1;
   if (x1 >= term.cols)
     x1 = term.cols - 1;
 
-  if (y2 < 0)
-    y2 = 0;
+  if (y2 < top_y)
+    y2 = top_y;
   if (x2 < 0)
     x2 = 0;
-  if (y2 + y1 - y0 >= term.rows)
-    y1 = term.rows + y0 - y2 - 1;
+  if (y2 + y1 - y0 >= bot_y)
+    y1 = bot_y + y0 - y2 - 1;
   if (x2 + x1 - x0 >= term.cols)
     x1 = term.cols + x0 - x2 - 1;
   //printf("%d,%d..%d,%d -> %d,%d\n", y0, x0, y1, x1, y2, x2);
@@ -577,11 +628,11 @@ static void
   }
   x0++; x1++; x2++; e0++; e1++;
   int yt = term.marg_top + 1;
-  int yb = term.marg_bot + 1;
+  int yb = marg_y + 1;
   if (term.curs.origin) {
     // compensate for the originmode applied in the functions called below
     yt = 1;
-    yb = term.marg_bot - term.marg_top + 1;
+    yb = marg_y - term.marg_top + 1;
     x0 -= term.marg_left;
     x1 -= term.marg_left;
     x2 -= term.marg_left;
@@ -608,12 +659,12 @@ static uint
     y1 += term.marg_top;
     x1 += term.marg_left;
   }
-  if (y0 < 0)
-    y0 = 0;
+  if (y0 < top_y)
+    y0 = top_y;
   if (x0 < 0)
     x0 = 0;
-  if (y1 >= term.rows)
-    y1 = term.rows - 1;
+  if (y1 >= bot_y)
+    y1 = bot_y - 1;
   if (x1 >= term.cols)
     x1 = term.cols - 1;
   //printf("%d,%d..%d,%d\n", y0, x0, y1, x1);
@@ -676,7 +727,7 @@ static void
   else if (curs->x == 0 && (curs->y == term.marg_top || !term.autowrap
                        || (!cfg.old_wrapmodes && !term.rev_wrap)))
     /* skip */;
-  else if (curs->x == term.marg_left && curs->y > term.marg_top) {
+  else if (curs->x == term.marg_left && curs->y > term.marg_top && !term.st_active) {
     curs->y--;
     curs->x = term.marg_right;
   }
@@ -738,6 +789,19 @@ static void
   enable_progress();
 }
 
+static void
+#define do_linefeed(...) (do_linefeed)(term_p, ##__VA_ARGS__)
+(do_linefeed)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  term_cursor *curs = &term.curs;
+  if (curs->y == marg_y)
+    term_do_scroll(term.marg_top, term.marg_bot, 1, true);
+  else if (curs->y < bot_y - 1)
+    curs->y++;
+}
+
 #define write_linefeed(...) (write_linefeed)(term_p, ##__VA_ARGS__)
 static void
 (write_linefeed)(struct term* term_p)
@@ -749,10 +813,7 @@ static void
     return;
 
   clear_wrapcontd(term.lines[curs->y], curs->y);
-  if (curs->y == term.marg_bot)
-    term_do_scroll(term.marg_top, term.marg_bot, 1, true);
-  else if (curs->y < term.rows - 1)
-    curs->y++;
+  do_linefeed();
   curs->wrapnext = false;
 }
 
@@ -879,10 +940,7 @@ static void
     line->lattr |= LATTR_WRAPPED;
     line->wrappos = curs->x;
     ushort parabidi = getparabidi(line);
-    if (curs->y == term.marg_bot)
-      term_do_scroll(term.marg_top, term.marg_bot, 1, true);
-    else if (curs->y < term.rows - 1)
-      curs->y++;
+    do_linefeed();
     curs->x = term.marg_left;
     curs->wrapnext = false;
     line = term.lines[curs->y];
@@ -980,10 +1038,7 @@ static void
         line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
         line->wrappos = curs->x;
         ushort parabidi = getparabidi(line);
-        if (curs->y == term.marg_bot)
-          term_do_scroll(term.marg_top, term.marg_bot, 1, true);
-        else if (curs->y < term.rows - 1)
-          curs->y++;
+        do_linefeed();
         curs->x = term.marg_left;
         line = term.lines[curs->y];
         wrapparabidi(parabidi, line, curs->y);
@@ -1321,7 +1376,7 @@ static void
       tek_font(c - '8');
     when '?':
       if (term.state == TEK_ADDRESS0 || term.state == TEK_ADDRESS)
-        term_do_write("", 1);
+        term_do_write("", 1, false);
     when CTRL('C'):
       tek_mode = TEKMODE_OFF;
       term.state = NORMAL;
@@ -1477,7 +1532,7 @@ static void
     when 'I':  /* Reverse line feed. */
       if (curs->y == term.marg_top)
         term_do_scroll(term.marg_top, term.marg_bot, -1, false);
-      else if (curs->y > 0)
+      else if (curs->y > top_y)
         curs->y--;
       curs->wrapnext = false;
     when 'J':  /* Erase from the cursor to the end of the screen. */
@@ -1690,7 +1745,7 @@ static void
     when 'M':  /* RI: reverse index - backwards LF */
       if (curs->y == term.marg_top)
         term_do_scroll(term.marg_top, term.marg_bot, -1, false);
-      else if (curs->y > 0)
+      else if (curs->y > top_y)
         curs->y--;
       curs->wrapnext = false;
     when 'Z':  /* DECID: terminal type query */
@@ -2108,6 +2163,8 @@ static void
           term.app_keypad = state;
         when 2:  /* DECANM: VT100/VT52 mode */
           if (state) {
+            if (term.st_active)
+              return;
             // Designate USASCII for character sets G0-G3
             for (uint i = 0; i < lengthof(term.curs.csets); i++)
               term.curs.csets[i] = CSET_ASCII;
@@ -2922,7 +2979,7 @@ static void
       }
     }
     when 'L':        /* IL: insert lines */
-      if (curs->y >= term.marg_top && curs->y <= term.marg_bot
+      if (curs->y >= term.marg_top && curs->y <= marg_y
        && curs->x >= term.marg_left && curs->x <= term.marg_right
          )
       {
@@ -2930,7 +2987,7 @@ static void
         curs->x = term.marg_left;
       }
     when 'M':        /* DL: delete lines */
-      if (curs->y >= term.marg_top && curs->y <= term.marg_bot
+      if (curs->y >= term.marg_top && curs->y <= marg_y
        && curs->x >= term.marg_left && curs->x <= term.marg_right
          )
       {
@@ -3026,6 +3083,9 @@ static void
       win_invalidate_all(false);  // refresh
     when CPAIR('#', 'R'):  /* Report colours stack entry (XTREPORTCOLORS) */
       child_printf("\e[?%d;%d#Q", colours_cur, colours_num);
+    when CPAIR('"', 'p'):  /* DECSCL: set conformance level */
+      term_switch_status(false);
+      // ignore otherwise
     when CPAIR('$', 'p'): { /* DECRQM: request (private) mode */
       int arg = term.csi_argv[0];
       child_printf("\e[%s%u;%u$y",
@@ -3461,22 +3521,22 @@ static void
     }
     when CPAIR('\'', '}'):  /* DECIC: VT420 Insert Columns */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
-       && curs->y >= term.marg_top && curs->y <= term.marg_bot
+       && curs->y >= term.marg_top && curs->y <= marg_y
          )
         insdel_column(curs->x, false, arg0_def1);
     when CPAIR('\'', '~'):  /* DECDC: VT420 Delete Columns */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
-       && curs->y >= term.marg_top && curs->y <= term.marg_bot
+       && curs->y >= term.marg_top && curs->y <= marg_y
          )
         insdel_column(curs->x, true, arg0_def1);
     when CPAIR(' ', 'A'):     /* SR: ECMA-48 shift columns right */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
-       && curs->y >= term.marg_top && curs->y <= term.marg_bot
+       && curs->y >= term.marg_top && curs->y <= marg_y
          )
         insdel_column(term.marg_left, false, arg0_def1);
-    when CPAIR(' ', '@'):     /* SR: ECMA-48 shift columns left */
+    when CPAIR(' ', '@'):     /* SL: ECMA-48 shift columns left */
       if (curs->x >= term.marg_left && curs->x <= term.marg_right
-       && curs->y >= term.marg_top && curs->y <= term.marg_bot
+       && curs->y >= term.marg_top && curs->y <= marg_y
          )
         insdel_column(term.marg_left, true, arg0_def1);
     when CPAIR('#', 't'):  /* application scrollbar */
@@ -3586,6 +3646,85 @@ static float freq_C5_C7[26] =
           float freq = freq_C5_C7[freqi] * (1 << (term.csi_argv[i] - 41) / 12) / 32;
           win_beep(term.play_tone, vol, freq, ms);
         }
+    }
+    when CPAIR('$', '~'): {  /* DECSSDT: select status line type */
+      /*
+        Unlike xterm, we do not resize the window when changing 
+        status area size; this does not only avoid trouble in full-screen 
+        or maximized mode, it also complies with DEC (VT420 p. 221, VT520 p. 5-147):
+	Notes on DECSSDT
+	• If you select no status line (Ps = 0), the terminal uses the 
+	  line as an additional user window line to display data.
+        As an extension, mintty supports a multi-line status area, 
+        configured with a second parameter to DECSSDT 2.
+        The suggestion of such an option could be interpreted from VT520 p. 2-35:
+	[The number of data display lines visible, not counting any status lines.]
+        although that may just be referring to status lines of multiple sessions.
+      */
+      int old_st_rows = term.st_rows;
+      switch (arg0) {
+        when 0: 
+                term_clear_status();
+                term.st_rows = 0;
+        when 1: 
+                if (term.st_type == 2)
+                  term_clear_status();
+                term.st_type = 1; term.st_rows = 1;
+        when 2: 
+                if (term.st_type != 2)
+                  term_clear_status();
+                term.st_type = 2;
+                if (arg1) {
+                  if (arg1 >= term_allrows / 2)
+                    term.st_rows = max(0, term_allrows / 2 - 1);
+                  else
+                    term.st_rows = arg1;
+                }
+                else
+                  term.st_rows = 1;
+                break;
+        default: return;
+      }
+      if (!term.st_rows) {
+        term.st_type = 0;
+        term_switch_status(false);
+      }
+      if (term.st_type != 2)
+        term_switch_status(false);
+      if (term.st_rows != old_st_rows) {
+        // don't need to win_adapt_term_size(false, false);
+        int newrows = term.rows + old_st_rows - term.st_rows;
+        // scroll cursor position out of status line area
+        int n = curs->y - newrows + 1;
+        if (n > 0) {
+          bool old_st_act = term.st_active;
+          term_switch_status(false);
+          term_do_scroll(term.marg_top, term.marg_bot, n, true);
+          // fix up
+          curs->y = max(0, curs->y - n);
+          term_switch_status(old_st_act);
+        }
+        // don't need to term_resize(newrows, -term.cols);
+        term.rows = newrows;
+        term.marg_top = 0;
+        term.marg_bot = newrows - 1;
+        term.marg_left = 0;
+        term.marg_right = term.cols - 1;
+        // clear status lines
+        for (int i = term.rows; i < term_allrows; i++) {
+          freeline(term.lines[i]);
+          term.lines[i] = newline(term.cols, false);
+        }
+        // notify child process
+        struct winsize ws = {(short unsigned)newrows, (short unsigned)term.cols, (short unsigned)(term.cols * cell_width), (short unsigned)(newrows * cell_height)};
+        child_resize(&ws);
+      }
+    }
+    when CPAIR('$', '}'): {  /* DECSASD: select active status display */
+      bool status_line = arg0;
+      if (term.st_type == 2) {
+        term_switch_status(status_line);
+      }
     }
   }
 
@@ -3932,6 +4071,10 @@ static void
         child_printf("\eP1$r%u$|\e\\", term.cols);
       } else if (!strcmp(s, "*|")) {  // DECSNLS (lines)
         child_printf("\eP1$r%u*|\e\\", term.rows);
+      } else if (!strcmp(s, "$~")) {  // DECSSDT (status line type)
+        child_printf("\eP1$r%u$~\e\\", term.st_type);
+      } else if (!strcmp(s, "$}")) {  // DECSASD (active status)
+        child_printf("\eP1$r%u$}\e\\", term.st_active);
       } else {
         child_printf("\eP0$r%s\e\\", s);
       }
@@ -4647,7 +4790,7 @@ void
 }
 
 static void
-(term_do_write)(struct term* term_p, const char *buf, uint len)
+(term_do_write)(struct term* term_p, const char *buf, uint len, bool fix_status)
 {
   TERM_VAR_REF(true)
   
@@ -5445,6 +5588,9 @@ static void
           do_esc(c);
         }
     }
+
+    if (fix_status)
+      term_fix_status();
   }
 
   if (term.ring_enabled && term.curs.y != oldy)
@@ -5476,7 +5622,7 @@ void
   TERM_VAR_REF(true)
   
   if (term.suspbuf) {
-    term_do_write(term.suspbuf, term.suspbuf_pos);
+    term_do_write(term.suspbuf, term.suspbuf_pos, true);
     free(term.suspbuf);
     term.suspbuf = 0;
     term.suspbuf_pos = 0;
@@ -5516,7 +5662,7 @@ void
     // in this case, we've either flushed already or didn't need to
   }
 
-  term_do_write(buf, len);
+  term_do_write(buf, len, true);
 }
 
 }
