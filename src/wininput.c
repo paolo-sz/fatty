@@ -910,11 +910,15 @@ get_mods(void)
   auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
   lctrl_time = 0;
   lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
+  bool k_super = super_key && is_key_down(super_key);
+  bool k_hyper = hyper_key && is_key_down(hyper_key);
   return (mod_keys)(
     is_key_down(VK_SHIFT) * MDK_SHIFT
     | is_key_down(VK_MENU) * MDK_ALT
     | (lctrl | is_key_down(VK_RCONTROL)) * MDK_CTRL
     | (is_key_down(VK_LWIN) | is_key_down(VK_RWIN)) * MDK_WIN
+    | k_super * MDK_SUPER
+    | k_hyper * MDK_HYPER
     );
 }
 
@@ -941,6 +945,12 @@ static void
   TERM_VAR_REF(true)
     
   static bool last_app_mouse = false;
+
+  // unhover (end hovering) if hover modifiers are withdrawn
+  if (term.hovering && (char)(mods & ~cfg.click_target_mod) != cfg.link_mod) {
+    term.hovering = false;
+    win_update(false);
+  }
 
   bool new_app_mouse =
     ((term.mouse_mode || term.locator_1_enabled)
@@ -3950,10 +3960,13 @@ bool
       win_update_transparency(cfg.transparency, true);
   }
 
+#if 0
+  // "unhovering" is now handled in update_mouse, based on configured mods
   if (key == VK_CONTROL && term.hovering) {
     term.hovering = false;
     win_update(false);
   }
+#endif
 
   if (key == VK_MENU) {
     if (alt_state > ALT_ALONE && alt_code) {
