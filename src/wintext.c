@@ -1161,12 +1161,52 @@ toggle_charinfo()
   show_charinfo = !show_charinfo;
 }
 
+#define show_status_line(...) (show_status_line)(term_p, ##__VA_ARGS__)
+static void
+(show_status_line)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  term_cursor curs = term.curs;
+  term.st_active = true;
+  cattr erase_attr = term.erase_char.attr;
+
+
+  termline * curline = term.displines[term.curs.y];
+  termchar * curchar = &curline->chars[term.curs.x];
+  term.curs.x = 0;
+  term.curs.y = term.rows;
+
+  term.curs.attr.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);
+  term.curs.attr.attr |= (TRUE_COLOUR << ATTR_FGSHIFT) | (TRUE_COLOUR << ATTR_BGSHIFT);
+  term.curs.attr.truefg = win_get_colour(BG_COLOUR_I);
+  term.curs.attr.truebg = win_get_colour(FG_COLOUR_I);
+  term.erase_char.attr.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);
+  term.erase_char.attr.attr |= (TRUE_COLOUR << ATTR_FGSHIFT) | (TRUE_COLOUR << ATTR_BGSHIFT);
+  term.erase_char.attr.truefg = win_get_colour(BG_COLOUR_I);
+  term.erase_char.attr.truebg = win_get_colour(FG_COLOUR_I);
+
+  char stbuf[99];
+  sprintf(stbuf, "[K@%d:%d U+%04X", curs.y, curs.x, curchar->chr);
+  term_write(stbuf, strlen(stbuf));
+
+  term.erase_char.attr = erase_attr;
+  term.st_active = false;
+  term.curs = curs;
+}
+
 #define show_curchar_info(...) (show_curchar_info)(term_p, ##__VA_ARGS__)
 static void
 (show_curchar_info)(struct term* term_p, char tag)
 {
+  TERM_VAR_REF(true)
+  
+  if (term.st_type == 1)
+    show_status_line();
+
   if (!show_charinfo)
     return;
+
   init_charnametable();
   (void)tag;
   static termchar * pp = 0;
@@ -1265,8 +1305,6 @@ static void
 
     show_char_msg(cs);  // does free(cs);
   };
-  
-  TERM_VAR_REF(true)
   
   int line = term.curs.y - term.disptop;
   if (line < 0 || line >= term.rows) {
@@ -2946,10 +2984,17 @@ void
     default_bg = false;
   }
 
-  if (has_cursor) {
+ /* Suppress graphic background at cursor position */
+  if (has_cursor)
     if (term_cursor_type() == CUR_BLOCK && (attr.attr & TATTR_ACTCURS))
       default_bg = false;
 
+ /* Cursor contrast adjustment for background or block cursor */
+  if (has_cursor && (phase < 2 || term_cursor_type() == CUR_BLOCK)) {
+    // To extend this heuristics to other cursor styles, 
+    // some tricky interworking needs to be sorted out (#1157);
+    // currently the assumption is that line cursors should be thin enough 
+    // to make this fix less important
     cursor_colour = colours[ime_open ? IME_CURSOR_COLOUR_I : CURSOR_COLOUR_I];
     //printf("cc (ime_open %d) %06X\n", ime_open, cursor_colour);
 
@@ -4116,11 +4161,31 @@ draw:;
     DeleteObject(oldpen);
   }
 
+  }
+
+  _return:
+
+  {
+  
   if (origtext)
     free(origtext);
 
   show_curchar_info('w');
-  if (has_cursor) {
+
+  if (has_cursor && phase < 2) {
+    auto cursor_size = [&](int cell_size) -> int
+    {
+      switch (term.cursor_size) {
+        when 1: return -2;
+        when 2: return line_width - 1;
+        when 3: return cell_size / 3 - 1;
+        when 4: return cell_size / 2;
+        when 5: return cell_size * 2 / 3;
+        when 6: return cell_size - 2;
+        break; default: return 0;
+      }
+    };
+
     colour _cc = cursor_colour;
     if (layer)
       _cc = ((_cc & 0xFEFEFEFE) >> 1) + ((win_get_colour(BG_COLOUR_I) & 0xFEFEFEFE) >> 1);
@@ -4141,11 +4206,15 @@ draw:;
         SelectObject(dc, oldbrush);
       }
       when CUR_LINE: {
-        int caret_width = 1;
-        SystemParametersInfo(SPI_GETCARETWIDTH, 0, &caret_width, 0);
-        // limit line cursor width by char_width? rather by line_width (#1101)
-        if (caret_width > line_width)
-          caret_width = line_width;
+        int caret_width = cursor_size(cell_width);
+        if (caret_width <= 0) {
+          caret_width = (3 + (lattr >= LATTR_WIDE ? 2 : 0)) * cell_width / 40;
+          SystemParametersInfo(SPI_GETCARETWIDTH, 0, &caret_width, 0);
+          caret_width *= cell_width / 8;
+          // limit cursor width (previously by line_width, #1101)
+          if (caret_width > cell_width)
+            caret_width = cell_width;
+        }
         int xx = x;
         if (attr.attr & TATTR_RIGHTCURS)
           xx += char_width - caret_width;
@@ -4160,7 +4229,12 @@ draw:;
 #else
           HBRUSH br = CreateSolidBrush(_cc);
           RECT tmp_rect = {xx, y, xx + caret_width, y + cell_height};
+#ifdef simple_inverted_cursor_approach
+          // this does not give us sufficient colour control
+          InvertRect(dc,&tmp_rect);
+#else
           FillRect(dc, &tmp_rect, br);
+#endif
           DeleteObject(br);
 #endif
         }
@@ -4191,15 +4265,7 @@ draw:;
 		5   two_thirds
 		6   full block
           */
-          int up = 0;
-          switch (term.cursor_size) {
-            when 1: up = -2;
-            when 2: up = line_width - 1;
-            when 3: up = cell_height / 3 - 1;
-            when 4: up = cell_height / 2;
-            when 5: up = cell_height * 2 / 3;
-            when 6: up = cell_height - 2;
-          }
+          int up = cursor_size(cell_height);
           if (up) {
             int yct = max(yy - up, yt);
             HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(_cc));
@@ -4221,8 +4287,6 @@ draw:;
   }
   
   }
-
-  _return:
 
   if (bloom && coord_transformed_bloom) {
     bloom--;
