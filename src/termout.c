@@ -1095,8 +1095,7 @@ static void
         return;
       // otherwise width 0 was faked for this switch, 
       // and we still need to advance the cursor below
-      break;
-    default:  // Anything else. Probably shouldn't get here.
+    othwise:  // Anything else. Probably shouldn't get here.
       return;
   }
 
@@ -1487,8 +1486,7 @@ static bool
         term.curs.gl = 0;
         term_update_cs();
       }
-      break;
-    default:
+    othwise:
       return false;
   }
   last_char = 0;  // cancel preceding char for REP
@@ -2547,8 +2545,7 @@ static int
         return 2 - !(term.curs.bidimode & LATTR_BIDISEL);
       when 2027:
         return 2 - term.curs.rewrap_on_resize;
-        break;
-      default:
+      othwise:
         return 0;
     }
   }
@@ -2571,8 +2568,7 @@ static int
         else
           return 0;
 #endif
-        break;
-      default:
+      othwise:
         return 0;
     }
   }
@@ -3597,8 +3593,7 @@ static void
           when 11: attr.truebg = RGB(255, 0, 0);
           when 12: attr.truebg = RGB(0, 255, 0);
           when 13: attr.truebg = RGB(255, 255, 255);
-                   break;
-          default: return;
+          othwise: return;
         }
         for (int i = 0; i < term.rows; i++) {
           termline *line = term.lines[i];
@@ -3690,8 +3685,7 @@ static float freq_C5_C7[26] =
                 }
                 else
                   term.st_rows = 1;
-                break;
-        default: return;
+        othwise: return;
       }
       if (!term.st_rows) {
         term.st_type = 0;
@@ -3948,9 +3942,8 @@ static void
         term.imgs.last = img;
       }
     }
-    break;
 
-	default: {
+	  othwise: {
       /* parser status initialization */
       colour fg = win_get_colour(FG_COLOUR_I);
       colour bg = win_get_colour(BG_COLOUR_I);
@@ -4087,8 +4080,7 @@ static void
         child_printf("\eP0$r%s\e\\", s);
       }
     }
-    break;
-    default:
+    othwise:
       return;
    }
 
@@ -4231,8 +4223,7 @@ do_osc_control:
         when 15:   i = TEK_FG_COLOUR_I;
         when 16:   i = TEK_BG_COLOUR_I;
         when 18:   i = TEK_CURSOR_COLOUR_I;
-                   break;
-        default: i = COLOUR_NUM;
+        othwise: i = COLOUR_NUM;
       }
     }
     goto do_osc_control;
@@ -5140,8 +5131,7 @@ static void
               wc = W(" !\"#$%ğ'()*+,-./0123456789:;<=>?İABCDEFGHIJKLMNOPQRSTUVWXYZŞÖÇÜ_Ğabcdefghijklmnopqrstuvwxyzşöçü")
                    [c - ' '];
             }
-            break;
-          default: ;
+          othwise: ;
         }
 
         // Some more special graphic renderings
@@ -5393,8 +5383,7 @@ static void
             term.state = ESCAPE;
           when '\n' case_or '\r':
             term.state = IGNORE_STRING;
-            break;
-          default:
+          othwise:
             term.state = IGNORE_STRING;
         }
 
@@ -5413,8 +5402,7 @@ static void
             term.state = CMD_ESCAPE;
           when '\n' case_or '\r':
             term.state = IGNORE_STRING;
-            break;
-          default:
+          othwise:
             term.state = IGNORE_STRING;
         }
 
@@ -5452,8 +5440,7 @@ static void
             if (term.cmd_num != 1337)
               term_push_cmd(c);
             // else ignore new lines in base64-encoded images
-            break;
-          default:
+          othwise:
             term_push_cmd(c);
         }
 
@@ -5500,8 +5487,7 @@ static void
           when ' ' ... '/':  /* DCS intermediate byte */
             term.dcs_cmd = c;
             term.state = DCS_INTERMEDIATE;
-            break;
-          default:
+          othwise:
             term.state = DCS_IGNORE;
         }
 
@@ -5534,8 +5520,7 @@ static void
             //printf("DCS param->inter %c\n", c);
             term.dcs_cmd = term.dcs_cmd << 8 | c;
             term.state = DCS_INTERMEDIATE;
-            break;
-          default:
+          othwise:
             term.state = DCS_IGNORE;
         }
 
@@ -5553,8 +5538,7 @@ static void
             term.state = DCS_IGNORE;
           when ' ' ... '/':  /* DCS intermediate byte */
             term.dcs_cmd = term.dcs_cmd << 8 | c;
-            break;
-          default:
+          othwise:
             term.state = DCS_IGNORE;
         }
 
@@ -5563,8 +5547,7 @@ static void
           when '\e':
             term.state = DCS_ESCAPE;
             term.esc_mod = 0;
-            break;
-          default:
+          othwise:
             if (!term_push_cmd(c)) {
               do_dcs();
               term.cmd_buf[0] = c;

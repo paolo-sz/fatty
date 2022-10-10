@@ -1362,8 +1362,7 @@ dt_drag_over(IDropTarget *unused(this),
         ?: *effect_p & (DROPEFFECT_COPY | DROPEFFECT_MOVE);
     when CF_HDROP:
       *effect_p &= DROPEFFECT_LINK;
-      break;
-    default:
+    othwise:
       *effect_p = DROPEFFECT_NONE;
   }
   return S_OK;

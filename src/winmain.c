@@ -2340,8 +2340,7 @@ aolib_beep(uint tone, float vol, float freq, uint ms)
              (sin(2 * M_PI * freq * ((float) i / ao_format.rate)) >= 0.4
               ? 1 : -1
              );
-        break;
-      default:
+      othwise:
         sample = 0;
     }
     // provide an audible stroke to separate the start of each note:
@@ -5921,8 +5920,7 @@ main(int argc, char *argv[])
             report_winpid = true;
           when 't':
             report_child_tty = true;
-            break;
-          default:
+          othwise:
             option_error(const_cast<char *>(__("Unknown option '%s'")), optarg, 0);
         }
       when 'u': cfg.create_utmp = true;

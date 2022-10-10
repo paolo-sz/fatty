@@ -3031,8 +3031,7 @@ void
   switch (lattr) {
     when LATTR_NORM: nfont = 0;
     when LATTR_WIDE: nfont = FONT_WIDE;
-      break;
-    default:       nfont = FONT_WIDE + FONT_HIGH;
+    othwise:       nfont = FONT_WIDE + FONT_HIGH;
   }
 
   int wscale = 100;
@@ -4182,7 +4181,7 @@ draw:;
         when 4: return cell_size / 2;
         when 5: return cell_size * 2 / 3;
         when 6: return cell_size - 2;
-        break; default: return 0;
+        othwise: return 0;
       }
     };
 
@@ -4888,9 +4887,7 @@ win_set_colour(colour_i i, colour c)
       when TEK_FG_COLOUR_I: cc(i, cfg.tek_fg_colour);
       when TEK_BG_COLOUR_I: cc(i, cfg.tek_bg_colour);
       when TEK_CURSOR_COLOUR_I: cc(i, cfg.tek_cursor_colour);
-      break;
-      default:
-        break;
+      othwise: ; // do nothing
     }
   }
   else {
@@ -4958,9 +4955,7 @@ win_set_colour(colour_i i, colour c)
         cc(IME_CURSOR_COLOUR_I, c);
         //printf("ime_cc set c %06X\n", c);
       }
-      break;
-      default:
-        break;
+      othwise: ; // do nothing
     }
   }
 

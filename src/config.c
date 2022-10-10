@@ -1055,8 +1055,7 @@ set_option(string name, string val_str, bool from_file)
           return i;
       }
     }
-      break;
-    default: {
+    othwise: {
       int len = strlen(val_str);
       if (!len)
         break;
@@ -1339,8 +1338,7 @@ readtext(char * buf, int len, FILE * file)
         switch (*s) {
           when 't': *t = '\t';
           when 'n': *t = '\n';
-            break;
-          default: *t = *s;
+          othwise: *t = *s;
         }
       }
       else
@@ -1679,8 +1677,7 @@ copy_config(char * tag, config * dst_p, const config * src_p)
           *(colour *)dst_val_p = *(colour *)src_val_p;
         when OPT_COLOUR_PAIR:
           *(colour_pair *)dst_val_p = *(colour_pair *)src_val_p;
-          break;
-        default:
+        othwise:
           *(char *)dst_val_p = *(char *)src_val_p;
       }
     }
@@ -1802,8 +1799,7 @@ save_config(void)
             if (p.fg != p.bg)
               fprintf(file, ";%u,%u,%u", red(p.bg), green(p.bg), blue(p.bg));
           }
-          break;
-          default: {
+          othwise: {
             int val = *(char *)val_p;
             opt_val *o = opt_vals[type];
             for (; o->name; o++) {
@@ -1856,8 +1852,7 @@ apply_config(bool save)
           changed = (*(colour *)val_p != *(colour *)new_val_p);
         when OPT_COLOUR_PAIR:
           changed = memcmp(val_p, new_val_p, sizeof(colour_pair));
-          break;
-        default:
+        othwise:
           changed = (*(char *)val_p != *(char *)new_val_p);
       }
       if (changed)

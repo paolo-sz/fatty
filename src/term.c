@@ -2555,8 +2555,7 @@ fallback:;
     when EMOJIS_OPENMOJI:
       pre = const_cast<char *>("openmoji/");
       fmt = const_cast<char *>("%04X");
-      break;
-    default:
+    othwise:
       return false;
   }
   char * en = strdup(pre);

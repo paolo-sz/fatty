@@ -827,8 +827,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       when WS case_or S: /* Whitespace is treated as neutral for now */
         if (currentOverride != ON)
           tempType = currentOverride;
-        break;
-      default:
+      othwise:
         if (currentOverride != ON)
           tempType = currentOverride;
     }
@@ -847,8 +846,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
         //types[i] = BN;
         types[i] = NSM;  // fixes 4594 test cases + 28 char test cases
         skip[i] = true;  // remove char from algorithm... (usage incomplete)
-        break;
-      default:
+      othwise:
         skip[i] = false;
     }
   }
@@ -880,8 +878,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
       switch (types[i - 1]) {
         when LRI case_or RLI case_or FSI case_or PDI:
           types[i] = ON;
-          break;
-        default:
+        othwise:
           types[i] = types[i - 1];
       }
   }

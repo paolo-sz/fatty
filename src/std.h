@@ -144,7 +144,7 @@ extern void wstrset(wstring *sp, wstring s);
 
 #define when break; case
 #define case_or : case
-//#define otherwise break; default
+#define othwise break; default
 
 #ifdef TRACE
 #define trace(xs...) \

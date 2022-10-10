@@ -1020,8 +1020,7 @@ void
         // 4 long dashed
         when 4: pen = create_pen(PS_DASH);
         // 0 solid
-        break;
-        default:
+        othwise:
           if (pen_width)
             pen = create_pen(PS_SOLID);
           else

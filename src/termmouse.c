@@ -148,8 +148,7 @@ static pos
           p.y--;
         }
       }
-      break;
-    default:
+    othwise:
      /* Shouldn't happen. */
       break;
   }
@@ -302,8 +301,7 @@ static void
           pe = a == MA_CLICK ? 6 : 7;
         when MBT_4:
           pe = a == MA_CLICK ? 8 : 9;
-          break;
-        default:;
+        othwise:;
       }
       if (pe) {
         int x, y, buttons;
@@ -338,8 +336,7 @@ static void
           b = MBT_LEFT; mods |= MDK_ALT;
         when MBT_5:
           b = MBT_RIGHT; mods |= MDK_ALT;
-          break;
-        default:;
+        othwise:;
       }
     else
       switch (b) {
@@ -347,8 +344,7 @@ static void
           b = (mouse_button)129;
         when MBT_5:
           b = (mouse_button)130;
-          break;
-        default:;
+        othwise:;
       }
   }
 
@@ -527,8 +523,7 @@ bool
         b = MBT_LEFT; mods |= MDK_ALT; fake_alt = true;
       when MBT_5:
         b = MBT_RIGHT; mods |= MDK_ALT; fake_alt = true;
-        break;
-      default:;
+      othwise:;
     }
 
     bool alt = mods & MDK_ALT;
@@ -722,8 +717,7 @@ void
       moved_previously = true;
       last_dest = dest;
     }
-    break;
-    default:
+    othwise:
       if (check_app_mouse(&mods)) {
         if (term.mouse_mode >= MM_VT200)
           send_mouse_event(MA_RELEASE, b, mods, box_pos(p));

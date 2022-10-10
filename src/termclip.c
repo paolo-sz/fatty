@@ -283,8 +283,7 @@ contains(string s, wchar c)
     when '\f': tag = "FF";
     when '\e': tag = "ESC";
     when '\177': tag = "DEL";
-      break;
-    default:
+    othwise:
       if (c < ' ')
         tag = "C0";
       else if (c >= 0x80 && c < 0xA0)

@@ -1108,8 +1108,7 @@ bool
       button_state |= 4;
     when MBT_4:
       button_state |= 8;
-      break;
-    default:;
+    othwise:;
   }
 
   return res;
@@ -1136,8 +1135,7 @@ void
       button_state &= ~4;
     when MBT_4:
       button_state &= ~8;
-      break;
-    default:;
+    othwise:;
   }
 }
 
@@ -2657,8 +2655,7 @@ static LONG last_key_time = 0;
       when VK_RIGHT : set_transparency(cfg.transparency + 1);
       when VK_DOWN  : set_transparency(cfg.transparency - 1);
       when VK_NEXT  : set_transparency(cfg.transparency - 16);
-        break;
-      default: transparency_pending = 0;
+      othwise: transparency_pending = 0;
     }
 #ifdef debug_transparency
     printf("==%d\n", transparency_pending);
@@ -2742,8 +2739,7 @@ static LONG last_key_time = 0;
         selection_pending = false;
       when VK_DELETE case_or VK_ESCAPE:  // abort
         selection_pending = false;
-        break;
-      default:
+      othwise:
         //selection_pending = false;
         win_bell(&cfg);
     }
@@ -2789,8 +2785,7 @@ static LONG last_key_time = 0;
       when VK_END  : tek_move_by(-step, -step);
       when VK_DOWN : tek_move_by(-step, 0);
       when VK_NEXT : tek_move_by(-step, step);
-      break;
-      default: step = 0;
+      othwise: step = 0;
     }
     if (step)
       return true;
@@ -3028,8 +3023,7 @@ static LONG last_key_time = 0;
             selection_pending = true;
             //printf("selection_pending = true\n");
             return true;
-            break;
-          default: goto not_scroll;
+          othwise: goto not_scroll;
         }
         if (!term.app_scrollbar) // prevent recursion
           SendMessage(wnd, WM_VSCROLL, scroll, 0);
@@ -3054,8 +3048,7 @@ static LONG last_key_time = 0;
         //when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
         //when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
         //when '0':          zoom = 0;
-          break;
-        default: goto not_zoom;
+        othwise: goto not_zoom;
       }
       win_zoom_font(zoom, mods & MDK_SHIFT);
       return true;
@@ -3104,8 +3097,7 @@ static LONG last_key_time = 0;
         when VK_OEM_MINUS: zoom = -1; mods &= ~MDK_SHIFT;
         when VK_OEM_PLUS:  zoom = 1; mods &= ~MDK_SHIFT;
         when '0':          zoom = 0;
-          break;
-        default: return false;
+        othwise: return false;
       }
       win_zoom_font(zoom, mods & MDK_SHIFT);
       return true;
@@ -3477,8 +3469,7 @@ static LONG last_key_time = 0;
         when '@' case_or '[' ... '_' case_or 'a' ... 'z': c = CTRL(wc);
         when '/': c = CTRL('_');
         when '?': c = CDEL;
-          break;
-        default: return false;
+        othwise: return false;
       }
       ctrl_ch(c);
       return true;
@@ -3801,8 +3792,7 @@ static LONG last_key_time = 0;
         alt = lalt;
       if (!layout())
         return false;
-      break;
-    default:
+    othwise:
       if (!layout())
         return false;
   }

@@ -921,8 +921,7 @@ winctrl_layout(winctrls *wc, ctrlpos *cp, controlset *s, int *id)
           free(fontinfo);
         }
       }
-      break;
-      default:
+      othwise:
         assert(!"Can't happen");
         num_ids = 0;    /* placate gcc */
     }
@@ -2167,8 +2166,7 @@ dlg_set_focus(control *ctrl)
       * In the theoretically-unlikely case that no button was selected, 
       * id should come out of this as 1, which is a reasonable enough choice.
       */
-      break;
-    default: id = c->base_id;
+    othwise: id = c->base_id;
   }
   SetFocus(GetDlgItem(dlg.wnd, id));
 }
