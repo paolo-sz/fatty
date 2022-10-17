@@ -3044,6 +3044,19 @@ confirm_exit(void)
 }
 
 static bool
+confirm_reset(void)
+{
+  int ret = message_box_w(
+              wnd, _W("Reset terminal?"),
+              const_cast<wchar *>(W(APPNAME)), MB_ICONWARNING | MB_OKCANCEL | MB_DEFBUTTON2,
+              null
+            );
+
+  // Treat failure to show the dialog as confirmation.
+  return !ret || ret == IDOK;
+}
+
+static bool
 confirm_tab_exit(struct term* term_p)
 {
   TERM_VAR_REF(true)
@@ -3591,9 +3604,14 @@ static struct {
         when IDM_TOGVT220KB: toggle_vt220();
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(); win_update(false);
-        when IDM_RESET: winimgs_clear(); term_reset(true); win_update(false);
-          if (tek_mode)
-            tek_reset();
+        when IDM_RESET case_or IDM_RESET_NOASK:
+          if ((wp & ~0xF) == IDM_RESET_NOASK || confirm_reset()) {
+            winimgs_clear();
+            term_reset(true);
+            win_update(false);
+            if (tek_mode)
+              tek_reset();
+          }
         when IDM_TEKRESET:
           if (tek_mode)
             tek_reset();
