@@ -11,13 +11,14 @@ using std::min;
   
 extern "C" {
   
-#include "term.h"
+#include "termpriv.h"
 #include "winpriv.h"
 #include "winsearch.h"
 #include "charset.h"  // wcscpy, wcsncat, combiningdouble
 #include "config.h"
 #include "winimg.h"  // winimgs_paint
 #include "tek.h"
+#include "child.h"   // child_tty
 
 #include <winnls.h>
 #include <usp10.h>  // Uniscribe
@@ -1161,6 +1162,92 @@ toggle_charinfo()
   show_charinfo = !show_charinfo;
 }
 
+static char *
+get_char_info(termchar * cpoi, bool doret)
+{
+  init_charnametable();
+
+  static termchar * pp = 0;
+  static termchar prev; // = (termchar) {.cc_next = 0, .chr = 0, .attr = CATTR_DEFAULT};
+  char * cs = 0;
+
+  // return if base character same as previous and no combining chars
+  if (!doret && cpoi == pp && cpoi && cpoi->chr == prev.chr && !cpoi->cc_next)
+    return 0;
+
+#define dont_debug_emojis
+
+  if (cpoi && cfg.emojis && (cpoi->attr.attr & TATTR_EMOJI)) {
+    if (!doret && cpoi == pp)
+      return 0;
+    cs = get_emoji_description(cpoi);
+#ifdef debug_emojis
+    printf("Emoji sequence: %s\n", cs);
+#endif
+  }
+
+  pp = cpoi;
+
+  if (!cs && cpoi) {
+    prev = *cpoi;
+
+    cs = strdup("");
+
+    char * cn = strdup("");
+
+    xchar chbase = 0;
+#ifdef show_only_1_charname
+    bool combined = false;
+#endif
+    // show char codes
+    while (cpoi) {
+      cs = renewn(cs, strlen(cs) + 8 + 1);
+      char * cp = &cs[strlen(cs)];
+      xchar ci;
+      if (is_high_surrogate(cpoi->chr) && cpoi->cc_next && is_low_surrogate((cpoi + cpoi->cc_next)->chr)) {
+        ci = combine_surrogates(cpoi->chr, (cpoi + cpoi->cc_next)->chr);
+        sprintf(cp, "U+%05X ", ci);
+        cpoi += cpoi->cc_next;
+      }
+      else {
+        ci = cpoi->chr;
+        sprintf(cp, "U+%04X ", ci);
+      }
+      if (!chbase)
+        chbase = ci;
+      char * cni = charname(ci);
+      if (cni && *cni) {
+        cn = renewn(cn, strlen(cn) + strlen(cni) + 4);
+        sprintf(&cn[strlen(cn)], "| %s ", cni);
+      }
+
+      if (cpoi->cc_next) {
+#ifdef show_only_1_charname
+        combined = true;
+#endif
+        cpoi += cpoi->cc_next;
+      }
+      else
+        cpoi = null;
+    }
+#ifdef show_only_1_charname
+    char * cn = charname(chbase);
+    char * extra = combined ? " combined..." : "";
+    cs = renewn(cs, strlen(cs) + strlen(cn) + strlen(extra) + 1);
+    sprintf(&cs[strlen(cs)], "%s%s", cn, extra);
+#else
+    cs = renewn(cs, strlen(cs) + strlen(cn) + 1);
+    sprintf(&cs[strlen(cs)], "%s", cn);
+    free(cn);
+#endif
+    int n = strlen(cs) - 1;
+    if (cs[n] == ' ')
+      cs[n] = 0;
+  }
+
+  return cs;
+}
+
 #define show_status_line(...) (show_status_line)(term_p, ##__VA_ARGS__)
 static void
 (show_status_line)(struct term* term_p)
@@ -1171,28 +1258,73 @@ static void
   term.st_active = true;
   cattr erase_attr = term.erase_char.attr;
 
+  // get current character from normal screen cursor position
+  termline * displine = term.displines[term.curs.y];
+  termchar * dispchar = &displine->chars[term.curs.x];
 
-  termline * curline = term.displines[term.curs.y];
-  termchar * curchar = &curline->chars[term.curs.x];
   term.curs.x = 0;
   term.curs.y = term.rows;
 
+  colour bg = win_get_colour(FG_COLOUR_I);
+  bg = ((bg & 0xFEFEFEFE) >> 1) + ((win_get_colour(BG_COLOUR_I) & 0xFEFEFEFE) >> 1);
   term.curs.attr.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);
   term.curs.attr.attr |= (TRUE_COLOUR << ATTR_FGSHIFT) | (TRUE_COLOUR << ATTR_BGSHIFT);
   term.curs.attr.truefg = win_get_colour(BG_COLOUR_I);
-  term.curs.attr.truebg = win_get_colour(FG_COLOUR_I);
+  term.curs.attr.truebg = bg;
   term.erase_char.attr.attr &= ~(ATTR_FGMASK | ATTR_BGMASK);
   term.erase_char.attr.attr |= (TRUE_COLOUR << ATTR_FGSHIFT) | (TRUE_COLOUR << ATTR_BGSHIFT);
   term.erase_char.attr.truefg = win_get_colour(BG_COLOUR_I);
-  term.erase_char.attr.truebg = win_get_colour(FG_COLOUR_I);
+  term.erase_char.attr.truebg = bg;
 
-  char stbuf[99];
-  sprintf(stbuf, "[K@%d:%d U+%04X", curs.y, curs.x, curchar->chr);
-  term_write(stbuf, strlen(stbuf));
+  bool status_bell = false;
+  if (term.bell.last_bell) {
+    // flash status line bell 6 times for 2s
+    // this first attempt flashes chaotically; we need a timer!
+    int deltabell = (mtime() - term.bell.last_bell) / (2000 / 11);
+    if (deltabell < 11 && !(deltabell & 1))
+      status_bell = true;
+  }
+
+  if (status_bell) {
+    term.curs.utf = true;
+    term_update_cs();
+  }
+  wchar wstbuf[term.cols + 1];
+  swprintf(wstbuf, term.cols + 1, W("%s%s%s%s %s%s@%02d:%03d%s%s%s%s%s %ls %s"), 
+                 term.vt220_keys ? "VT220" : "",
+                 term.app_cursor_keys ? "↕" : "",
+                 term.app_keypad ? "±" : "",
+                 child_tty(),
+                 term.printing ? "⎙" : "",
+                 term.bracketed_paste ? "⁅⁆" : "",
+                 curs.y, curs.x,
+                 term.on_alt_screen ? "🖵" : "",
+                 term.insert ? "⎀" : "",
+                 term.curs.wrapnext ? "↵" : "",
+                 term.marg_left || term.marg_right != term.cols - 1
+                 || term.marg_top || term.marg_bot != term.rows - 1
+                   ? "⬚" : "",
+                 term.curs.origin ? "⊡" : "",
+                 status_bell ? W("🔔") : W(""),   // bell indicator 🔔 or 🛎️ 
+                 get_char_info(dispchar, true) ?: ""
+                 );
+  int n = 0;
+  for (wchar * cp = wstbuf; *cp; cp++)
+    if (is_high_surrogate(*cp) && is_low_surrogate(cp[1])) {
+      write_ucschar(*cp, cp[1], (n += 2, 2));  // simplified width assumptions
+      cp++;
+    }
+    else
+      write_char(*cp, (n++, 1));
+  for (; n < term.cols; n++)
+    write_char(W(' '), 1);
 
   term.erase_char.attr = erase_attr;
   term.st_active = false;
   term.curs = curs;
+  if (status_bell) {
+    term_update_cs();
+  }
 }
 
 #define show_curchar_info(...) (show_curchar_info)(term_p, ##__VA_ARGS__)
@@ -1207,113 +1339,36 @@ static void
   if (!show_charinfo)
     return;
 
-  init_charnametable();
   (void)tag;
-  static termchar * pp = 0;
-  static termchar prev; // = (termchar) {.cc_next = 0, .chr = 0, .attr = CATTR_DEFAULT};
 
   auto show_char_msg = [&](char * cs) {
     static char * prev = null;
-    if (!prev || 0 != strcmp(cs, prev)) {
+    char * _cs = cs ?: const_cast<char *>("");
+    if (!prev || 0 != strcmp(_cs, prev)) {
       //printf("[%c]%s\n", tag, cs);
-      if (nonascii(cs)) {
-        wchar * wcs = cs__utftowcs(cs);
+      if (nonascii(_cs)) {
+        wchar * wcs = cs__utftowcs(_cs);
         SetWindowTextW(wnd, wcs);
         free(wcs);
       }
       else
-        SetWindowTextA(wnd, cs);
+        SetWindowTextA(wnd, _cs);
     }
     if (prev)
       free(prev);
     prev = cs;
   };
 
-  auto show_char_info = [&](termchar * cpoi) {
-    char * cs = 0;
-
-    // return if base character same as previous and no combining chars
-    if (cpoi == pp && cpoi && cpoi->chr == prev.chr && !cpoi->cc_next)
-      return;
-
-#define dont_debug_emojis
-
-    if (cfg.emojis && (cpoi->attr.attr & TATTR_EMOJI)) {
-      if (cpoi == pp)
-        return;
-      cs = get_emoji_description(cpoi);
-#ifdef debug_emojis
-      printf("Emoji sequence: %s\n", cs);
-#endif
-    }
-
-    pp = cpoi;
-
-    if (!cs && cpoi) {
-      prev = *cpoi;
-
-      cs = strdup("");
-
-      char * cn = strdup("");
-
-      xchar chbase = 0;
-#ifdef show_only_1_charname
-      bool combined = false;
-#endif
-      // show char codes
-      while (cpoi) {
-        cs = renewn(cs, strlen(cs) + 8 + 1);
-        char * cp = &cs[strlen(cs)];
-        xchar ci;
-        if (is_high_surrogate(cpoi->chr) && cpoi->cc_next && is_low_surrogate((cpoi + cpoi->cc_next)->chr)) {
-          ci = combine_surrogates(cpoi->chr, (cpoi + cpoi->cc_next)->chr);
-          sprintf(cp, "U+%05X ", ci);
-          cpoi += cpoi->cc_next;
-        }
-        else {
-          ci = cpoi->chr;
-          sprintf(cp, "U+%04X ", ci);
-        }
-        if (!chbase)
-          chbase = ci;
-        char * cni = charname(ci);
-        if (cni && *cni) {
-          cn = renewn(cn, strlen(cn) + strlen(cni) + 4);
-          sprintf(&cn[strlen(cn)], "| %s ", cni);
-        }
-
-        if (cpoi->cc_next) {
-#ifdef show_only_1_charname
-          combined = true;
-#endif
-          cpoi += cpoi->cc_next;
-        }
-        else
-          cpoi = null;
-      }
-#ifdef show_only_1_charname
-      char * cn = charname(chbase);
-      char * extra = combined ? " combined..." : "";
-      cs = renewn(cs, strlen(cs) + strlen(cn) + strlen(extra) + 1);
-      sprintf(&cs[strlen(cs)], "%s%s", cn, extra);
-#else
-      cs = renewn(cs, strlen(cs) + strlen(cn) + 1);
-      sprintf(&cs[strlen(cs)], "%s", cn);
-      free(cn);
-#endif
-    }
-
-    show_char_msg(cs);  // does free(cs);
-  };
-  
   int line = term.curs.y - term.disptop;
   if (line < 0 || line >= term.rows) {
-    show_char_info(null);
+    show_char_msg(0);
   }
   else {
     termline * displine = term.displines[line];
     termchar * dispchar = &displine->chars[term.curs.x];
-    show_char_info(dispchar);
+    char * cs = get_char_info(dispchar, false);
+    if (cs)
+      show_char_msg(cs);  // does free(cs);
   }
 }
 

@@ -88,4 +88,10 @@ extern char * geturl(int n);
 
 extern void compose_clear(void);
 
+/* Direct screen buffer output, for status line */
+#define write_char(...) (write_char)(term_p, ##__VA_ARGS__)
+extern void (write_char)(struct term *term_p, wchar wc, int width);
+#define write_ucschar(...) (write_ucschar)(term_p, ##__VA_ARGS__)
+extern void (write_ucschar)(struct term *term_p, wchar hwc, wchar wc, int width);
+
 #endif

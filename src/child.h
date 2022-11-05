@@ -56,7 +56,8 @@ extern void (child_resize)(struct child* child_p, struct winsize * winp);
 extern bool child_is_alive(struct child* child_p);
 extern bool child_is_parent(struct child* child_p);
 //extern wchar * grandchild_process_list(void);
-//extern char * child_tty(void);
+#define child_tty(...) (child_tty)(child_p, ##__VA_ARGS__)
+extern char * (child_tty)(struct child* child_p);
 extern bool child_is_any_parent();
 #define foreground_prog(...) (foreground_prog)(child_p, ##__VA_ARGS__)
 extern char * (foreground_prog)(struct child* child_p);  // to be free()d

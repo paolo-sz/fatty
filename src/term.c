@@ -340,6 +340,7 @@ void
     term.repeat_rate = 0;
     term.attr_rect = false;
     term.deccolm_noclear = false;
+    term.erase_to_screen = false;
   }
   term.modify_other_keys = 0;  // xterm resets this
 
@@ -1912,6 +1913,14 @@ void
   term.lines = term.other_lines;
   term.other_lines = oldlines;
 
+  // keep status area (xterm 373)
+  if (term.st_type == 2)
+    for (int i = term.rows; i < term_allrows; i++) {
+      freeline(term.lines[i]);
+      term.lines[i] = term.other_lines[i];
+      term.other_lines[i] = newline(term.cols, false);
+    }
+
   /* swap image list */
   imglist * first = term.imgs.first;
   imglist * last = term.imgs.last;
@@ -1945,10 +1954,14 @@ void
   }
 
   // home status cursor position
-  if (term.st_active)
+  if (term.st_active) {
     term.curs.y = term.rows;
-  else
+    term.curs.x = 0;
+  }
+  else {
     term.st_other_curs.y = 0;  // saved status cursor is normalized to 0
+    term.st_other_curs.x = 0;
+  }
 }
 
 /*
@@ -2335,7 +2348,8 @@ void
                !(line->chars[start.x].attr.attr & ATTR_PROTECTED)
               )
       {
-        line->chars[start.x] = term.erase_char;
+        line->chars[start.x] = 
+          term.erase_to_screen ? basic_erase_char : term.erase_char;
         if (!start.x)
           clear_cc(line, -1);
       }

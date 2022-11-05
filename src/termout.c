@@ -847,8 +847,7 @@ static int last_width = 0;
 cattr last_attr = {attr : ATTR_DEFAULT,
                    truebg : 0, truefg : 0, ulcolr : (colour)-1, link : 0, imgi : 0};
 
-#define write_char(...) (write_char)(term_p, ##__VA_ARGS__)
-static void
+void
 (write_char)(struct term* term_p, wchar c, int width)
 {
   TERM_VAR_REF(true)
@@ -1234,8 +1233,7 @@ scriptfont(ucschar ch)
   return 0;
 }
 
-#define write_ucschar(...) (write_ucschar)(term_p, ##__VA_ARGS__)
-static void
+void
 (write_ucschar)(struct term* term_p, wchar hwc, wchar wc, int width)
 {
   TERM_VAR_REF(true)
@@ -2254,6 +2252,8 @@ static void
           }
         when 80: /* DECSDM: SIXEL display mode */
           term.sixel_display = state;
+        when 117: /* DECECM: erase to default colour */
+          term.erase_to_screen = state;
         when 1000: /* VT200_MOUSE */
           term.mouse_mode = state ? MM_VT200 : (mouse_mode_t)0;
           win_update_mouse();
@@ -2471,6 +2471,8 @@ static int
         return 2 - term.lrmargmode;
       when 80: /* DECSDM: SIXEL display mode */
         return 2 - term.sixel_display;
+      when 117: /* DECECM: erase to default colour */
+        return 2 - term.erase_to_screen;
       when 1000: /* VT200_MOUSE */
         return 2 - (term.mouse_mode == MM_VT200);
       when 1002: /* BTN_EVENT_MOUSE */
@@ -4076,6 +4078,8 @@ static void
         child_printf("\eP1$r%u$~\e\\", term.st_type);
       } else if (!strcmp(s, "$}")) {  // DECSASD (active status)
         child_printf("\eP1$r%u$}\e\\", term.st_active);
+      } else if (!strcmp(s, "-p")) {  // DECARR (auto repeat rate)
+        child_printf("\eP1$r%u-p\e\\", term.repeat_rate);
       } else {
         child_printf("\eP0$r%s\e\\", s);
       }

@@ -450,6 +450,14 @@ void
   }
 }
 
+char *
+(child_tty)(struct child* child_p)
+{
+  CHILD_VAR_REF(true)
+
+  return ptsname(pty_fd);
+}
+
 void
 child_free(struct child* child_p)
 {
