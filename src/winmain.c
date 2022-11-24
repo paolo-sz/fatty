@@ -1805,9 +1805,12 @@ win_fix_position(bool scrollbar)
                SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
-void
-(win_set_pixels)(struct term* term_p, int height, int width)
+#define win_set_pixels_zoom(...) (win_set_pixels_zoom)(term_p, ##__VA_ARGS__)
+static void
+(win_set_pixels_zoom)(struct term* term_p, int height, int width)
 {
+  TERM_VAR_REF(true)
+  
   trace_resize(("--- win_set_pixels %d %d\n", height, width));
   // avoid resizing if no geometry yet available (#649?)
   if (!height || !width)  // early invocation
@@ -2050,8 +2053,9 @@ void
                SWP_NOACTIVATE | SWP_NOCOPYBITS | SWP_NOZORDER);
 }
 
-void
-(win_set_chars)(struct term* term_p, int rows, int cols)
+#define win_set_chars_zoom(...) (win_set_chars_zoom)(term_p, ##__VA_ARGS__)
+static void
+(win_set_chars_zoom)(struct term* term_p, int rows, int cols)
 {
   TERM_VAR_REF(true)
   
@@ -2072,6 +2076,25 @@ void
   trace_winsize("win_set_chars > win_fix_position");
 }
 
+void
+(win_set_pixels)(struct term* term_p, int height, int width)
+{
+  TERM_VAR_REF(true)
+  
+  // prevent font zooming if called from termout.c, for CSI 4
+  default_size_token = true;
+  win_set_pixels_zoom(height, width);
+}
+
+void
+(win_set_chars)(struct term* term_p, int rows, int cols)
+{
+  TERM_VAR_REF(true)
+  
+  // prevent font zooming if called from termout.c, for CSI 8 etc
+  default_size_token = true;
+  win_set_chars_zoom(rows, cols);
+}
 
 void
 taskbar_progress(int i)
@@ -2678,8 +2701,8 @@ void
   TERM_VAR_REF(true)
   
   if (sync_size_with_font && !win_is_fullscreen) {
-    // enforced win_set_chars(term.rows, term.cols):
-    win_set_pixels(term_allrows * cell_height + OFFSET, term.cols * cell_width);
+    // enforced win_set_chars_zoom(term.rows, term.cols):
+    win_set_pixels_zoom(term_allrows * cell_height + OFFSET, term.cols * cell_width);
 #ifdef win_set_pixels_does_not_win_fix_position
     if (is_init)  // don't spoil negative position (#1123)
       win_fix_position(false);
@@ -2874,7 +2897,7 @@ static void
 {
   if (IsZoomed(wnd))
     ShowWindow(wnd, SW_RESTORE);
-  win_set_chars(cfg.rows, cfg.cols);
+  win_set_chars_zoom(cfg.rows, cfg.cols);
 }
 
 void
@@ -4458,7 +4481,7 @@ static int olddelta;
           printf("term w/h %d/%d -> %d/%d, fixing\n", x, y, term.cols, term.rows);
 #endif
           // win_fix_position also clips the window to desktop size
-          win_set_chars(y, x);
+          win_set_chars_zoom(y, x);
         }
 
         is_in_dpi_change = false;
@@ -4506,7 +4529,7 @@ static int olddelta;
           // try to stabilize terminal size roundtrip
           if (term.rows != y || term.cols != x) {
             // win_fix_position also clips the window to desktop size
-            win_set_chars(y, x);
+            win_set_chars_zoom(y, x);
           }
 #ifdef debug_dpi
           printf("SM_CXVSCROLL %d\n", GetSystemMetrics(SM_CXVSCROLL));
@@ -6571,7 +6594,7 @@ main(int argc, char *argv[])
   trace_winsize("createwindow");
   if (horbar) {
     // fix broken height
-    win_set_chars(term_rows, term_cols);
+    win_set_chars_zoom(term_rows, term_cols);
     trace_winsize("createwindow with horbar");
 
     // update scrollbar display
@@ -6774,9 +6797,9 @@ main(int argc, char *argv[])
         else {
           // consider preset size (term_)
           // this also adjusts extra_height by horex()...
-          win_set_chars(term_rows ?: cfg.rows, term_cols ?: cfg.cols);
-          trace_winsize("dpi > win_set_chars");
-          //?win_set_pixels(term_rows * cell_height, term_cols * cell_width);
+          win_set_chars_zoom(term_rows ?: cfg.rows, term_cols ?: cfg.cols);
+          trace_winsize("dpi > win_set_chars_zoom");
+          //?win_set_pixels_zoom(term_rows * cell_height, term_cols * cell_width);
         }
       }
     }

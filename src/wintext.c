@@ -1254,6 +1254,7 @@ static void
 {
   TERM_VAR_REF(true)
   
+#if CYGWIN_VERSION_API_MINOR >= 74
   term_cursor curs = term.curs;
   term.st_active = true;
   cattr erase_attr = term.erase_char.attr;
@@ -1279,8 +1280,9 @@ static void
   bool status_bell = false;
   if (term.bell.last_bell) {
     // flash status line bell 6 times for 2s
-    // this first attempt flashes chaotically; we need a timer!
-    int deltabell = (mtime() - term.bell.last_bell) / (2000 / 11);
+    // - let's make that 5s, in order to smooth out chaotic blinking a bit
+    // for a better solution, we'd need a timer
+    int deltabell = (mtime() - term.bell.last_bell) / (5000 / 11);
     if (deltabell < 11 && !(deltabell & 1))
       status_bell = true;
   }
@@ -1290,7 +1292,16 @@ static void
     term_update_cs();
   }
   wchar wstbuf[term.cols + 1];
-  swprintf(wstbuf, term.cols + 1, W("%s%s%s%s %s%s@%02d:%03d%s%s%s%s%s %ls %s"), 
+  swprintf(wstbuf, term.cols + 1, W("%s%s%s%s%s %s%s@%02d:%03d%s%s%s%s%s %ls %s"), 
+                 term.st_kb_flag ?
+                     (term.st_kb_flag == 16 ? "Hex "
+                      : term.st_kb_flag == 10 ? "Dec "
+                      : term.st_kb_flag == 8 ? "Oct "
+                      : term.st_kb_flag == 4 ? "Alt "
+                      : term.st_kb_flag == 2 ? "Com "
+                      : ""
+                     )
+                   : "",
                  term.vt220_keys ? "VT220" : "",
                  term.app_cursor_keys ? "↕" : "",
                  term.app_keypad ? "±" : "",
@@ -1298,7 +1309,7 @@ static void
                  term.printing ? "⎙" : "",
                  term.bracketed_paste ? "⁅⁆" : "",
                  curs.y, curs.x,
-                 term.on_alt_screen ? "🖵" : "",
+                 term.on_alt_screen ? "A🖵" : "",
                  term.insert ? "⎀" : "",
                  term.curs.wrapnext ? "↵" : "",
                  term.marg_left || term.marg_right != term.cols - 1
@@ -1325,6 +1336,7 @@ static void
   if (status_bell) {
     term_update_cs();
   }
+#endif
 }
 
 #define show_curchar_info(...) (show_curchar_info)(term_p, ##__VA_ARGS__)
@@ -1676,6 +1688,7 @@ void
 static bool tiled = false;
 static bool ratio = false;
 static bool wallp = false;
+static bool multi = false;
 static int wallp_style;
 static int alpha = -1;
 static LONG w = 0, h = 0;
@@ -1940,6 +1953,21 @@ static void
       // prepare source memory DC and select the source bitmap into it
       HDC dc0 = CreateCompatibleDC(dc);
       HBITMAP oldhbm0 = (HBITMAP)SelectObject(dc0, hbm);
+      // crop image for combined scaling and tiling (#1180)
+      if (multi) {
+        int imgw = w;
+        int imgh = h;
+        if (bw * h > w * bh) {
+          imgw = w;
+          imgh = bh * imgw / bw;
+        }
+        else if (bw * h < w * bh) {
+          imgh = h;
+          imgw = bw * imgh / bh;
+        }
+        w = imgw;
+        h = imgh;
+      }
 
       // prepare destination memory DC, 
       // create and select the destination bitmap into it
@@ -2136,6 +2164,7 @@ static wchar *
   tiled = false;
   ratio = false;
   wallp = false;
+  multi = false;
   static wchar * wallpfn = 0;
 
   wchar * bgfn = (wchar *)cfg.background;
@@ -2145,6 +2174,10 @@ static wchar *
   }
   else if (*bgfn == '%') {
     ratio = true;
+    bgfn++;
+  }
+  else if (*bgfn == '+') {
+    multi = true;
     bgfn++;
   }
   else if (*bgfn == '_') {

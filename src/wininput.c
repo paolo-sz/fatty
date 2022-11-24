@@ -1008,11 +1008,16 @@ static pos
 {
   TERM_VAR_REF(true)
     
+  int rows = term.rows;
+  if (term.st_active) {
+    rows = term.st_rows;
+    y = max(0, y - term.rows * cell_height);
+  }
   return (pos){
     y : (int)floorf((y - PADDING - OFFSET) / (float)cell_height),
     x : (int)floorf((x - PADDING) / (float)cell_width),
-    piy : (int)min(max(0, y - PADDING - OFFSET), term.cols * cell_width - 1),
-    pix : (int)min(max(0, x - PADDING), term.rows * cell_height - 1),
+    piy : (int)min(max(0, y - PADDING - OFFSET), rows * cell_height - 1),
+    pix : (int)min(max(0, x - PADDING), term.cols * cell_width - 1),
     r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)
          : false
@@ -1204,7 +1209,12 @@ void
         p.y = 0;
       else
         p.y -= OFFSET + PADDING;
-      if (p.y >= term.rows * cell_height)
+      if (term.st_active) {
+        p.y = max(0, p.y - term.rows * cell_height);
+        if (p.y >= term.st_rows * cell_height)
+          p.y = term.st_rows * cell_height - 1;
+      }
+      else if (p.y >= term.rows * cell_height)
         p.y = term.rows * cell_height - 1;
 
       if (by_pixels) {
@@ -1315,6 +1325,12 @@ transparency_level(struct term *term_p)
 }
 
 static void
+transparency_opaque(struct term *term_p)
+{
+  win_update_transparency(cfg.transparency, true);
+}
+
+static void
 newwin_begin(__attribute__((unused))struct term* term_p, uint key, mod_keys mods)
 {
   if (key) {
@@ -1392,6 +1408,27 @@ toggle_bidi(struct term *term_p)
   TERM_VAR_REF(true)
     
   term.disable_bidi = !term.disable_bidi;
+}
+
+#define toggle_dim_margins(...) (toggle_dim_margins)(term_p, ##__VA_ARGS__)
+void
+(toggle_dim_margins)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+    
+  term.dim_margins = !term.dim_margins;
+}
+
+#define toggle_status_line(...) (toggle_status_line)(term_p, ##__VA_ARGS__)
+void
+(toggle_status_line)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+    
+  if (term.st_type == 1)
+    term_set_status_type(0, 0);
+  else
+    term_set_status_type(1, 0);
 }
 
 static void scroll_HOME(__attribute__((unused))struct term* term_p)
@@ -1751,6 +1788,24 @@ mflags_bidi(struct term *term_p)
            : term.disable_bidi ? MF_UNCHECKED : MF_CHECKED;
 }
 
+#define mflags_dim_margins(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_dim_margins)(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.dim_margins ? MF_CHECKED : MF_UNCHECKED;
+}
+
+#define mflags_status_line(...) (mflags_status_line)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_status_line)(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.st_type == 1 ? MF_CHECKED : MF_UNCHECKED;
+}
+
 static uint
 mflags_options(__attribute__((unused))struct term *term_p)
 {
@@ -1844,6 +1899,7 @@ static struct function_def cmd_defs[] = {
   {"scrollbar-inner", {.fct = (toggle_scrollbar)}, mflags_scrollbar_inner},
   {"cycle-pointer-style", {.fct = (cycle_pointer_style)}, 0},
   {"cycle-transparency-level", {.fct = transparency_level}, 0},
+  {"transparency-opaque", {.fct = transparency_opaque}, 0},
 
   {"copy", {IDM_COPY}, mflags_copy},
   {"copy-text", {IDM_COPY_TEXT}, mflags_copy},
@@ -1878,6 +1934,8 @@ static struct function_def cmd_defs[] = {
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
   {"refresh", {.fct = refresh}, 0},
+  {"toggle-dim-margins", {.fct = toggle_dim_margins}, mflags_dim_margins},
+  {"toggle-status-line", {.fct = toggle_status_line}, mflags_status_line},
 
   {"super", {.fct_key = super_down}, 0},
   {"hyper", {.fct_key = hyper_down}, 0},

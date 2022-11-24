@@ -2223,6 +2223,11 @@ mintty 2.7.5:
 .RE
 
 .TQ
+\fBEnable indicator status line\fP (StatusLine=false)
+This setting enables the DEC indicator status line initially.
+On terminal reset, this setting is restored unless host-writable status line is selected.
+
+.TQ
 \fBAllow control sequence to set selection\fP (AllowSetSelection=false)
 If enabled, the terminal control sequence OSC 52 is allowed to set the 
 clipboard selection for pasting (using base64-encoded contents, like xterm).
@@ -2544,6 +2549,11 @@ Typical baud rates (as supported by DEC VT420) were
 .TQ
 \fBBloom effect around characters\fP (Bloom=0)
 This setting enables a rough simulation of old CRT terminals' bloom effect.
+
+.TQ
+\fBVisualize terminal margins\fP (DimMargins=false)
+This setting dims margin areas (mainly for testing); origin mode is not considered.
+A user-definable menu function can also toggle this feature.
 
 .TQ
 \fBClear selection highlighting on input\fP (ClearSelectionOnInput=true)
@@ -2952,6 +2962,8 @@ Supported actions are described as follows:
 .br
 \(en \fBcycle-transparency-level\fP: cycles the transparency level
 .br
+\(en \fBtransparency-opaque\fP: temporarily overrides transparency
+.br
 \(en \fBunicode-char\fP: enter Unicode character by its hexadecimal code
 .br
 \(en \fBcopy\fP: copies the selection to the clipboard
@@ -3018,6 +3030,8 @@ Supported actions are described as follows:
 .br
 \(en \fBtoggle-logging\fP: toggles logfile logging
 .br
+\(en \fBtoggle-status-line\fP: toggles indicator status line
+.br
 \(en \fBtoggle-char-info\fP: toggles character info display
 .br
 \(en \fBexport-html\fP (*): exports the screen as an HTML file
@@ -3027,6 +3041,8 @@ Supported actions are described as follows:
 \(en \fBtoggle-bidi\fP: toggles (global) bidi disabling
 .br
 \(en \fBrefresh\fP: refresh terminal display
+.br
+\(en \fBtoggle-dim-margins\fP: toggles margin dimming
 .br
 \(en \fBvoid\fP: do nothing
 .br
@@ -3315,18 +3331,24 @@ The highlighting colours of search matches can be configured.
 With this option, an image can be chosen as background.
 With an image file name, absolute (with an optional \fB~\fP prefix) 
 or relative to the current terminal foreground process, 
-the option either uses the image as a background picture, scaled to 
-the terminal size (optional prefix \fB_\fP to the filename), 
-or initially scaling the terminal to the aspect ratio of the image 
-(prefix \fB%\fP to the filename), 
-or as a tiled background texture (prefix \fB*\fP to the filename), 
-or it uses the current desktop background, achieving a virtual 
-floating window effect (\fB=\fP without filename, currently only applicable 
-if desktop wallpaper is set as being "tiled" and unscaled).
+the option uses the image as a background picture, with variations 
+as indicated by a prefix character to the filename:
+.br
+\fB_\fP (optional prefix) scales the image to the terminal size 
+.br
+\fB%\fP initially scales the terminal to the image's aspect ratio
+.br
+\fB*\fP uses the image as a tiled texture
+.br
+\fB+\fP scales to terminal size, keeping aspect ratio, then tiles
+.br
+\fB=\fP (no filename) uses the current desktop background, 
+achieving a virtual floating window effect (currently only applicable 
+if desktop wallpaper is set as being "tiled" and unscaled)
 
 The background can be changed with an OSC 11 escape sequence, 
 instead of a colour using a background specification 
-prefixed with either of \fB_\fP, \fB%\fP, \fB*\fP, \fB=\fP.
+prefixed with either of \fB_\fP, \fB%\fP, \fB*\fP, \fB+\fP, \fB=\fP.
 
 If the background filename is followed by a comma and a number between 1 and 254, 
 the background image will be dimmed towards the background colour;

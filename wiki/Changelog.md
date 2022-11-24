@@ -1,3 +1,11 @@
+Unicode and Emoji data
+  * Extend emoji information by considering Unicode file emoji-test.txt.
+
+### 3.6.2 (13 Nov 2022) ###
+
+Unicode and Emoji data
+  * Unicode 15.0 update.
+
 Terminal features
   * Status line area support (VT320, xterm 371), DECSSDT, DECSASD.
   * Extended multi-line host-writable status area, DECSSDT 2 N.
@@ -7,6 +15,8 @@ Terminal features
   * Revamp line cursor handling, size changeable by CSI ? N c (#1157, #1175).
   * Support DECSET 117 (DECECM, VT520).
   * Added DECARR to DECRQSS.
+  * Prevent font zooming for resizing controls like CSI 8.
+  * Optionally visualize margins by dimming.
 
 Keyboard handling
   * Not suppressing user-defined KeyFunctions for keypad keys in keypad modes (#1161).
@@ -15,6 +25,7 @@ Keyboard handling
 Mouse handling
   * Configurable modifiers for hovering and link opening (#1169).
   * Support super and hyper modifiers with mouse functions.
+  * Fixed mouse pixel coordinates limits (DECSET 1016).
 
 Initialisation
   * Grab focus again after showing the window, reducing focus delay for Windows 11 (#1113).
@@ -23,6 +34,10 @@ Configuration
   * Option OldKeyFunctionsKeypad (~#1161, not listed in manual).
   * Option OpeningMod (#1169).
   * New user-definable function reset-noask.
+  * Option DimMargins, user-definable function toggle-dim-margins.
+  * Option StatusLine, user-definable function toggle-status-line.
+  * Background image mode '+' for combined scaling and tiling (#1180).
+  * New user-definable function transparency-opaque (#1168).
 
 Other
   * Fixed crash condition on user-defined commands (#1174).

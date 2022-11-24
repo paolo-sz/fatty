@@ -305,6 +305,8 @@ const config default_cfg = {
   options_font : W(""),
   options_fontsize : 0,
   old_options : "",
+  dim_margins : false,
+  status_line : false,
   old_xbuttons : false,
   use_system_colours : false,
   old_bold : false
@@ -595,6 +597,8 @@ options[] = {
   {"ProgressBar", OPT_BOOL, offcfg(progress_bar)},
   {"Baud", OPT_INT, offcfg(baud)},
   {"Bloom", OPT_INT, offcfg(bloom)},
+  {"DimMargins", OPT_BOOL, offcfg(dim_margins)},
+  {"StatusLine", OPT_BOOL, offcfg(status_line)},
   {"OldXButtons", OPT_BOOL, offcfg(old_xbuttons)},
   {"OptionsFont", OPT_WSTRING, offcfg(options_font)},
   {"OptionsFontSize", OPT_INT | OPT_LEGACY, offcfg(options_fontsize)},
