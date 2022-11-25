@@ -1410,18 +1410,16 @@ toggle_bidi(struct term *term_p)
   term.disable_bidi = !term.disable_bidi;
 }
 
-#define toggle_dim_margins(...) (toggle_dim_margins)(term_p, ##__VA_ARGS__)
 void
-(toggle_dim_margins)(struct term* term_p)
+toggle_dim_margins(struct term* term_p)
 {
   TERM_VAR_REF(true)
     
   term.dim_margins = !term.dim_margins;
 }
 
-#define toggle_status_line(...) (toggle_status_line)(term_p, ##__VA_ARGS__)
 void
-(toggle_status_line)(struct term* term_p)
+toggle_status_line(struct term* term_p)
 {
   TERM_VAR_REF(true)
     
