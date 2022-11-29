@@ -176,6 +176,7 @@ const config default_cfg = {
   // Terminal
   term : "xterm",
   answerback : W(""),
+  wrap_tab : 0,
   old_wrapmodes : false,
   enable_deccolm_init : false,
   bell_type : 1,
@@ -497,6 +498,7 @@ options[] = {
   // Terminal
   {"Term", OPT_STRING, offcfg(term)},
   {"Answerback", OPT_WSTRING, offcfg(answerback)},
+  {"WrapTab", OPT_INT, offcfg(wrap_tab)},
   {"OldWrapModes", OPT_BOOL, offcfg(old_wrapmodes)},
   {"Enable132ColumnSwitching", OPT_BOOL, offcfg(enable_deccolm_init)},
   {"BellType", OPT_INT, offcfg(bell_type)},

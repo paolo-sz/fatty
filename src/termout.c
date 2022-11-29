@@ -716,6 +716,73 @@ static uint
 }
 
 
+#define do_linefeed(...) (do_linefeed)(term_p, ##__VA_ARGS__)
+static void
+(do_linefeed)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+  
+  term_cursor *curs = &term.curs;
+  if (curs->y == marg_y)
+    term_do_scroll(term.marg_top, term.marg_bot, 1, true);
+  else if (curs->y < bot_y - 1)
+    curs->y++;
+}
+
+#define wrapparabidi(...) (wrapparabidi)(term_p, ##__VA_ARGS__)
+static void
+(wrapparabidi)(struct term* term_p, ushort parabidi, termline * line, int y)
+{
+  TERM_VAR_REF(true)
+  
+  line->lattr = (line->lattr & ~LATTR_BIDIMASK) | parabidi | LATTR_WRAPCONTD;
+
+#ifdef determine_parabidi_during_output
+  if (parabidi & (LATTR_BIDISEL | LATTR_AUTOSEL))
+    return;
+
+  // if direction autodetection pending:
+  // from current line, extend backward and forward to adjust 
+  // "paragraph" bidi attributes (esp. direction) to wrapped lines
+  termline * paraline = line;
+  int paray = y;
+  while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines()) {
+    paraline = fetch_line(--paray);
+    paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
+    release_line(paraline);
+  }
+  paraline = line;
+  paray = y;
+  while ((paraline->lattr & LATTR_WRAPPED) && paray < term.rows) {
+    paraline = fetch_line(++paray);
+    paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
+    release_line(paraline);
+  }
+#else
+  (void)y;
+#endif
+}
+
+#define do_wrap(...) (do_wrap)(term_p, ##__VA_ARGS__)
+static termline *
+(do_wrap)(struct term* term_p, termline * line, ushort lattr)
+{
+  TERM_VAR_REF(true)
+  
+  term_cursor * curs = &term.curs;
+
+  line->lattr |= lattr;
+  line->wrappos = curs->x;
+  ushort parabidi = getparabidi(line);
+  do_linefeed();
+  curs->x = term.marg_left;
+  curs->wrapnext = false;
+  line = term.lines[curs->y];
+  wrapparabidi(parabidi, line, curs->y);
+
+  return line;
+}
+
 #define write_bell(...) (write_bell)(term_p, ##__VA_ARGS__)
 static void
 (write_bell)(struct term* term_p)
@@ -765,6 +832,11 @@ static void
   
   term_cursor *curs = &term.curs;
 
+  if (cfg.wrap_tab && curs->wrapnext && term.autowrap) {
+    termline * line = term.lines[curs->y];
+    (void)do_wrap(line, LATTR_WRAPPED);
+  }
+
   int last = -1;
   do {
     if (curs->x == term.marg_right)
@@ -785,10 +857,15 @@ static void
   if ((term.lines[curs->y]->lattr & LATTR_MODE) != LATTR_NORM) {
     if (curs->x >= term.cols / 2)
       curs->x = term.cols / 2 - 1;
+    if (cfg.wrap_tab > 1 && curs->x == term.cols / 2 - 1)
+      curs->wrapnext = true;
   }
   else {
     if (curs->x >= term.cols)
       curs->x = term.cols - 1;
+    if (cfg.wrap_tab > 1 && 
+        (curs->x == term.cols - 1 || curs->x == term.marg_right))
+      curs->wrapnext = true;
   }
 }
 
@@ -804,19 +881,6 @@ static void
   else
     term.curs.x = term.marg_left;
   enable_progress();
-}
-
-static void
-#define do_linefeed(...) (do_linefeed)(term_p, ##__VA_ARGS__)
-(do_linefeed)(struct term* term_p)
-{
-  TERM_VAR_REF(true)
-  
-  term_cursor *curs = &term.curs;
-  if (curs->y == marg_y)
-    term_do_scroll(term.marg_top, term.marg_bot, 1, true);
-  else if (curs->y < bot_y - 1)
-    curs->y++;
 }
 
 #define write_linefeed(...) (write_linefeed)(term_p, ##__VA_ARGS__)
@@ -896,36 +960,6 @@ void
   last_char = c;
   last_attr = curs->attr;
 
-  auto wrapparabidi = [&](ushort parabidi, termline * line, int y)
-  {
-    line->lattr = (line->lattr & ~LATTR_BIDIMASK) | parabidi | LATTR_WRAPCONTD;
-
-#ifdef determine_parabidi_during_output
-    if (parabidi & (LATTR_BIDISEL | LATTR_AUTOSEL))
-      return;
-
-    // if direction autodetection pending:
-    // from current line, extend backward and forward to adjust 
-    // "paragraph" bidi attributes (esp. direction) to wrapped lines
-    termline * paraline = line;
-    int paray = y;
-    while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines()) {
-      paraline = fetch_line(--paray);
-      paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
-      release_line(paraline);
-    }
-    paraline = line;
-    paray = y;
-    while ((paraline->lattr & LATTR_WRAPPED) && paray < term.rows) {
-      paraline = fetch_line(++paray);
-      paraline->lattr = (paraline->lattr & ~LATTR_BIDIMASK) | parabidi;
-      release_line(paraline);
-    }
-#else
-    (void)y;
-#endif
-  };
-
   auto put_char = [&](wchar c)
   {
     if (term.ring_enabled && curs->x == term.marg_right + 1 - 8) {
@@ -953,14 +987,7 @@ void
   };
 
   if (curs->wrapnext && term.autowrap && width > 0) {
-    line->lattr |= LATTR_WRAPPED;
-    line->wrappos = curs->x;
-    ushort parabidi = getparabidi(line);
-    do_linefeed();
-    curs->x = term.marg_left;
-    curs->wrapnext = false;
-    line = term.lines[curs->y];
-    wrapparabidi(parabidi, line, curs->y);
+    line = do_wrap(line, LATTR_WRAPPED);
   }
 
   bool overstrike = false;
@@ -1049,22 +1076,30 @@ void
       */
       term_check_boundary(curs->x, curs->y);
       term_check_boundary(curs->x + width, curs->y);
-      if (curs->x == term.marg_right || curs->x == term.cols - 1) {
+      if (curs->x == term.marg_right || curs->x == term.cols - 1
+       || ((line->lattr & LATTR_MODE) != LATTR_NORM && curs->x >= (term.cols - 1) / 2)
+         )
+      {
         line->chars[curs->x] = term.erase_char;
-        line->lattr |= LATTR_WRAPPED | LATTR_WRAPPED2;
-        line->wrappos = curs->x;
-        ushort parabidi = getparabidi(line);
-        do_linefeed();
-        curs->x = term.marg_left;
-        line = term.lines[curs->y];
-        wrapparabidi(parabidi, line, curs->y);
-       /* Now we must term_check_boundary again, of course. */
-        term_check_boundary(curs->x, curs->y);
-        term_check_boundary(curs->x + width, curs->y);
+        if (term.autowrap) {
+          line = do_wrap(line, LATTR_WRAPPED | LATTR_WRAPPED2);
+         /* Now we must term_check_boundary again, of course. */
+          term_check_boundary(curs->x, curs->y);
+          term_check_boundary(curs->x + width, curs->y);
+
+          put_char(c);
+          curs->x++;
+          put_char(UCSWIDE);
+        }
+        else {
+         /* drop character that does not fit into last column */
+        }
       }
-      put_char(c);
-      curs->x++;
-      put_char(UCSWIDE);
+      else {
+        put_char(c);
+        curs->x++;
+        put_char(UCSWIDE);
+      }
 #ifdef support_triple_width
       if (width > 2) {
         for (int i = 2; i < width; i++) {
@@ -1116,6 +1151,14 @@ void
   }
 
   curs->x++;
+  if ((line->lattr & LATTR_MODE) != LATTR_NORM) {
+    if (curs->x >= term.cols / 2) {
+      curs->x --;
+      if (term.autowrap)
+        curs->wrapnext = true;
+    }
+  }
+  else
   if (curs->x == term.marg_right + 1 || curs->x == term.cols) {
     curs->x--;
     if (term.autowrap || cfg.old_wrapmodes)
