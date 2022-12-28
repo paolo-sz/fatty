@@ -124,6 +124,7 @@ const config default_cfg = {
   zoom_font_with_window : true,
   alt_fn_shortcuts : true,
   ctrl_shift_shortcuts : false,
+  win_tab_shortcuts : true,
   ctrl_exchange_shift : false,
   ctrl_controls : true,
   compose_key : 0,
@@ -439,6 +440,7 @@ options[] = {
   {"ZoomFontWithWindow", OPT_BOOL, offcfg(zoom_font_with_window)},
   {"AltFnShortcuts", OPT_BOOL, offcfg(alt_fn_shortcuts)},
   {"CtrlShiftShortcuts", OPT_BOOL, offcfg(ctrl_shift_shortcuts)},
+  {"WinTabShortcuts", OPT_BOOL, offcfg(win_tab_shortcuts)},
   {"CtrlExchangeShift", OPT_BOOL, offcfg(ctrl_exchange_shift)},
   {"CtrlControls", OPT_BOOL, offcfg(ctrl_controls)},
   {"ComposeKey", OPT_COMPOSE_KEY, offcfg(compose_key)},
@@ -4051,6 +4053,11 @@ setup_config_box(controlbox * b)
     //__ Options - Keys:
     s, _("&Ctrl+Shift+letter shortcuts"),
     dlg_stdcheckbox_handler, &new_cfg.ctrl_shift_shortcuts
+  );
+  ctrl_checkbox(
+    //__ Options - Keys:
+    s, _("&Window tabs shortcuts"),
+    dlg_stdcheckbox_handler, &new_cfg.win_tab_shortcuts
   );
 
   if (strstr(cfg.old_options, "composekey")) {

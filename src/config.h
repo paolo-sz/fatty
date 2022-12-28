@@ -109,6 +109,7 @@ typedef struct {
   bool zoom_font_with_window;
   bool alt_fn_shortcuts;
   bool ctrl_shift_shortcuts;
+  bool win_tab_shortcuts;
   bool ctrl_exchange_shift;
   bool ctrl_controls;
   char compose_key;

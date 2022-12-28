@@ -3034,6 +3034,30 @@ static LONG last_key_time = 0;
       return true;
     }
 
+    if (cfg.win_tab_shortcuts) {
+	  if ((key == 'W' || key == 'T' || key == VK_PRIOR || key == VK_NEXT) &&
+           mods == (MDK_CTRL | MDK_SHIFT)
+         ) {
+        switch (key) {
+          when 'T': win_tab_create();
+          when 'W': win_tab_close(&term_p);
+		  when VK_PRIOR: win_tab_move(-1);
+          when VK_NEXT: win_tab_move(+1);
+        }
+        return true;
+	  }
+	  if ((('0' <= key && key <= '9') || key == VK_PRIOR || key == VK_NEXT) &&
+          mods == MDK_CTRL
+         ) {
+        switch (key) {
+		  when VK_PRIOR: win_tab_change(-1);
+          when VK_NEXT: win_tab_change(+1);
+		  when '0' : win_tab_change(9 -  win_active_tab());
+		  othwise: win_tab_change(key - '1' - win_active_tab());
+	    }
+	    return true;
+	  }
+    }
     // Ctrl+Shift+letter shortcuts
     if (cfg.ctrl_shift_shortcuts && 'A' <= key && key <= 'Z' &&
         mods == (cfg.ctrl_exchange_shift ? MDK_CTRL : (MDK_CTRL | MDK_SHIFT))
@@ -3049,8 +3073,6 @@ static LONG last_key_time = 0;
         when 'D': send_syscommand(IDM_DEFSIZE);
         when 'F': send_syscommand(cfg.zoom_font_with_window ? IDM_FULLSCREEN_ZOOM : IDM_FULLSCREEN);
 //        when 'S': send_syscommand(IDM_FLIPSCREEN);
-        when 'T': win_tab_create();
-        when 'W': win_tab_close(&term_p);
         when 'H': send_syscommand(IDM_SEARCH);
         when 'Y': transparency_level(term_p);  // deprecated default assignment
         when 'P': cycle_pointer_style(); // deprecated default assignment
@@ -3734,18 +3756,8 @@ static LONG last_key_time = 0;
     when VK_INSERT: edit_key(2, '0');
     when VK_DELETE: edit_key(3, '.');
     when VK_PRIOR:
-      if (shift && ctrl)
-        win_tab_move(-1);
-      else if (ctrl)
-        win_tab_change(-1);
-      else
         edit_key(5, '9');
     when VK_NEXT:
-      if (shift && ctrl)
-        win_tab_move(+1);
-      else if (ctrl)
-        win_tab_change(+1);
-      else
         edit_key(6, '3');
     when VK_HOME:   term.vt220_keys ? edit_key(1, '7') : cursor_key('H', '7');
     when VK_END:    term.vt220_keys ? edit_key(4, '1') : cursor_key('F', '1');
@@ -3806,10 +3818,6 @@ static LONG last_key_time = 0;
         trace_key("!altgr");
       else if (key != ' ' && alt_code_key(key - 'A' + 0xA))
         trace_key("alt");
-      else if (shift && ctrl && key == 'T')
-        win_tab_create();
-      else if (shift && ctrl && key == 'W')
-        win_tab_close(&term_p);
       else if (term.modify_other_keys > 1 && mods == MDK_SHIFT && !comp_state)
         // catch Shift+space (not losing Alt+ combinations if handled here)
         // only in modify-other-keys mode 2
