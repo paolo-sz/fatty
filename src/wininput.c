@@ -1325,9 +1325,10 @@ transparency_level(struct term *term_p)
 }
 
 static void
-transparency_opaque(struct term *term_p)
+toggle_opaque(struct term *term_p)
 {
-  win_update_transparency(cfg.transparency, true);
+  force_opaque = !force_opaque;
+  win_update_transparency(cfg.transparency, force_opaque);
 }
 
 static void
@@ -1738,6 +1739,12 @@ mflags_scrollbar_inner(struct term *term_p)
 }
 
 static uint
+mflags_opaque(__attribute__((unused))struct term *term_p)
+{
+  return force_opaque ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
 mflags_open(struct term *term_p)
 {
   TERM_VAR_REF(true)
@@ -1897,7 +1904,7 @@ static struct function_def cmd_defs[] = {
   {"scrollbar-inner", {.fct = (toggle_scrollbar)}, mflags_scrollbar_inner},
   {"cycle-pointer-style", {.fct = (cycle_pointer_style)}, 0},
   {"cycle-transparency-level", {.fct = transparency_level}, 0},
-  {"transparency-opaque", {.fct = transparency_opaque}, 0},
+  {"toggle-opaque", {.fct = toggle_opaque}, mflags_opaque},
 
   {"copy", {IDM_COPY}, mflags_copy},
   {"copy-text", {IDM_COPY_TEXT}, mflags_copy},

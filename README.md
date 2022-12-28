@@ -11,8 +11,7 @@ difference to mintty is that you can run multiple session in single window
 using tabs.
 
 For an introduction, features overview, and screenshots, see the 
-[<img align=absmiddle src=icon/terminal.ico>Mintty homepage](http://mintty.github.io/),
-with an opportunity to donate to appreciate mintty.
+[<img align=absmiddle src=icon/terminal.ico>Mintty homepage](http://mintty.github.io/).
 
 * Most features from mintty should work
 * To create new tab, press ctrl-shift-T

@@ -473,7 +473,7 @@ child_is_alive(struct child* child_p)
 {
   CHILD_VAR_REF(true)
 
-    return pid;
+  return pid;
 }
 
 bool
