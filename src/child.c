@@ -44,11 +44,6 @@ int forkpty(int *, char *, struct termios *, struct winsize *);
 #define mexit 126
 
 bool logging = false;
-#if CYGWIN_VERSION_API_MINOR >= 74
-static struct winsize prev_winsize = (struct winsize){0, 0, 0, 0};
-#else
-static struct winsize prev_winsize;
-#endif
 
 #if CYGWIN_VERSION_API_MINOR >= 66
 #include <langinfo.h>

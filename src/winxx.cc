@@ -53,7 +53,6 @@ static void init_scale_factors() {
 
 Tab::Tab() : terminal(new term), chld(new child) {
     memset(terminal.get(), 0, sizeof(struct term));
-    memset(chld.get(), 0, sizeof(struct child));
     info.attention = false;
 }
 

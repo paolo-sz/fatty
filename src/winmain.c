@@ -1401,12 +1401,9 @@ int
     return _horclip * cell_width;
 }
 
-#define horsqueeze(...) (horsqueeze)(term_p, ##__VA_ARGS__)
 int
-(horsqueeze)(struct term* term_p)
+horsqueeze()
 {
-  TERM_VAR_REF(true)
-  
   //printf("horsqueeze %d cells\n", _horcols);
   if (!horbar)
     return 0;
@@ -1424,12 +1421,9 @@ int
   return _horcols * cell_width;
 }
 
-#define horex(...) (horex)(term_p, ##__VA_ARGS__)
 static int
-(horex)(struct term* term_p, char tag)
+horex(char tag)
 {
-  TERM_VAR_REF(true)
-
   (void)tag;
 
   if (!horbar)
@@ -2068,7 +2062,7 @@ static void
   // prevent resizing to same logical size
   // which would remove bottom padding and spoil some Windows magic (#629)
   if (rows != term.rows || cols != term.cols) {
-    win_set_pixels((rows + term.st_rows) * cell_height + OFFSET, cols * cell_width);
+    win_set_pixels((rows + term.st_rows) * cell_height, cols * cell_width);
 #ifdef win_set_pixels_does_not_win_fix_position
     if (is_init)  // don't spoil negative position (#1123)
       win_fix_position(false);
@@ -2703,7 +2697,7 @@ void
   
   if (sync_size_with_font && !win_is_fullscreen) {
     // enforced win_set_chars_zoom(term.rows, term.cols):
-    win_set_pixels_zoom(term_allrows * cell_height + OFFSET, term.cols * cell_width);
+    win_set_pixels_zoom(term_allrows * cell_height, term.cols * cell_width);
 #ifdef win_set_pixels_does_not_win_fix_position
     if (is_init)  // don't spoil negative position (#1123)
       win_fix_position(false);

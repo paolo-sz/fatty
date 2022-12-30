@@ -11,12 +11,14 @@ struct term;
 
 struct child
 {
-  char *home, *cmd;
-  string dir;
+  struct winsize prev_winsize = (struct winsize){0, 0, 0, 0};
 
-  pid_t pid;
-  int pty_fd;
-  struct term* term;
+  char *home = NULL, *cmd = NULL;
+  string dir = "";
+
+  pid_t pid = 0;
+  int pty_fd = 0;
+  struct term* term = NULL;
 };
 
 #define CHILD_VAR_REF(check)                  \
@@ -27,7 +29,8 @@ struct child
    pid_t &pid __attribute__((unused)) = child_p->pid;            \
    int &pty_fd __attribute__((unused)) = child_p->pty_fd;        \
    struct term *&term_p __attribute__((unused)) = child_p->term; \
-   struct term &term __attribute__((unused)) = *child_p->term;
+   struct term &term __attribute__((unused)) = *child_p->term;   \
+   struct winsize &prev_winsize __attribute__((unused)) = child_p->prev_winsize;
 
 #define childerror(...) (childerror)(term_p, ##__VA_ARGS__)
 extern void (childerror)(struct term* term_p, char * action, bool from_fork, int errno_code, int code);
