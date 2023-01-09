@@ -17,7 +17,7 @@ struct child
   string dir = "";
 
   pid_t pid = 0;
-  int pty_fd = 0;
+  int pty_fd = -1;
   struct term* term = NULL;
 };
 
