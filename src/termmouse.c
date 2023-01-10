@@ -59,6 +59,12 @@ static pos
       if (!forward)
         ret_p = p;
     }
+    else if (!term.mouse_state && strchr("()[]{}", c)) {
+      // support URLs with parentheses (#1196)
+      // should we also consider "'*<>^`| ?
+      if (forward)
+        ret_p = p;
+    }
     else if (c == ' ' && p.x > 0 && get_char(line, p.x - 1) == '\\')
       ret_p = p;
     else if (!(strchr("&,;?!", c) || c == (forward ? '=' : ':')))
