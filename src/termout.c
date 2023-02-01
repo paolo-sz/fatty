@@ -2384,7 +2384,7 @@ static void
           term.bracketed_paste = state;
 
         /* Mintty private modes */
-        when 7700:       /* CJK ambigous width reporting */
+        when 7700:       /* CJK ambiguous width reporting */
           term.report_ambig_width = state;
         when 7711:       /* Scroll marker in current line */
           if (state)
@@ -2577,7 +2577,7 @@ static int
         return 2 - term.bracketed_paste;
 
       /* Mintty private modes */
-      when 7700:       /* CJK ambigous width reporting */
+      when 7700:       /* CJK ambiguous width reporting */
         return 2 - term.report_ambig_width;
       when 7711:       /* Scroll marker in current line */
         return 2 - !!(term.lines[term.curs.y]->lattr & LATTR_MARKED);

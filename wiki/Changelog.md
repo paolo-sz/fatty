@@ -2,6 +2,9 @@ Terminal features
   * Tweak response code to XTQALLOWED OSC 60 and XTQDISALLOWED OSC 61 (xterm 378).
   * Hover and open URL: support parentheses (#1196).
 
+Windows integration
+  * Manage user-set HOME for calling Windows from WSL (mintty/wsltty#324, ~mintty/wsltty#76).
+
 ### 3.6.3 (18 Dec 2022) ###
 
 Terminal features
@@ -238,7 +241,7 @@ Configuration
   * New option BlinkColour.
   * New options MousePointer, AppMousePointer.
   * Restored "Allow blinking" in Options dialog (#1097).
-  * WSL-specific detection of Term info availabilities (mintty/wsltty#278).
+  * WSL-specific detection of available settings for Terminal Type (option Term) (mintty/wsltty#278).
   * Export TERM to WSL (mintty/wsltty#278).
 
 ### 3.4.7 (16 March 2021) ###

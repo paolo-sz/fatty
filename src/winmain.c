@@ -686,7 +686,7 @@ update_tab_titles()
     refresh_tab_titles(true);
     // support tabbar
     win_update_tabbar();
-    // tell the others to update their's
+    // tell the others to update theirs
     EnumWindows(wnd_enum_tabs, 0);
   }
 }
@@ -6328,7 +6328,22 @@ main(int argc, char *argv[])
 
     // prevent HOME from being propagated back to Windows applications 
     // if called from WSL (mintty/wsltty#76)
-    unsetenv("HOME");
+    wchar * HOME = getregstr(HKEY_CURRENT_USER, W("Environment"), W("HOME"));
+    if (HOME && *HOME){
+      char * _HOME = cs__wcstoutf(HOME);
+      if (*_HOME == '%') {
+        char * varend = strchr(&_HOME[1], '%');
+        if (varend) {
+          *varend = 0;
+          char * varval = getenv(&_HOME[1]);
+          if (varval)
+            _HOME = asform("%s%s", varval, varend + 1);
+        }
+      }
+      setenv("HOME", _HOME, true);
+    }
+    else
+      unsetenv("HOME");
   }
   else if (*argv && (argv[1] || strcmp(*argv, "-")))  // argv is a command
     cmd = *argv;
@@ -6804,7 +6819,7 @@ main(int argc, char *argv[])
   disable_poschange = false;
 
   // Adapt window position (and maybe size) to special parameters,
-  // we need to reconsider maxwidth/maxheight here to accomodate 
+  // we need to reconsider maxwidth/maxheight here to accommodate 
   // circular dependencies of 
   // positioning, monitor selection, DPI adjustment and window size
   if (center || right || bottom || left || top || maxwidth || maxheight) {

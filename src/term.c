@@ -2418,7 +2418,7 @@ void
 
    /* After an erase of lines from the top of the screen, we shouldn't
     * bring the lines back again if the terminal enlarges (since the user or
-    * application has explictly thrown them away). */
+    * application has explicitly thrown them away). */
     if (!term.on_alt_screen)
       term.tempsblines = 0;
   }
