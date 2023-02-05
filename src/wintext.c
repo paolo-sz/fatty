@@ -1051,6 +1051,9 @@ int lines_scrolled = 0;
 static void do_update_cb(void* _) {
   (void)_;
   struct term *term_p = win_active_terminal();
+  if (term_p == NULL) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   do_update();

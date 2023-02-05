@@ -132,6 +132,9 @@ static void
 tblink_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
+  if (!win_term_valid(term_p)) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   term.tblinker = !term.tblinker;
@@ -154,6 +157,9 @@ static void
 tblink2_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
+  if (!win_term_valid(term_p)) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   term.tblinker2 = !term.tblinker2;
@@ -208,6 +214,9 @@ static void
 cblink_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
+  if (!win_term_valid(term_p)) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   term.cblinker = !term.cblinker;
@@ -230,6 +239,9 @@ static void
 vbell_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
+  if (!win_term_valid(term_p)) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   term.in_vbell = false;

@@ -206,6 +206,7 @@ void (win_tab_move)(struct term* term_p, int amount);
 #define win_tab_create(...) (win_tab_create)(term_p, ##__VA_ARGS__)
 void (win_tab_create)(struct term* term_p);
 void win_tab_delete(struct term* term_p);
+bool win_term_valid(struct term* term_p);
 void win_tab_clean();
 #define win_tab_attention(...) (win_tab_attention)(term_p, ##__VA_ARGS__)
 void (win_tab_attention)(struct term* term_p);

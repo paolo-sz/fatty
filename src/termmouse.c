@@ -13,6 +13,7 @@ extern "C" {
   
 #include "termpriv.h"
 #include "win.h"
+#include "winpriv.h"
 #include "child.h"
 #include "charset.h"  // cs__utftowcs
 #include "tek.h"
@@ -735,6 +736,9 @@ static void
 sel_scroll_cb(void* data)
 {
   struct term* term_p = (struct term*)data;
+  if (!win_term_valid(term_p)) {
+    return;
+  }
   TERM_VAR_REF(true)
   
   if (term_selecting() && term.sel_scroll) {

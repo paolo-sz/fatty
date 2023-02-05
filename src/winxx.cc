@@ -7,6 +7,7 @@
 #include <climits>
 #include <string>
 #include <sstream>
+#include <mutex>
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -36,6 +37,7 @@ typedef std::set<Callback> CallbackSet;
 static CallbackSet callbacks;
 static std::vector<Tab> tabs;
 static unsigned int active_tab = 0;
+static std::mutex term_mutex;
 
 static float g_xscale, g_yscale;
 
@@ -85,13 +87,17 @@ extern "C" {
   }
 
   void win_process_timer_message(WPARAM message) {
+      term_mutex.lock();
       void* pointer = reinterpret_cast<void*>(message);
       auto callback = *reinterpret_cast<Callback*>(pointer);
-      callbacks.erase(callback);
       KillTimer(wnd, message);
+      if (callbacks.find(callback) != callbacks.end()) {
+        callbacks.erase(callback);
 
-      // call the callback
-      get<0>(callback)( get<1>(callback) );
+        // call the callback
+        get<0>(callback)( get<1>(callback) );
+      }
+      term_mutex.unlock();
   }
 
   static void invalidate_tabs() {
@@ -271,6 +277,7 @@ extern "C" {
       if (!child_p) return;
       pid_t pid = child_p->pid;
       if (!(pid)) return;
+      term_mutex.lock();
       remove_callbacks(terminal);
       unsigned int new_active_tab = ((int)active_tab > tab_idx) ? active_tab - 1 : active_tab;
       SendMessage(fatty_tab_wnd, TCM_DELETEITEM, tab_idx, 0);
@@ -282,9 +289,18 @@ extern "C" {
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
       }
+      term_mutex.unlock();
+  }
+
+  bool win_term_valid(struct term* term_p) {
+    if (tab_idx_by_term(term_p) == -1) {
+      return false;
+    }
+    return true;
   }
 
   void win_tab_clean() {
+      term_mutex.lock();
       bool invalidate = false;
       unsigned int new_active_tab = 0;
       for (;;) {
@@ -304,6 +320,7 @@ extern "C" {
           set_tab_bar_visibility(tabs.size() > 1);
           win_invalidate_all(false);
       }
+      term_mutex.unlock();
   }
 
   void (win_tab_attention)(struct term* term_p) {
