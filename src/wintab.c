@@ -355,14 +355,12 @@ win_open_tabbar()
 //  win_adapt_term_size(false, false);
 }
 
-#ifdef unused
 void
 win_close_tabbar()
 {
 //  win_toggle_tabbar(false);
 //  win_adapt_term_size(false, false);
 }
-#endif
 
 }
 

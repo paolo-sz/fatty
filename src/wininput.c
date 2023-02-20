@@ -14,6 +14,7 @@ extern "C" {
 #include "termpriv.h"
 #include "winpriv.h"
 #include "winsearch.h"
+#include "wintab.h"
 
 #include "charset.h"
 #include "child.h"
@@ -23,6 +24,7 @@ extern "C" {
 #include <windowsx.h>  // GET_X_LPARAM, GET_Y_LPARAM
 #include <winnls.h>
 #include <termios.h>
+
 
 static HMENU ctxmenu = NULL;
 static HMENU sysmenu;
@@ -1823,6 +1825,22 @@ mflags_tek_mode(__attribute__((unused))struct term *term_p)
   return tek_mode ? MF_ENABLED : MF_GRAYED;
 }
 
+//static uint
+//mflags_tabbar()
+//{
+//  return win_tabbar_visible() ? MF_CHECKED : MF_UNCHECKED;
+//}
+//
+//static void
+//toggle_tabbar()
+//{
+//  cfg.tabbar = !cfg.tabbar;
+//  if (cfg.tabbar)
+//    win_open_tabbar();
+//  else
+//    win_close_tabbar();
+//}
+
 #define hor_left_1(...) (hor_left_1)(term_p, ##__VA_ARGS__)
 static void (hor_left_1)(struct term* term_p) { TERM_VAR_REF(true) horscroll(-1); }
 #define hor_right_1(...) (hor_right_1)(term_p, ##__VA_ARGS__)
@@ -1865,6 +1883,7 @@ static struct function_def cmd_defs[] = {
   //{"new-window-cwd", {IDM_NEW_CWD}, 0},
   //{"new-tab", {IDM_TAB}, 0},
   //{"new-tab-cwd", {IDM_TAB_CWD}, 0},
+  //{"toggle-tabbar", {.fct = toggle_tabbar}, mflags_tabbar},
 
   {"hor-left-1", {.fct = (hor_left_1)}, 0},
   {"hor-right-1", {.fct = (hor_right_1)}, 0},
