@@ -104,6 +104,8 @@ static clip_workbuf *
 {
   TERM_VAR_REF(true)
   
+  //printf("get_selection attrs %d all %d tabs %d\n", attrs, allinline, with_tabs);
+
   clip_workbuf *buf = newn(clip_workbuf, 1);
   *buf = (clip_workbuf){0, 0, 0, attrs, 0};
 
@@ -123,8 +125,13 @@ static clip_workbuf *
     bool nl = false;
     termline *line = fetch_line(start.y);
 
-    if (start.y == term.curs.y) {
-      line->chars[term.curs.x].attr.attr |= TATTR_ACTCURS;
+    if (allinline) {
+      // this tweak (commit 975403 "export HTML: consider cursor", 2.9.1)
+      // causes cursor artefacts in connection with ClicksPlaceCursor=yes
+      // now guarded to cases of HTML copy/export
+      if (start.y == term.curs.y) {
+        line->chars[term.curs.x].attr.attr |= TATTR_ACTCURS;
+      }
     }
 
     pos nlpos;
