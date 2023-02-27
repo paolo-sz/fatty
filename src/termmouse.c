@@ -696,16 +696,25 @@ void
   compose_clear();
 
   int state = term.mouse_state;
+  //printf("term_mouse_release state %d button %d\n", state, b);
 
   // "Clicks place cursor" implementation.
-  auto place_cursor = [&](void)
+  auto place_cursor = [&](int mode)
   {
-    pos dest = term.selected ? term.sel_end : get_selpoint(box_pos(p));
+    pos dest;
+    if (mode == 2002)
+      dest = get_selpoint(box_pos(p));
+    else
+      dest = term.selected ? term.sel_end : get_selpoint(box_pos(p));
+    //printf("place_cursor p %d x %d sel %d..%d\n", p.x, term.curs.x, term.sel_start.x, term.sel_end.x);
 
     static bool moved_previously = false;
     static pos last_dest;
 
     pos orig;
+    if (mode == 2003)
+      orig = term.sel_start;
+    else
     if (state == MS_SEL_CHAR)
       orig = (pos){y : term.curs.y, x : term.curs.x, piy : 0, pix : 0, r : false};
     else if (moved_previously)
@@ -716,6 +725,7 @@ void
     bool forward = posle(orig, dest);
     pos end = forward ? dest : orig;
     p = forward ? orig : dest;
+    //printf("place_cursor %d %d..%d\n", mode, p.x, end.x);
 
     uint count = 0;
     while (p.y != end.y) {
@@ -741,10 +751,19 @@ void
     }
     release_line(line);
 
-    char code[3] =
-      {'\e', term.app_cursor_keys ? 'O' : '[', forward ? 'C' : 'D'};
-
-    send_keys(code, 3, count);
+    //printf(forward ? "keys +%d\n" : "keys -%d\n", count);
+    if (mode == 2003) {
+      //char erase = cfg.backspace_sends_bs ? CTRL('H') : CDEL;
+      struct termios attr;
+      tcgetattr(0, &attr);
+      char erase = attr.c_cc[VERASE];
+      send_keys(&erase, 1, count);
+    }
+    else {
+      char code[3] =
+        {'\e', term.app_cursor_keys ? 'O' : '[', forward ? 'C' : 'D'};
+      send_keys(code, 3, count);
+    }
 
     moved_previously = true;
     last_dest = dest;
@@ -761,6 +780,10 @@ void
 
       // Flush any output held back during selection.
       term_flush();
+
+      // Readline mouse mode: place cursor to mouse position before pasting
+      if (term.readline_mouse_2)
+        place_cursor(2002);
 
       // Now the pasting.
       win_paste();
@@ -789,9 +812,17 @@ void
       if (term.on_alt_screen || term.app_cursor_keys)
         return;
 
-      // "Clicks place cursor": place cursor to mouse position
-      if (cfg.clicks_place_cursor)
-        place_cursor();
+      // Readline mouse mode: place cursor to mouse position
+      // Should cfg.clicks_place_cursor override DECSET mode?
+      bool extenda = (b == MBT_RIGHT && cfg.right_click_action == RC_EXTEND)
+                 || (b == MBT_MIDDLE && cfg.middle_click_action == MC_EXTEND);
+      if (term.readline_mouse_1 && b == MBT_LEFT)
+        place_cursor(2001);
+      else if (term.readline_mouse_3 && extenda && state == MS_SEL_WORD) {
+        place_cursor(2001);
+        place_cursor(2003);
+        term.selected = false;
+      }
     }
     othwise:
       if (check_app_mouse(&mods)) {
