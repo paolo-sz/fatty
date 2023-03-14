@@ -263,6 +263,22 @@ trim_environment(void)
   trimenv("BYOBU_");
 }
 
+static bool
+ispathprefix(string pref, string path)
+{
+  if (*pref == '/')
+    pref++;
+  if (*path == '/')
+    path++;
+  int len = strlen(pref);
+  if (0 == strncmp(pref, path, len)) {
+    path += len;
+    if (!*path || *path == '/')
+      return true;
+  }
+  return false;
+}
+
 void
 (child_create)(struct child* child_p, struct term* term_in,
     char *argv[], struct winsize *winp, const char* path)
@@ -278,6 +294,19 @@ void
   trim_environment();
 
   prev_winsize = *winp;
+
+  // support OSC 7 directory cloning if cloning WSL window while in rootfs
+  if (support_wsl && wslname) {
+    // this is done once in a new window, so don't care about memory leaks
+    char * rootfs = path_win_w_to_posix(wsl_basepath);
+    char * cwd = getcwd((char *)malloc(MAX_PATH), MAX_PATH);
+    if (ispathprefix(rootfs, cwd)) {
+      char * dist = cs__wcstombs(wslname);
+      char * wslsubdir = cwd + strlen(rootfs);
+      char * wsldir = asform("//wsl$/%s%s", dist, wslsubdir);
+      chdir(wsldir);
+    }
+  }
 
   // Create the child process and pseudo terminal.
   pid = forkpty(&pty_fd, 0, 0, winp);

@@ -70,6 +70,7 @@ extern bool title_settable;
 extern bool support_wsl;
 extern wchar * wslname;
 extern wstring wsl_basepath;
+extern bool report_config;
 extern bool report_child_pid;
 extern bool report_child_tty;
 
@@ -175,6 +176,9 @@ extern wstring wslicon(wchar * params);
 
 #define foreground_cwd(...) (foreground_cwd)(child_p, ##__VA_ARGS__)
 extern char * (foreground_cwd)(struct child* child_p);
+
+#define toggle_status_line(...) (toggle_status_line)(term_p, ##__VA_ARGS__)
+extern void (toggle_status_line)(struct term *term_p);
 
 #define win_switch(...) (win_switch)(term_p, ##__VA_ARGS__)
 extern void (win_switch)(struct term *term_p, bool back, bool alternate);

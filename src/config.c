@@ -1595,6 +1595,9 @@ load_config(string filename, int to_save)
     to_save = false;
 
   FILE * file = fopen(filename, "r");
+  //printf("load_config <%s> ok %d save %d\n", filename, !!file, to_save);
+  if (report_config && file)
+    printf("loading config <%s>\n", filename);
 
   if (to_save) {
     if (file || (!rc_filename && to_save == 2) || to_save == 3) {
@@ -1602,6 +1605,8 @@ load_config(string filename, int to_save)
 
       std_delete(rc_filename);
       rc_filename = path_posix_to_win_w(filename);
+      if (report_config)
+        printf("save to config <%ls>\n", rc_filename);
     }
   }
 
@@ -4588,6 +4593,11 @@ setup_config_box(controlbox * b)
     //__ Options - Terminal:
     s, _("Prompt about running processes on &close"),
     dlg_stdcheckbox_handler, &new_cfg.confirm_exit
+  );
+  ctrl_checkbox(
+    //__ Options - Terminal:
+    s, _("Status Line"),
+    dlg_stdcheckbox_handler, &new_cfg.status_line
   );
 }
 

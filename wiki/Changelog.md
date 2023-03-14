@@ -7,10 +7,13 @@ Terminal features
 
 Windows integration
   * Manage user-set HOME for calling Windows from WSL (mintty/wsltty#324, ~mintty/wsltty#76).
+  * Support OSC 7 directory cloning if cloning WSL window while in rootfs.
 
 Configuration
+  * Status line is configurable in Options menu, switchable from context menu.
   * New user-definable function toggle-tabbar (#1201).
   * Setting ClicksPlaceCursor presets all readline mouse modes.
+  * `MINTTY_DEBUG=C mintty ...` will list loaded config files (#1181).
 
 ### 3.6.3 (18 Dec 2022) ###
 

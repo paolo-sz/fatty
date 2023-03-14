@@ -125,6 +125,7 @@ bool title_settable = true;
 static string border_style = 0;
 static string report_geom = 0;
 static bool report_moni = false;
+bool report_config = false;
 bool report_child_pid = false;
 bool report_child_tty = false;
 static bool report_winpid = false;
@@ -3684,6 +3685,7 @@ static struct {
           win_update_scrollbar(false);
         when IDM_SEARCH: win_open_search();
         when IDM_FLIPSCREEN: term_flip_screen();
+        when IDM_STATUSLINE: toggle_status_line();
         when IDM_OPTIONS: win_open_config();
 //        when IDM_NEW: {
 //          HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
@@ -5642,6 +5644,8 @@ main(int argc, char *argv[])
   main_argv = argv;
   main_argc = argc;
   fatty_debug = getenv("FATTY_DEBUG") ?: "";
+  if (strchr(fatty_debug, 'C'))
+    report_config = true;
 #ifdef debuglog
   mtlog = fopen("/tmp/mtlog", "a");
   {
