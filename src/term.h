@@ -671,6 +671,7 @@ struct term {
                           // as protected (xterm-like simplification)
 
   int detect_progress;
+  int progress_scan;
 
   state_t state;
 

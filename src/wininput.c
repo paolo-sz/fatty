@@ -32,11 +32,17 @@ static int sysmenulen;
 //static uint kb_select_key = 0;
 static uint super_key = 0;
 static uint hyper_key = 0;
+// Compose support
+static uint compose_key = 0;
+static uint last_key_down = 0;
+static uint last_key_up = 0;
+
 static uint newwin_key = 0;
 static bool newwin_pending = false;
 static bool newwin_shifted = false;
 static bool newwin_home = false;
 static int newwin_monix = 0, newwin_moniy = 0;
+
 static int transparency_pending = 0;
 static bool selection_pending = false;
 bool kb_input = false;
@@ -1522,6 +1528,17 @@ hyper_down(__attribute__((unused))struct term *term_p, uint key, mod_keys mods)
   (void)mods;
 }
 
+#define compose_down(...) (kb_select)(term_p, ##__VA_ARGS__)
+static void
+(compose_down)(struct term* term_p, uint key, mod_keys mods)
+{
+  TERM_VAR_REF(true)
+  
+  compose_key = key;
+  last_key_down = key;
+  (void)mods;
+}
+
 #define kb_select(...) (kb_select)(term_p, ##__VA_ARGS__)
 static void
 (kb_select)(struct term* term_p, uint key, mod_keys mods)
@@ -1974,6 +1991,7 @@ static struct function_def cmd_defs[] = {
 
   {"super", {.fct_key = super_down}, 0},
   {"hyper", {.fct_key = hyper_down}, 0},
+  {"compose", {.fct_key = compose_down}, 0},
   {"kb-select", {.fct_key = kb_select}, mflags_kb_select},
   {"no-scroll", {.fct_key = no_scroll}, mflags_no_scroll},
   {"toggle-no-scroll", {.fct_key = toggle_no_scroll}, mflags_no_scroll},
@@ -2028,8 +2046,6 @@ typedef enum {
   COMP_PENDING = 1, COMP_ACTIVE = 2
 } comp_state_t;
 static comp_state_t comp_state = COMP_NONE;
-static uint last_key_down = 0;
-static uint last_key_up = 0;
 
 static struct {
   wchar kc[4];
@@ -2440,6 +2456,14 @@ static int
 
       return ret;
     }
+#ifdef support_compose_by_capslock_via_config
+#warning this causes endless event looping, to be worked out if desired...
+    else if (key == VK_CAPITAL && cfg.compose_key == MDK_CAPSLOCK) {
+      // nullify the keyboard state lock effect, see above,
+      // so we can/could support config ComposeKey=capslock
+      win_key_nullify(key);
+    }
+#endif
 
     n--;
     if (sepp) {
@@ -3944,7 +3968,7 @@ bool
 
   uint key = wp;
 #ifdef debug_virtual_key_codes
-  printf("  win_key_up %02X %s\n", key, vk_name(key));
+  printf("  win_key_up %02X (down %02X) %s\n", key, last_key_down, vk_name(key));
 #endif
 
   TERM_VAR_REF(true)
@@ -3955,6 +3979,7 @@ bool
     // detected properly for use as a modifier; let's try to fix this
     super_key = 0;
     hyper_key = 0;
+    compose_key = 0;
   }
   else if (key == VK_SCROLL) {
     // heuristic compensation of race condition with auto-repeat
@@ -3982,6 +4007,13 @@ bool
         (cfg.compose_key == MDK_ALT && key == VK_MENU)
         || (cfg.compose_key == MDK_SUPER && key == super_key)
         || (cfg.compose_key == MDK_HYPER && key == hyper_key)
+        // support KeyFunctions=CapsLock:compose (or other key)
+        || key == compose_key
+#ifdef support_compose_by_capslock_via_config
+#warning needs support by nullifying capslock state (see above)
+        // support config ComposeKey=capslock
+        || (cfg.compose_key == MDK_CAPSLOCK && key == VK_CAPITAL)
+#endif
        )
     {
       if (comp_state >= 0) {

@@ -459,6 +459,7 @@ void
   term.iso_guarded_area = false;
 
   term.detect_progress = cfg.progress_bar;
+  term.progress_scan = cfg.progress_scan;
   taskbar_progress(-9);
 
   term.suspend_update = 0;
@@ -2521,8 +2522,10 @@ emoji_tags(int i)
 
 #ifdef echar16
 // emoji component encoding to wchar to save half the table size
+//	E0XXX	6XXX
+//	1FXXX	5XXX
 #define echar wchar
-#define ee(x) x >= 0xE0000 ? (wchar)((x & 0xFFF) + 0x6000): x >= 0x1F000 ? (wchar)((x & 0xFFF) + 0x5000) : x
+#define ee(x) x >= 0xE0000 ? (wchar)((x & 0xFFF) + 0x6000) : x >= 0x1F000 ? (wchar)((x & 0xFFF) + 0x5000) : x
 #define ed(x) ((x >> 12) == 6 ? (xchar)x + (0xE0000 - 0x6000) : (x >> 12) == 5 ? (xchar)x + (0x1F000 - 0x5000) : x)
 #else
 #define echar xchar
@@ -2543,10 +2546,23 @@ struct emoji_seq emoji_seqs[] = {
 #include "emojiseqs.t"
 };
 
+struct emoji_dyn {
+  wchar * efn;   // image filename
+  void * buf;    // cached image
+  int buflen;    // cached image
+  uint len;      // code points
+  echar * chs;   // code points
+};
+
+struct emoji_dyn * emoji_dyns = 0;
+static uint nemoji_dyns = 0;
+
 struct emoji {
   int len: 7;   // emoji width in character cells (== # termchar positions)
-  bool seq: 1;  // true: from emoji_seq, false: from emoji_base
-  int idx: 24;  // index in either emoji_seq or emoji_base
+  uint seq: 2;  // true: from emoji_seq, false: from emoji_base
+                // 2: regional indicators 1F1E6.. 1F1FF
+                // 3: tag sequence 1F3F4 E00XX ... E007F
+  int idx: 23;  // index in either of emoji_bases, emoji_seqs, emoji_dyns
 } __attribute__((packed));
 
 #define dont_debug_emojis 1
@@ -2576,6 +2592,20 @@ clear_emoji_data()
       emoji_seqs[i].buflen = 0;
     }
   }
+  // don't clear emoji_dyns, assuming they only reside in the 'common' style
+#if 0
+  for (uint i = 0; i < nemoji_dyns; i++) {
+    if (emoji_dyns[i].efn)
+      free(emoji_dyns[i].efn);
+    if (emoji_dyns[i].buf)
+      free(emoji_dyns[i].buf);
+    if (emoji_dyns[i].chs)
+      free(emoji_dyns[i].chs);
+  }
+  nemoji_dyns = 0;
+  free(emoji_dyns);
+  emoji_dyns = 0;
+#endif
 }
 
 /*
@@ -2587,7 +2617,33 @@ get_emoji_description(termchar * cpoi)
   //struct emoji e = (struct emoji) cpoi->attr.truefg;
   struct emoji * ee = (struct emoji *)&cpoi->attr.truefg;
 
-  if (ee->seq) {
+  if (ee->seq > 1) {
+    char * en = strdup("");
+    for (uint i = 0; i < emoji_dyns[ee->idx].len; i++) {
+      xchar xc = ed(emoji_dyns[ee->idx].chs[i]);
+      char ec[8];
+      sprintf(ec, "U+%04X", xc);
+      strappend(en, ec);
+      strappend(en, const_cast<char *>(" "));
+    }
+    char let[2] = " ";
+    if (ee->seq == 2) {
+      strappend(en, const_cast<char *>("| Emoji flag "));
+      for (int i = 0; i < 2; i++) {
+        *let = ed(emoji_dyns[ee->idx].chs[i]) - 0x1F1E6 + 'A';
+        strappend(en, let);
+      }
+    }
+    else {
+      strappend(en, const_cast<char *>("| Emoji tag sequence "));
+      for (uint i = 1; i < emoji_dyns[ee->idx].len - 1; i++) {
+        *let = ed(emoji_dyns[ee->idx].chs[i]) & 0xFF;
+        strappend(en, let);
+      }
+    }
+    return en;
+  }
+  else if (ee->seq == 1) {
     char * en = strdup("");
     for (uint i = 0; i < lengthof(emoji_seqs->chs) && ed(emoji_seqs[ee->idx].chs[i]); i++) {
       xchar xc = ed(emoji_seqs[ee->idx].chs[i]);
@@ -2611,7 +2667,10 @@ static bool
 check_emoji(struct emoji e)
 {
   wchar * * efnpoi;
-  if (e.seq) {
+  if (e.seq > 1) {
+    efnpoi = (wchar * *)&emoji_dyns[e.idx].efn;
+  }
+  else if (e.seq == 1) {
     efnpoi = (wchar * *)&emoji_seqs[e.idx].efn;
   }
   else {
@@ -2682,7 +2741,18 @@ fallback:;
   }
   char * en = strdup(pre);
   char ec[7];
-  if (e.seq) {
+  if (e.seq > 1) {
+    for (uint i = 0; i < emoji_dyns[e.idx].len; i++) {
+      xchar xc = ed(emoji_dyns[e.idx].chs[i]);
+      if ((xc != 0xFE0F || sel) && (xc != 0x200D || zwj)) {
+        if (i)
+          strappend(en, sep);
+        sprintf(ec, fmt, xc);
+        strappend(en, ec);
+      }
+    }
+  }
+  else if (e.seq == 1) {
     for (uint i = 0; i < lengthof(emoji_seqs->chs) && ed(emoji_seqs[e.idx].chs[i]); i++) {
       xchar xc = ed(emoji_seqs[e.idx].chs[i]);
       if ((xc != 0xFE0F || sel) && (xc != 0x200D || zwj)) {
@@ -2701,8 +2771,8 @@ fallback:;
   wchar * wen = cs__utftowcs(en);
 
   char * ef = get_resource_file(W("emojis"), wen, false);
-#ifdef debug_emojis
-  printf("emoji <%s> file <%s>\n", en, ef);
+#if defined(debug_emojis) && debug_emojis > 1
+  printf("check_emoji seq %d idx %d (style %d) <%s> file <%s>\n", e.seq, e.idx, style, en, ef);
 #endif
   free(wen);
   free(en);
@@ -2715,7 +2785,7 @@ fallback:;
   else {
     // if no emoji graphics found, fallback to "common" emojis
     if (style) {
-      style = 0;
+      style = EMOJIS_NONE;
       goto fallback;
     }
 
@@ -2724,14 +2794,27 @@ fallback:;
   }
 }
 
+static xchar
+xchr(termchar * d)
+{
+  xchar xch = d->chr;
+  if ((xch & 0xFC00) == 0xD800 && d->cc_next) {
+    termchar * cc = d + d->cc_next;
+    if ((cc->chr & 0xFC00) == 0xDC00) {
+      xch = ((xchar) (xch - 0xD7C0) << 10) | (cc->chr & 0x03FF);
+    }
+  }
+  return xch;
+}
+
 static int
-match_emoji_seq(termchar * d, int maxlen, echar * chs)
+match_emoji_seq(termchar * d, int maxlen, echar * chs, uint len)
 {
   int l_text = 0; // number of matched text base character positions
   termchar * basechar = d;
   termchar * curchar = d;
 
-  for (uint i = 0; i < lengthof(emoji_seqs->chs) && ed(chs[i]); i++) {
+  for (uint i = 0; i < len && ed(chs[i]); i++) {
     if (!curchar)
       return 0;
     if (curchar == basechar)
@@ -2795,7 +2878,7 @@ match_emoji(termchar * d, int maxlen)
   uint tags = emoji_tags(tagi);
   if (tags) {
 #if defined(debug_emojis) && debug_emojis > 2
-    printf("%04X%s%s%s%s%s\n", ch,
+    printf("match base %04X%s%s%s%s%s\n", xchr(d),
            tags & EM_pres ? " pres" : "",
            tags & EM_pict ? " pict" : "",
            tags & EM_text ? " text" : "",
@@ -2824,10 +2907,10 @@ match_emoji(termchar * d, int maxlen)
     bool foundseq = false;
     if (tags & EM_base) {
       for (uint i = 0; i < lengthof(emoji_seqs); i++) {
-        int len = match_emoji_seq(d, maxlen, emoji_seqs[i].chs);
+        int len = match_emoji_seq(d, maxlen, emoji_seqs[i].chs, lengthof(emoji_seqs->chs));
         if (len) {
 #if defined(debug_emojis) && debug_emojis > 1
-          printf("match");
+          printf("match seqs");
           for (uint k = 0; k < lengthof(emoji_seqs->chs) && ed(emoji_seqs[i].chs[k]); k++)
             printf(" %04X", ed(emoji_seqs[i].chs[k]));
           printf("\n");
@@ -2854,7 +2937,108 @@ match_emoji(termchar * d, int maxlen)
           }
         }
       }
+
+      if (!emoji.len && !foundseq) {
+        // try to locate in dynamic emoji list
+        for (uint i = 0; i < nemoji_dyns; i++) {
+          int len = match_emoji_seq(d, maxlen, emoji_dyns[i].chs, emoji_dyns[i].len);
+          if (len) {
+#if defined(debug_emojis) && debug_emojis > 1
+            printf("match dyns");
+            for (uint k = 0; k < emoji_dyns[i].len; k++)
+              printf(" %04X", ed(emoji_dyns[i].chs[k]));
+            printf("\n");
+#endif
+            emoji.seq = ed(emoji_dyns[i].chs[0]) == 0x1F3F4 ? 3 : 2;
+            emoji.idx = i;
+            emoji.len = len;
+            if (check_emoji(emoji))
+              break;
+            else {
+              // found a match but there is no emoji graphics for it
+              // remember longest match in case we don't find another
+              if (!foundseq) {
+                longest = emoji;
+                foundseq = true;
+              }
+              // invalidate this match, continue matching
+              emoji.len = 0;
+            }
+          }
+        }
+      }
+      if (!emoji.len && maxlen > 1) {
+        // check whether to add to dynamic emoji list
+        echar * chs = newn(echar, 2);
+        xchar xch = xchr(d);
+        if (xch >= 0x1F1E6 && xch <= 0x1F1FF) {
+          chs[0] = ee(xch);
+          xch = xchr(&d[1]);
+          chs[1] = ee(xch);
+          if (xch >= 0x1F1E6 && xch <= 0x1F1FF) {
+            // two regional indicators
+            emoji.seq = 2;
+            emoji.len = 2;
+          }
+        }
+        else if (xch == 0x1F3F4) {  // check for tag sequence ..E00XX..E007F
+          chs[0] = ee(xch);
+          termchar * curlowsurr = d + d->cc_next;  // low surrogate of U+1F3F4
+
+          int l = 1;
+          while (curlowsurr->cc_next) {
+            curlowsurr += curlowsurr->cc_next;
+            xch = xchr(curlowsurr);
+            l ++;
+            chs = renewn(chs, l);
+            chs[l - 1] = ee(xch);
+
+            if (xch == 0xE007F) {
+              emoji.seq = 3;
+              emoji.len = l;
+              break;
+            }
+            // check for valid Flag Emoji Tag Sequences (Unicode TR #51 C.1)
+            // (http://www.unicode.org/reports/tr51/#flag-emoji-tag-sequences)
+            if (xch > 0xE007F || xch < 0xE0020)
+              break;
+
+            curlowsurr += curlowsurr->cc_next;  // low surrogate of current char
+          }
+        }
+        if (emoji.len) {  // add sequence to dynamic list
+          emoji_dyns = renewn(emoji_dyns, nemoji_dyns + 1);
+
+          emoji_dyns[nemoji_dyns].efn = 0;
+          emoji_dyns[nemoji_dyns].buf = 0;
+          emoji_dyns[nemoji_dyns].buflen = 0;
+          emoji_dyns[nemoji_dyns].len = emoji.len;
+          emoji_dyns[nemoji_dyns].chs = chs;
+
+          emoji.idx = nemoji_dyns;
+
+          bool ok = check_emoji(emoji);
+          if (ok) {
+#if defined(debug_emojis) && debug_emojis > 0
+            printf("emoji_dyn [%d++] seq %d len %d", nemoji_dyns, emoji.seq, emoji.len);
+            for (int i = 0; i < emoji.len; i++)
+              printf(" %04X", ed(chs[i]));
+            printf("\n");
+#endif
+            nemoji_dyns ++;
+          }
+          else {
+            // invalidate this entry
+            if (emoji_dyns[nemoji_dyns].efn)
+              free(emoji_dyns[nemoji_dyns].efn);
+            if (emoji_dyns[nemoji_dyns].chs)
+              free(emoji_dyns[nemoji_dyns].chs);
+            emoji.len = 0;
+          }
+        }
+      }
     }
+
     if (!emoji.len) {
       wchar combchr = 0;
       if (comb) {
@@ -2907,12 +3091,21 @@ match_emoji(termchar * d, int maxlen)
       else
         emoji.len = 0;  // display text style
     }
+
     if (!emoji.len) {
       // not found another match; if we had a "longest match" before, 
       // but continued to search because it had no graphics, let's use it
       if (foundseq)
-        return longest;
+        emoji = longest;
     }
+
+#if defined(debug_emojis) && debug_emojis > 1
+    if (emoji.len) {
+      int i = emoji.idx;
+      struct emoji_base * ee = emoji.seq > 1 ? (struct emoji_base *)&emoji_dyns[i] : emoji.seq ? (struct emoji_base *)&emoji_seqs[i] : &emoji_bases[i];
+      printf("-> seq %d len %d idx %d <%ls> %d\n", emoji.seq, emoji.len, i, ee->efn, !!ee->buf);
+    }
+#endif
   }
 
   return emoji;
@@ -2924,7 +3117,12 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
   wchar * efn;
   void * * bufpoi;
   int * buflen;
-  if (e.seq) {
+  if (e.seq > 1) {
+    efn = const_cast<wchar *>(emoji_dyns[e.idx].efn);
+    bufpoi = &emoji_dyns[e.idx].buf;
+    buflen = &emoji_dyns[e.idx].buflen;
+  }
+  else if (e.seq == 1) {
     efn = const_cast<wchar *>(emoji_seqs[e.idx].efn);
     bufpoi = &emoji_seqs[e.idx].buf;
     buflen = &emoji_seqs[e.idx].buflen;
@@ -2934,7 +3132,7 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
     bufpoi = &emoji_bases[e.idx].buf;
     buflen = &emoji_bases[e.idx].buflen;
   }
-#ifdef debug_emojis
+#if defined(debug_emojis) && debug_emojis > 1
   printf("emoji_show @%d:%d..%d it %d seq %d idx %d <%ls>\n", y, x, elen, !!(eattr.attr & ATTR_ITALIC), e.seq, e.idx, efn);
 #endif
 
@@ -3016,6 +3214,9 @@ void
     term.cursor_on && !term.show_other_screen
     ? term.curs.y - term.disptop : -1;
 
+  int nlines_progress = 0;
+  int total_progress = 0;
+
   // Paint all lines, including status area
   for (int i = 0; i < term_allrows; i++) {
     pos scrpos;
@@ -3083,8 +3284,8 @@ void
                )
               equalattrs = false;
           }
-#ifdef debug_emojis
-          printf("matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
+#if defined(debug_emojis) && debug_emojis > 3
+          printf("paint emoji: matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
 #endif
 
           // modify character data to trigger later emoji display
@@ -3332,8 +3533,8 @@ void
                )
               equalattrs = false;
           }
-#ifdef debug_emojis
-          printf("matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
+#if defined(debug_emojis) && debug_emojis > 3
+          printf("paint emoji: matched len %d seq %d idx %d ok %d atr %d\n", e.len, e.seq, e.idx, ok, equalattrs);
 #endif
 
           // modify character data to trigger later emoji display
@@ -3695,8 +3896,8 @@ void
       else
         term.st_kb_flag = 0;
 
-     /* Progress indication */
-      if (term.detect_progress) {
+     /* Progress indication on current cursor line (after back positioning) */
+      if (term.detect_progress && term.progress_scan == 1) {
         int j = term.cols;
         while (--j > 0) {
           if (chars[j].chr == '%'
@@ -3735,6 +3936,39 @@ void
         if (p <= 100) {
           taskbar_progress(- term.detect_progress);
           taskbar_progress(p);
+        }
+      }
+    }
+
+   /* Progress indication accumulated on all lines */
+    if (term.detect_progress && term.progress_scan == 2) {
+      int j = term.cols;
+      while (--j > 0) {
+        if (chars[j].chr == '%') {
+          int p = 0;
+          int f = 1;
+          bool pro = false;
+          while (--j >= 0) {
+            if (chars[j].chr >= '0' && chars[j].chr <= '9') {
+              p += f * (chars[j].chr - '0');
+              f *= 10;
+              pro = true;
+            }
+            else if (chars[j].chr == '.' || chars[j].chr == ',') {
+              p = 0;
+              f = 1;
+            }
+            else {
+              j++;
+              break;
+            }
+          }
+
+          if (pro && p <= 100) {
+            nlines_progress ++;
+            total_progress += p;
+          }
+          break;
         }
       }
     }
@@ -3952,7 +4186,7 @@ void
             win_text(x, y, esp, elen, eattr, textattr, lattr, has_rtl, false, 1);
             flush_text();
           }
-#if defined(debug_emojis) && debug_emojis > 3
+#if defined(debug_emojis) && debug_emojis > 4
           // add background to some emojis
           eattr.attr &= ~(ATTR_BGMASK | ATTR_FGMASK);
           eattr.attr |= 6 << ATTR_BGSHIFT | 4;
@@ -3967,7 +4201,7 @@ void
             emoji_show(x, y, *ee, elen, eattr, lattr);
           }
         }
-#if defined(debug_emojis) && debug_emojis > 3
+#if defined(debug_emojis) && debug_emojis > 4
         else { // mark some emojis
           eattr.attr &= ~(ATTR_BGMASK | ATTR_FGMASK);
           eattr.attr |= 4 << ATTR_BGSHIFT | 6;
@@ -4300,6 +4534,10 @@ void
     * Release the line data fetched from the screen or scrollback buffer.
     */
     release_line(line);
+  }
+  if (term.detect_progress && term.progress_scan == 2) {
+    taskbar_progress(- term.detect_progress);
+    taskbar_progress(nlines_progress ? total_progress / nlines_progress : 0);
   }
 
   term.cursor_invalid = false;

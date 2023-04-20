@@ -4844,10 +4844,17 @@ typedef struct {
                                 {const_cast<char *>("4"), 2},
                                 {const_cast<char *>("2"), 3},
                                 {const_cast<char *>("3"), 8},
+                                {const_cast<char *>("single"), -1},
+                                {const_cast<char *>("multiple"), -2},
                                 {0, 0}};
       len = scanenum(s, &state,
                      paramap_tmp2,
                      false);
+      if (len < 0) {
+        term.progress_scan = - len;
+        return;
+      }
+
       if (!len)
         return;
       s += len;

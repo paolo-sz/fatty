@@ -35,7 +35,11 @@ tmpdir()
       tmpdir = asform("%s/Temp", tmpdir);
   }
   if (!tmpdir || access(tmpdir, W_OK) < 0)
+    tmpdir = const_cast<char *>("/var/tmp");
+  if (!tmpdir || access(tmpdir, W_OK) < 0)
     tmpdir = const_cast<char *>("/usr/tmp");
+  if (!tmpdir || access(tmpdir, W_OK) < 0)
+    tmpdir = const_cast<char *>("/tmp");
   return tmpdir;
 }
 
