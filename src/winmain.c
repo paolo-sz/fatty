@@ -3626,7 +3626,7 @@ static struct {
         when IDM_PASTE: win_paste();
         when IDM_SELALL: term_select_all(); win_update(false);
         when IDM_RESET case_or IDM_RESET_NOASK:
-          if ((wp & ~0xF) == IDM_RESET_NOASK || confirm_reset()) {
+          if ((wp & ~0xF) == IDM_RESET_NOASK || !cfg.confirm_reset || confirm_reset()) {
             winimgs_clear();
             term_reset(true);
             win_update(false);
@@ -6956,10 +6956,19 @@ main(int argc, char *argv[])
     trace_winsize("fix_pos");
   }
 
-//  // Initialise the terminal.
-//  term_reset(true);
+  // Initialise the terminal.
+  // If term_reset tries to align the status line before 
+  // term.marg_bot is defined in term_resize 
+  // (as called from win_adapt_term_size after WM_SIZE), 
+  // mintty -o StatusLine=on will crash in call sequence
+  // term_reset - term_set_status_type - term_do_scroll - assert
+  // Happens with dpi == 96...
+  // So we'll have to call term_reset after term_resize:
+  //term_reset(true);
+//  moved to winxx.cc
 //  term.show_scrollbar = !!cfg.scrollbar;
 //  term_resize(term_rows, term_cols);
+//  term_reset(true);
   setenv("CHERE_INVOKING", "fatty", false);
   child_init();
 

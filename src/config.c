@@ -192,6 +192,7 @@ const config default_cfg = {
   play_tone : 2,
   printer : W(""),
   confirm_exit : true,
+  confirm_reset : false,
   // Command line
   classname : W(""),
   hold : HOLD_START,
@@ -522,6 +523,7 @@ options[] = {
   {"PlayTone", OPT_INT, offcfg(play_tone)},
   {"Printer", OPT_WSTRING, offcfg(printer)},
   {"ConfirmExit", OPT_BOOL, offcfg(confirm_exit)},
+  {"ConfirmReset", OPT_BOOL, offcfg(confirm_reset)},
 
   // Command line
   {"Class", OPT_WSTRING, offcfg(classname)},
@@ -784,6 +786,7 @@ static opt_val * const opt_vals[] = {
     {"ctrl", MDK_CTRL},
     {"super", MDK_SUPER},
     {"hyper", MDK_HYPER},
+    {"capslock", MDK_CAPSLOCK},
     {0, 0}
   }
 };

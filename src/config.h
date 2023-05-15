@@ -8,7 +8,9 @@
 // Enums for various options.
 
 typedef enum { MDK_SHIFT = 1, MDK_ALT = 2, MDK_CTRL = 4, 
-               MDK_WIN = 8, MDK_SUPER = 16, MDK_HYPER = 32 } mod_keys;
+               MDK_WIN = 8, MDK_SUPER = 16, MDK_HYPER = 32, 
+               MDK_CAPSLOCK = 64  // for Compose key
+             } mod_keys;
 DEFINE_ENUM_FLAG_OPERATORS(mod_keys);
 enum { HOLD_NEVER, HOLD_START, HOLD_ERROR, HOLD_ALWAYS };
 enum { CUR_BLOCK, CUR_UNDERSCORE, CUR_LINE, CUR_BOX };
@@ -176,6 +178,7 @@ typedef struct {
   int play_tone;
   wstring printer;
   bool confirm_exit;
+  bool confirm_reset;
   // Command line
   wstring classname;
   char hold;
