@@ -26,9 +26,9 @@ extern "C" {
 
 
 #ifdef check_cygdrive
-// adapt /cygdrive prefix to actual configured one (like / or anything else);
-// this experimental approach is not enabled as it is 
-// only used for WSL and dynamic adaptation is hardly useful
+// Adapt /cygdrive prefix to actual configured one (like / or anything else);
+// this experimental approach is not enabled as it is only used for WSL and
+// dynamic adaptation is hardly useful.
 
 static char * _cygdrive = 0;
 static wchar * _wcygdrive = 0;
@@ -507,61 +507,66 @@ void
   TERM_VAR_REF(true)
   string &child_dir = term.child->dir;
     
-  // unescape
-  int wl = wcslen(wpath);
-  if ((*wpath == '"' || *wpath == '\'') && wpath[wl - 1] == *wpath) {
-    // don't wpath++ (later delete!)
-    wchar * p0 = (wchar *)wpath;
-    for (int i = 0; i < wl - 2; i++)
-      p0[i] = p0[i + 1];
-    p0[wl - 2] = 0;
+  size_t wl = wcslen(wpath);
+  wchar *wbuf = newn(wchar, wl + 1);
+
+  if (wl > 2 && (*wpath == '"' || *wpath == '\'') && wpath[wl - 1] == *wpath) {
+    // Remove pair of leading and trailing quotes.
+    wl -= 2;
+    wmemcpy(wbuf, wpath + 1, wl);
+  }
+  else if (!wcsncmp(wpath, W("\\\\"), 2)) {
+    // Assume that a path starting with two backslashes is a Windows UNC path
+    // and copy it unmodified.
+    wmemcpy(wbuf, wpath, wl);
   }
   else {
-    wchar * p0 = (wchar *)wpath;
-    wchar * p1 = p0;
-    while (*p0) {
-      if (*p0 == '\\')
-        p0++;
-      if (*p0)
-        *p1++ = *p0++;
+    // Remove backslashes, but only if they precede shell special characters.
+    // Other backslashes are more likely to be Windows path separators.
+    wstring p = wpath;
+    wl = 0;
+    while (*p) {
+      if (*p == '\\' && wcschr(W(" \t\n|&;<>()$`\\\"'*?![]#~=%^"), p[1]))
+        p++;
+      wbuf[wl++] = *p++;
     }
-    *p1 = 0;
   }
+  wbuf[wl] = 0;
+  delete(wpath);
 
-  wstring p = wpath;
+  wchar *p = wbuf;
   while (iswalpha(*p)) p++;
-  if (*wpath == '\\' || *p == ':' || wcsncmp(W("www."), wpath, 4) == 0) {
+  if (*p == ':' || *wbuf == '\\' || !wcsncasecmp(W("www."), wbuf, 4)) {
     // Looks like it's a Windows path or URI
-    shell_exec(wpath); // frees wpath
+    shell_exec(wbuf); // frees wbuf
   }
   else {
     // Need to convert POSIX path to Windows first
     if (support_wsl) {
-      // First, we need to replicate some of the handling of relative paths 
-      // as implemented in child_conv_path,
-      // because the dewsl functionality would actually go in between 
-      // the workflow of child_conv_path.
-      // We cannot determine the WSL foreground process and its 
-      // current directory, so we can only consider the working directory 
-      // explicitly communicated via the OSC 7 escape sequence here.
-      if (*wpath != '/' && wcsncmp(wpath, W("~/"), 2) != 0) {
+      // First, we need to replicate some of the handling of relative paths
+      // as implemented in child_conv_path, because the dewsl functionality
+      // would actually go in between the workflow of child_conv_path.
+      // We cannot determine the WSL foreground process and its current
+      // directory, so we can only consider the working directory explicitly
+      // communicated via the OSC 7 escape sequence here.
+      if (*wbuf != '/' && wcsncmp(wbuf, W("~/"), 2)) {
         if (child_dir && *child_dir) {
           wchar * cd = cs__mbstowcs(child_dir);
-          cd = renewn(cd, wcslen(cd) + wcslen(wpath) + 2);
+          cd = renewn(cd, wcslen(cd) + wl + 2);
           cd[wcslen(cd)] = '/';
-          wcscpy(&cd[wcslen(cd) + 1], wpath);
-          std_delete(wpath);
-          wpath = cd;
+          wcscpy(&cd[wcslen(cd) + 1], wbuf);
+          std_delete(wbuf);
+          wbuf = cd;
         }
       }
 
-      wpath = dewsl((wchar *)wpath);
+      wbuf = dewsl(wbuf);
     }
-    wstring conv_wpath = child_conv_path(wpath, adjust_dir);
+    wstring conv_wpath = child_conv_path(wbuf, adjust_dir);
 #ifdef debug_wslpath
-    printf("win_open <%ls> <%ls>\n", wpath, conv_wpath);
+    printf("win_open <%ls> <%ls>\n", wbuf, conv_wpath);
 #endif
-    std_delete(wpath);
+    std_delete(wbuf);
     if (conv_wpath)
       shell_exec(conv_wpath); // frees conv_wpath
     else

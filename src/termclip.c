@@ -288,15 +288,11 @@ void
   wchar * p = selstr;
   while (iswspace(*p))
     p++;
-  if (*p) {
-    wchar * url = p;
-    while (*p && !iswspace(*p))
-      p++;
-    *p = 0;
-    win_open(wcsdup(url), true);  // win_open frees its argument
-  }
 
-  free(selstr);
+  if (*p)
+    win_open(selstr, true);  // win_open frees its argument
+  else
+    free(selstr);
 }
 
 static bool
