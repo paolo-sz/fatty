@@ -4,15 +4,18 @@ Pathname handling
 
 Terminal features
   * Fix setup of initial status line if monitor DPI is 96.
+  * ESC/Enter restore alphanumeric keyboard input mode while IME is active (#1223).
 
 Window handling
   * Revamp window operations, esp max/fullscreen, to not raise to foreground.
   * Group taskbar icons by setting -o Class (#1207).
+  * Handling transparency in tab sets (#1152, #1069, ~#1128).
 
 Configuration
   * New user-definable function compose (#1211).
   * New option setting ComposeKey=capslock (#1211).
   * New option ConfirmReset to guard confirm dialog on interactive reset (#1173).
+  * New option KeyAlphaMode (#1223).
 
 ### 3.6.4 (25 Mar 2023) ###
 

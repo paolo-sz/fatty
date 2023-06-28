@@ -2739,6 +2739,15 @@ static LONG last_key_time = 0;
   if ((key == VK_RETURN || key == VK_ESCAPE) && !mods && !child_is_alive(term.child))
     exit_fatty(1);
 
+  // On ESC or Enter key, restore keyboard IME state to alphanumeric mode.
+  if (cfg.key_alpha_mode && (key == VK_RETURN || key == VK_ESCAPE) && !mods) {
+    HIMC imc = ImmGetContext(wnd);
+    if (ImmGetOpenStatus(imc)) {
+      ImmSetConversionStatus(imc, IME_CMODE_ALPHANUMERIC, IME_SMODE_NONE);
+    }
+    ImmReleaseContext(wnd, imc);
+  }
+
   // Handling special shifted key functions
   if (newwin_pending) {
     if (!extended) {  // only accept numeric keypad
