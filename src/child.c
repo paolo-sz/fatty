@@ -77,7 +77,7 @@ void
 
   char s[33];
   bool colour_code = code && !errno_code;
-  sprintf(s, "\033[30;%dm\033[K", from_fork ? 41 : colour_code ? code : 43);
+  sprintf(s, "\r\n\033[30;%dm\033[K", from_fork ? 41 : colour_code ? code : 43);
   term_write(s, strlen(s));
   term_write(action, strlen(action));
   if (errno_code) {
@@ -482,6 +482,21 @@ char *
   return ptsname(pty_fd);
 }
 
+#define patch_319
+
+#ifdef debug_pty
+static void
+trace_line(char * tag, int n, const char * s, int len)
+{
+  printf("%s %d", tag, n);
+  for (int i = 0; i < len; i++)
+    printf(" %02X", (uint)s[i]);
+  printf("\n");
+}
+#else
+#define trace_line(tag, n, s, len)	
+#endif
+
 void
 child_free(struct child* child_p)
 {
@@ -666,8 +681,13 @@ void
 {
   CHILD_VAR_REF(true)
 
-  if (pty_fd >= 0)
+  if (pty_fd >= 0) {
+#ifdef debug_pty
+    int n =
+#endif
     write(pty_fd, buf, len);
+    trace_line("cwrt", n, buf, len);
+  }
 }
 
 /*
@@ -699,8 +719,13 @@ void
     char *s;
     int len = vasprintf(&s, fmt, va);
     va_end(va);
-    if (len >= 0)
+    if (len >= 0) {
+#ifdef debug_pty
+      int n =
       write(pty_fd, s, len);
+#endif
+      trace_line("tprt", n, s, len);
+    }
     free(s);
   }
 }

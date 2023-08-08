@@ -5,6 +5,9 @@ Pathname handling
 Terminal features
   * Fix setup of initial status line if monitor DPI is 96.
   * ESC/Enter restore alphanumeric keyboard input mode while IME is active (#1223).
+  * OSC 50 query response is "?" after font setting failed.
+  * Fix DECRQCRA Rectangular Checksum attribute handling.
+  * Added DECSACE to DECRQSS (xterm 383).
 
 Window handling
   * Revamp window operations, esp max/fullscreen, to not raise to foreground.
@@ -16,6 +19,7 @@ Configuration
   * New option setting ComposeKey=capslock (#1211).
   * New option ConfirmReset to guard confirm dialog on interactive reset (#1173).
   * New option KeyAlphaMode (#1223).
+  * New option -Rw to report the Windows window id.
 
 ### 3.6.4 (25 Mar 2023) ###
 

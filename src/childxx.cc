@@ -57,6 +57,8 @@ void child_init() {
     }
 }
 
+#define patch_319
+
 void child_proc() {
   win_tab_clean();
   if (win_tabs().size() == 0)
@@ -183,6 +185,7 @@ void child_proc() {
 #endif
           do {
             int ret = read(child_p->pty_fd, buf + len, sizeof buf - len);
+//            trace_line("read", ret, buf + len, ret);
             //if (kb_trace) printf("[%lu] read %d\n", mtime(), ret);
             if (ret > 0)
               len += ret;
@@ -192,6 +195,7 @@ void child_proc() {
 
           if (len > 0) {
             (term_write)(child_p->term, buf, len);
+//            trace_line("twrt", len, buf, len);
             // accelerate keyboard echo if (unechoed) keyboard input is pending
             if (kb_input) {
               kb_input = false;

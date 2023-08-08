@@ -324,7 +324,7 @@ static void
     termline * l = term.lines[y];
     int xl = x0;
     int xr = x1;
-    if (!term.attr_rect) {
+    if (term.attr_rect < 2) {
       if (y != y0)
         xl = term.marg_left;
       if (y != y1)
@@ -699,11 +699,11 @@ static uint
         cattrflags attr = line->chars[x].attr.attr;
         if (attr & ATTR_UNDER)
           sum += 0x10;
-        else if (attr & ATTR_REVERSE)
+        if (attr & ATTR_REVERSE)
           sum += 0x20;
-        else if (attr & ATTR_BLINK)
+        if (attr & ATTR_BLINK)
           sum += 0x40;
-        else if (attr & ATTR_BOLD)
+        if (attr & ATTR_BOLD)
           sum += 0x80;
         int xc = x;
         while (line->chars[xc].cc_next) {
@@ -3473,8 +3473,10 @@ static void
                 term.csi_argv[2] ?: urows, term.csi_argv[3] ?: ucols);
     when CPAIR('*', 'x'):  /* DECSACE: VT420 Select Attribute Change Extent */
       switch (arg0) {
-        when 2: term.attr_rect = true;
-        when 0 case_or 1: term.attr_rect = false;
+        // use original DECSACE values rather than effective bool value,
+        // so we can respond properly to DECRQSS like xterm
+        when 2: term.attr_rect = 2;
+        when 0 case_or 1 /*or 2*/: term.attr_rect = arg0;
       }
     when CPAIR('$', 'r')  /* DECCARA: VT420 Change Attributes in Area */
       case_or CPAIR('$', 't'): {  /* DECRARA: VT420 Reverse Attributes in Area */
@@ -4084,6 +4086,8 @@ static void
         child_printf("\eP1$r%ut\e\\", term.rows);
       } else if (!strcmp(s, "$|")) {  // DECSCPP (columns)
         child_printf("\eP1$r%u$|\e\\", term.cols);
+      } else if (!strcmp(s, "*x")) {  // DECSACE (attribute change extent)
+        child_printf("\eP1$r%u*x\e\\", term.attr_rect);
       } else if (!strcmp(s, "*|")) {  // DECSNLS (lines)
         child_printf("\eP1$r%u*|\e\\", term.rows);
       } else if (!strcmp(s, "$~")) {  // DECSSDT (status line type)
