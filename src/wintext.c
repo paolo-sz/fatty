@@ -1336,7 +1336,27 @@ static void
     term_update_cs();
   }
   wchar wstbuf[term.cols + 1];
-  swprintf(wstbuf, term.cols + 1, W("%s%s%s%s%s %s%s@%02d:%03d%s%s%s%s%s %ls %s"), 
+
+  wchar debug[22];
+  *debug = 0;
+  if (cfg.status_debug) {
+    wchar kblayout[KL_NAMELENGTH];
+    GetKeyboardLayoutNameW(kblayout);
+    wchar * kbl = kblayout;
+    while (*kbl == '0')
+      kbl++;
+    wcscpy(debug, W(" ["));
+    if (cfg.status_debug & 1)
+      wcscat(debug, kbl);
+    if (cfg.status_debug & 2) {
+      wcscat(debug, W("."));
+      extern uint mods_debug;
+      swprintf(&debug[wcslen(debug)], 9, W("%06X"), mods_debug);
+    }
+    wcscat(debug, W("]"));
+  }
+
+  swprintf(wstbuf, term.cols + 1, W("%s%s%s%s%s%ls %s%s@%02d:%03d%s%s%s%s%s %ls%s"), 
                  term.st_kb_flag ?
                      (term.st_kb_flag == 16 ? "Hex "
                       : term.st_kb_flag == 10 ? "Dec "
@@ -1350,6 +1370,7 @@ static void
                  term.app_cursor_keys ? "↕" : "",
                  term.app_keypad ? "±" : "",
                  child_tty(),
+                 debug,
                  term.printing ? "⎙" : "",
                  term.bracketed_paste ? "⁅⁆" : "",
                  curs.y, curs.x,
@@ -1360,7 +1381,7 @@ static void
                  || term.marg_top || term.marg_bot != term.rows - 1
                    ? "⬚" : "",
                  term.curs.origin ? "⊡" : "",
-                 status_bell ? W("🔔") : W(""),   // bell indicator 🔔 or 🛎️ 
+                 status_bell ? W("🔔 ") : W(""),   // bell indicator 🔔 or 🛎️ 
                  get_char_info(dispchar, true) ?: ""
                  );
   int n = 0;

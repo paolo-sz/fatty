@@ -739,9 +739,9 @@ struct term {
 extern void (scroll_rect)(struct term* term_p, int topline, int botline, int lines);
 
 #define term_resize(...) (term_resize)(term_p, ##__VA_ARGS__)
-extern void (term_resize)(struct term* term_p, int, int);
+extern void (term_resize)(struct term* term_p, int rows, int cols, bool quick_reflow);
 #define term_scroll(...) (term_scroll)(term_p, ##__VA_ARGS__)
-extern void (term_scroll)(struct term* term_p, int, int);
+extern void (term_scroll)(struct term* term_p, int relative_to, int where);
 #define term_reset(...) (term_reset)(term_p, ##__VA_ARGS__)
 extern void (term_reset)(struct term* term_p, bool full);
 extern void term_free(struct term* term_p);

@@ -8,18 +8,22 @@ Terminal features
   * OSC 50 query response is "?" after font setting failed.
   * Fix DECRQCRA Rectangular Checksum attribute handling.
   * Added DECSACE to DECRQSS (xterm 383).
+  * Indicate keyboard layout code in status line.
 
 Window handling
   * Revamp window operations, esp max/fullscreen, to not raise to foreground.
   * Group taskbar icons by setting -o Class (#1207).
   * Handling transparency in tab sets (#1152, #1069, ~#1128).
+  * Workaround against dropping fullscreen on DPI change (#1226).
 
 Configuration
   * New user-definable function compose (#1211).
   * New option setting ComposeKey=capslock (#1211).
   * New option ConfirmReset to guard confirm dialog on interactive reset (#1173).
+  * Support changed Drag-and-drop format for some theme file downloads.
   * New option KeyAlphaMode (#1223).
   * New option -Rw to report the Windows window id.
+  * New option StatusDebug to include debug information in the status line.
 
 ### 3.6.4 (25 Mar 2023) ###
 

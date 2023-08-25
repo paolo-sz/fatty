@@ -548,7 +548,7 @@ sync_level(void)
 {
   if (!cfg.window)
     return 0;  // avoid trouble if hidden
-  return max(cfg.geom_sync, cfg.tabbar);
+  return max(cfg.geom_sync, (int)cfg.tabbar);
 }
 
 static bool
@@ -2061,6 +2061,10 @@ static void
                SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_FRAMECHANGED);
 }
 
+#ifdef debug_clear_fullscreen
+#define clear_fullscreen() printf("calling cl_fs %s:%d\n", __FUNCTION__, __LINE__), clear_fullscreen()
+#endif
+
 void
 (win_set_geom)(struct term* term_p, int y, int x, int height, int width)
 {
@@ -2122,6 +2126,20 @@ static void
 #endif
   }
   trace_winsize("win_set_chars > win_fix_position");
+}
+
+#define win_set_chars_keep_fullscreen(...) (win_set_chars_keep_fullscreen)(term_p, ##__VA_ARGS__)
+static void
+(win_set_chars_keep_fullscreen)(struct term* term_p, int rows, int cols)
+{
+  TERM_VAR_REF(true)
+  
+  // workaround against dropping fullscreen on DPI change (#1226);
+  // suppressing clear_fullscreen in win_set_chars does not suffice
+  bool was_fullscreen = win_is_fullscreen;
+  win_set_chars(rows, cols);
+  if (was_fullscreen)
+    make_fullscreen();
 }
 
 void
@@ -2715,8 +2733,9 @@ static void
   norm_extra_height = extra_height;
 }
 
-void
-(win_adapt_term_size)(struct term* term_p, bool sync_size_with_font, bool scale_font_with_size)
+#define do_win_adapt_term_size(...) (do_win_adapt_term_size)(term_p, ##__VA_ARGS__)
+static void
+(do_win_adapt_term_size)(struct term* term_p, bool sync_size_with_font, bool scale_font_with_size, bool quick_reflow)
 {
   trace_resize(("--- win_adapt_term_size sync_size %d scale_font %d (full %d Zoomed %d)\n", sync_size_with_font, scale_font_with_size, win_is_fullscreen, IsZoomed(wnd)));
   if (IsIconic(wnd))
@@ -2824,7 +2843,7 @@ void
   int rows = max(1, term_height / cell_height - term.st_rows);
   int save_st_rows = term.st_rows;
   if (rows != term.rows || cols != term.cols) {
-    WIN_FOR_EACH_TERM(term_resize(rows, cols));
+    WIN_FOR_EACH_TERM(term_resize(rows, cols, quick_reflow));
     if (save_st_rows) {
       // handle potentially resized status area;
       // better, rows would be calculated already considering 
@@ -2875,6 +2894,12 @@ void
           win_fix_position(false);
     }
   }
+}
+
+void
+(win_adapt_term_size)(struct term* term_p, bool sync_size_with_font, bool scale_font_with_size)
+{
+  do_win_adapt_term_size(sync_size_with_font, scale_font_with_size, false);
 }
 
 #define win_fix_taskbar_max(...) (win_fix_taskbar_max)(term_p, ##__VA_ARGS__)
@@ -4449,6 +4474,12 @@ static int olddelta;
           zoom_token = zoom_token >> 1;
         default_size_token = false;
       }
+      else if (cfg.rewrap_on_resize == 2) {
+        // support continuous reflow while resizing;
+        // for this to work at acceptable speed (esp. with long scrollback) 
+        // a partial/lazy version of the reflow procedure is required
+        do_win_adapt_term_size(false, false, true);
+      }
 
       return 0;
     }
@@ -4625,7 +4656,7 @@ static int olddelta;
           printf("term w/h %d/%d -> %d/%d, fixing\n", x, y, term.cols, term.rows);
 #endif
           // win_fix_position also clips the window to desktop size
-          win_set_chars_zoom(y, x);
+          win_set_chars_keep_fullscreen(y, x);
         }
 
         is_in_dpi_change = false;
@@ -4673,7 +4704,7 @@ static int olddelta;
           // try to stabilize terminal size roundtrip
           if (term.rows != y || term.cols != x) {
             // win_fix_position also clips the window to desktop size
-            win_set_chars_zoom(y, x);
+            win_set_chars_keep_fullscreen(y, x);
           }
 #ifdef debug_dpi
           printf("SM_CXVSCROLL %d\n", GetSystemMetrics(SM_CXVSCROLL));
@@ -7114,7 +7145,7 @@ main(int argc, char *argv[])
   //term_reset(true);
 //  moved to winxx.cc
 //  term.show_scrollbar = !!cfg.scrollbar;
-//  term_resize(term_rows, term_cols);
+//  term_resize(term_rows, term_cols, false);
 //  term_reset(true);
   setenv("CHERE_INVOKING", "fatty", false);
   child_init();
@@ -7172,7 +7203,7 @@ main(int argc, char *argv[])
     scale_to_image_ratio();
 
   // Adjust ConPTY support if requested
-  if (cfg.conpty_support != (uchar)-1) {
+  if (cfg.conpty_support != -1) {
     char * env = 0;
 #ifdef __MSYS__
     env = const_cast<char *>("MSYS");
