@@ -2412,6 +2412,8 @@ static void
           }
         when 7767:       /* 'C': Changed font reporting */
           term.report_font_changed = state;
+        when 7780:       /* ~ 80 (DECSDM) */
+          term.image_display = state;
         when 7783:       /* 'S': Shortcut override */
           term.shortcut_override = state;
         when 1007:       /* Alternate Scroll Mode, xterm */
@@ -2597,6 +2599,8 @@ static int
         return 2 - term.show_scrollbar;
       when 7767:       /* 'C': Changed font reporting */
         return 2 - term.report_font_changed;
+      when 7780:       /* ~ 80 (DECSDM) */
+        return 2 - term.image_display;
       when 7783:       /* 'S': Shortcut override */
         return 2 - term.shortcut_override;
       when 1007:       /* Alternate Scroll Mode, xterm */
@@ -3784,6 +3788,9 @@ static void
       //printf("SIXELCH @%d imgi %d\n", term.curs.y, term.curs.attr.imgi);
       for (int x = x0; x < x0 + img->width && x < term.cols; ++x)
         write_char(SIXELCH, 1);
+      // image display mode (7780): do not scroll
+      if (term.image_display && term.curs.y >= term.marg_bot)
+        break;
       if (i == img->height - 1) {  // in the last line
         if (!term.sixel_scrolls_right) {
           write_linefeed();
@@ -4748,6 +4755,10 @@ static void
           imglist * img;
           short left = term.curs.x;
           short top = term.curs.y;
+          if (term.sixel_display) {  // sixel display mode
+            left = 0;
+            top = 0;
+          }
           if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height, term.curs.attr.attr & (ATTR_BLINK | ATTR_BLINK2))) {
             fill_image_space(img);
 
