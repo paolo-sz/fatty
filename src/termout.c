@@ -2785,7 +2785,7 @@ pop_colours(uint ix)
 
 #define do_winop(...) (do_winop)(term_p, ##__VA_ARGS__)
 /*
- * dtterm window operations and xterm extensions.
+ * XTWINOPS: dtterm window operations and xterm extensions.
    CSI Ps ; Ps ; Ps t
  */
 static void
@@ -3758,7 +3758,7 @@ static float freq_C5_C7[26] =
  * Fill image area with sixel placeholder characters and set cursor.
  */
 static void
-(fill_image_space)(struct term* term_p, imglist * img)
+(fill_image_space)(struct term* term_p, imglist * img, bool keep_positions)
 {
   TERM_VAR_REF(true)
   
@@ -3783,13 +3783,14 @@ static void
     term.curs.y = y0;
     term.curs.x = x0;
   } else {  // sixel scrolling mode
+    short y0 = term.curs.y;
     for (int i = 0; i < img->height; ++i) {
       term.curs.x = x0;
       //printf("SIXELCH @%d imgi %d\n", term.curs.y, term.curs.attr.imgi);
       for (int x = x0; x < x0 + img->width && x < term.cols; ++x)
         write_char(SIXELCH, 1);
       // image display mode (7780): do not scroll
-      if (term.image_display && term.curs.y >= term.marg_bot)
+      if (keep_positions && term.curs.y >= term.marg_bot)
         break;
       if (i == img->height - 1) {  // in the last line
         if (!term.sixel_scrolls_right) {
@@ -3799,6 +3800,10 @@ static void
       } else {
         write_linefeed();
       }
+    }
+    if (keep_positions) {
+      term.curs.y = y0;
+      term.curs.x = x0;
     }
   }
 
@@ -3900,7 +3905,7 @@ static void
       img->cwidth = st->max_x;
       img->cheight = st->max_y;
 
-      fill_image_space(img);
+      fill_image_space(img, false);
 
       // add image to image list;
       // replace previous for optimisation in some cases
@@ -4640,6 +4645,7 @@ static void
       int crop_y = 0;
       int crop_width = 0;
       int crop_height = 0;
+      bool keep_positions = term.image_display;
 
       // process parameters
       while (s && *s) {
@@ -4726,6 +4732,9 @@ static void
             crop_height = - val;
           }
         }
+        else if (0 == strcmp("doNotMoveCursor", s) && val) {
+          keep_positions = true;
+        }
 
         s = nxt;
       }
@@ -4760,7 +4769,7 @@ static void
             top = 0;
           }
           if (winimg_new(&img, name, (unsigned char *)data, datalen, left, top, width, height, pixelwidth, pixelheight, pAR, crop_x, crop_y, crop_width, crop_height, term.curs.attr.attr & (ATTR_BLINK | ATTR_BLINK2))) {
-            fill_image_space(img);
+            fill_image_space(img, keep_positions);
 
             if (term.imgs.first == NULL) {
               term.imgs.first = term.imgs.last = img;
