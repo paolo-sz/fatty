@@ -1,6 +1,6 @@
 // termmouse.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-12 Andy Koppe, 2017-20 Thomas Wolff
+// Based on code from mintty by 2008-23 Andy Koppe, 2017-20 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -49,8 +49,22 @@ static char scheme = 0;
   }
   //printf("sel_ %d: forward %d level %d\n", p.x, forward, level);
 
+  wchar prevc1 = 0;
+  wchar prevc2 = 0;
   for (;;) {
     wchar c = get_char(line, p.x);
+
+    // special colon and double-colon handling
+    if (forward && prevc1 == ':' && prevc2 != ':' && !strchr(":/", c)) {
+      // handle previous match of : if not matching :: or :/
+      return ret_p;
+    }
+    else if (forward && prevc1 == ':' && strchr(":/", c)) {
+      // handle match of :: or :/
+      ret_p = p;
+    }
+    prevc2 = prevc1;
+    prevc1 = c;
 
     // scheme detection state machine
     if (!forward) {
@@ -114,7 +128,17 @@ static char scheme = 0;
     // what about #$%&*\^`|~ at the end?
     else if (c == ' ' && p.x > 0 && get_char(line, p.x - 1) == '\\')
       ret_p = p;
-    else if (!(strchr("&,;?!:", c) || c == (forward ? '=' : ':'))) {
+    else if (c == (forward ? '=' : ':')) {
+    }
+    else if (strchr("&,;?!", c)) {
+    }
+    else if (forward && c == ':') {
+      // could set marker in case we match : but not :: or :/
+      // but this is better handled at the beginning of the for loop alone;
+      // note: this could be handled more easily here with some look-ahead 
+      // but that is not possible as the URL may wrap into the next line
+    }
+    else {
       //printf("%d: %c forward %d level %d BREAK\n", p.x, c, forward, level);
       break;
     }
@@ -504,16 +528,16 @@ static pos
 
 #define send_keys(...) (send_keys)(term_p, ##__VA_ARGS__)
 static void
-(send_keys)(struct term* term_p, char *code, uint len, uint count)
+(send_keys)(struct term* term_p, uint count, string code)
 {
   TERM_VAR_REF(true)
   
   if (count) {
-    uint size = len * count;
-    char buf[size];
+    uint len = strlen(code);
+    char buf[len * count];
     char *p = buf;
     while (count--) { memcpy(p, code, len); p += len; }
-    child_write(buf, size);
+    child_write(buf, sizeof buf);
   }
 }
 
@@ -753,16 +777,14 @@ void
 
     //printf(forward ? "keys +%d\n" : "keys -%d\n", count);
     if (mode == 2003) {
-      //char erase = cfg.backspace_sends_bs ? CTRL('H') : CDEL;
       struct termios attr;
       tcgetattr(0, &attr);
-      char erase = attr.c_cc[VERASE];
-      send_keys(&erase, 1, count);
+      unsigned char tmp_str[] = {attr.c_cc[VERASE], 0};
+      send_keys(count, (char *)tmp_str);
     }
     else {
-      char code[3] =
-        {'\e', term.app_cursor_keys ? 'O' : '[', forward ? 'C' : 'D'};
-      send_keys(code, 3, count);
+      send_keys(count, term.app_cursor_keys ? (forward ? const_cast<char *>("\eOC") : const_cast<char *>("\eOD"))
+                                            : (forward ? const_cast<char *>("\e[C") : const_cast<char *>("\e[D")));
     }
 
     moved_previously = true;
@@ -998,45 +1020,76 @@ void
     }
   }
   else if (!(mods & ~(MDK_SHIFT | MDK_CTRL | MDK_ALT))) {
-    if (mods & MDK_CTRL)
+    // Determine number of lines per wheel notch. -1 means page-wise scrolling.
+    if (mods & MDK_SHIFT)
+      lines_per_notch = -1;
+    else if (mods & MDK_CTRL)
       lines_per_notch = 1;
     else if (cfg.lines_per_notch > 0)
       lines_per_notch = min(cfg.lines_per_notch, term.rows - 1);
 
-    // Scroll, taking the lines_per_notch setting into account.
-    // Scroll by a page per notch if setting is -1 or Shift is pressed.
-    int lines_per_page = max(1, term.rows);
-    if (lines_per_notch == -1 || mods & MDK_SHIFT)
-      lines_per_notch = lines_per_page;
-    int lines = lines_per_notch * accu / NOTCH_DELTA;
-    //printf("mouse lines %d per notch %d accu %d\n", lines, lines_per_notch, accu);
-    if (lines) {
-      accu -= lines * NOTCH_DELTA / lines_per_notch;
-      if ((!term.on_alt_screen || term.show_other_screen) && !(mods & MDK_ALT)) {
+    bool pages = lines_per_notch == -1;
+    int count_per_notch = pages ? 1 : lines_per_notch;
+
+    int count = count_per_notch * accu / NOTCH_DELTA;
+
+    if (count) {
+      accu -= count * NOTCH_DELTA / count_per_notch;
+
+      bool alt = mods & MDK_ALT;
+      bool scrollback = !term.on_alt_screen || term.show_other_screen;
+
+      // If Alt is pressed while looking at the primary screen, consume the Alt
+      // modifier and send events to the application instead.
+      if (scrollback && alt)
+        scrollback = alt = false;
+
+      if (scrollback) {
         if (strstr(cfg.suppress_wheel, "scrollwin"))
           return;
-        term_scroll(0, -lines);
+        // For page-wise scrolling, scroll by one line less than window height.
+        if (pages)
+          count *= max(1, term.rows - 1);
+        term_scroll(0, -count);
       }
       else if (term.wheel_reporting || term.wheel_reporting_xterm) {
+        // Application scrolling.
         if (strstr(cfg.suppress_wheel, "scrollapp") && !term.wheel_reporting_xterm)
           return;
-        // Send scroll distance as CSI a/b events
-        bool up = lines > 0;
-        lines = abs(lines);
-        int pages = lines / lines_per_page;
-        lines -= pages * lines_per_page;
+        bool up = count > 0;
+        count = abs(count);
+
         if (term.app_wheel && !term.wheel_reporting_xterm) {
-          send_keys(up ? const_cast<char *>("\e[1;2a") : const_cast<char *>("\e[1;2b"), 6, pages);
-          send_keys(up ? const_cast<char *>("\eOa") : const_cast<char *>("\eOb"), 3, lines);
+          // Application wheel mode: send wheel events as CSI a/b codes rather
+          // than cursor key codes so they can be distinguished from key presses
+          // without enabling full application mouse mode.
+          // Pages are distinguished with the Shift modifier code.
+          if (pages) {
+            send_keys(count, alt ? (up ? const_cast<char *>("\e[1;4a") : const_cast<char *>("\e[1;4b"))
+                                 : (up ? const_cast<char *>("\e[1;2a") : const_cast<char *>("\e[1;2b")));
+          }
+          else {
+            send_keys(count, alt ? (up ? const_cast<char *>("\e[1;3a") : const_cast<char *>("\e[1;3b"))
+                                 : (up ? const_cast<char *>("\eOa") : const_cast<char *>("\eOb")));
+          }
         }
         else if (term.vt52_mode) {
-          send_keys(up ? const_cast<char *>("\eA") : const_cast<char *>("\eB"), 2, lines);
+          // No PgUp/Dn keycodes in VT52 mode, so only send cursor up/down.
+          if (!pages)
+            send_keys(count, up ? const_cast<char *>("\eA") : const_cast<char *>("\eB"));
         }
         else {
-          send_keys(up ? const_cast<char *>("\e[5~") : const_cast<char *>("\e[6~"), 4, pages);
-          char code[3] =
-            {'\e', term.app_cursor_keys ? 'O' : '[', up ? 'A' : 'B'};
-          send_keys(code, 3, lines);
+          // Send PgUp/Dn or cursor up/down codes.
+          if (pages) {
+            send_keys(count, alt ? (up ? const_cast<char *>("\e[5;3~") : const_cast<char *>("\e[6;3~"))
+                                 : (up ? const_cast<char *>("\e[5~") : const_cast<char *>("\e[6~")));
+          }
+          else {
+            send_keys(count,
+              alt ^ term.alt_wheel ? (up ? const_cast<char *>("\e[1;3A") : const_cast<char *>("\e[1;3B")) :
+              term.app_cursor_keys ? (up ? const_cast<char *>("\eOA") : const_cast<char *>("\eOB"))
+                                   : (up ? const_cast<char *>("\e[A") : const_cast<char *>("\e[B")));
+          }
         }
       }
     }

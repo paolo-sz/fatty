@@ -320,7 +320,24 @@ to private sequences (see below). To support these subtle differences,
 both can be switched independently.
 
 By default, mousewheel events are reported as cursor key presses, which enables
-mousewheel scrolling in applications such as **[less](http://www.greenwoodsoftware.com/less)** without requiring any configuration. Alternatively, mousewheel reporting can be switched to _application mousewheel mode_, where the mousewheel sends its own separate keycodes that allow an application to treat the mousewheel differently from cursor keys:
+mousewheel scrolling in applications such as
+**[less](http://www.greenwoodsoftware.com/less)** without requiring any
+configuration.
+
+The cursor keycodes sent for mousewheel events can optionally have the Alt
+modifier applied, to distinguish them from plain Up/Down key presses.
+For example, in the nano editor, Alt+Up/Down scrolls the window immediately,
+whereas plain Up/Down moves the cursor.
+
+_Alt-modified mousewheel mode_ exchanges plain mousewheel events with 
+Alt-modified mousewheel events; it is controlled by these sequences:
+
+| **sequence**  | **mode**      |
+|:--------------|:--------------|
+| `^[[?7765l`   | unmodified    |
+| `^[[?7765h`   | Alt-modified  |
+
+Alternatively, mousewheel reporting can be switched to _application mousewheel mode_, where the mousewheel sends its own separate keycodes that allow an application to treat the mousewheel differently from cursor keys:
 
 | **event**   | **code**    |
 |:------------|:------------|
@@ -693,7 +710,7 @@ both sixel and iTerm2 image output.
 For iTerm2-style image output, see also image parameter **doNotMoveCursor** 
 to achieve the same effect case-by-case per image.
 
-| **sequence**  | **exit position or scrolling behaviour **  |
+| **sequence**  | **exit position or scrolling behaviour**   |
 |:--------------|:-------------------------------------------|
 | `^[[?7730h`   | line beginning below                       |
 | `^[[?7730l`   | below left bottom                          |
@@ -803,7 +820,7 @@ can be used to set the mouse pointer shape of the current mouse mode
 (mintty maintains two different mouse pointer shapes, to distinguish 
 application mouse reporting modes).
 Valid values are Windows predefined cursor names 
-(appstarting, arrow, cross, hand, help, ibeam, icon, no, size, sizeall, sizenesw, sizens, sizenwse, sizewe, uparrow, wait).
+(appstarting, arrow, cross, hand, help, ibeam, icon, no, size, sizeall, sizenesw, sizens, sizenwse, sizewe, uparrow, wait) 
 or cursor file names which are looked up in subdirectory `pointers` of 
 a mintty resource directory; supported file types are .cur, .ico, .ani.
 
@@ -817,7 +834,7 @@ a mintty resource directory; supported file types are .cur, .ico, .ani.
 The following _OSC_ sequences can be used to set or query the foreground and
 background variants of the ANSI colours.
 
-| **sequence**                        | ** effect **                         |
+| **sequence**                        | **effect**                           |
 |:------------------------------------|:-------------------------------------|
 | `^[]7704;`_index_`;`_colour_`^G`    | set fg and bg variants to same value |
 | `^[]7704;`_index_`;`_fg_`;`_bg_`^G` | set fg and bg to separate values     |

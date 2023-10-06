@@ -1,5 +1,18 @@
   * Fix memory leak (mintty/wsltty#340) caused by dynamic emoji checking.
 
+Terminal features
+  * Tweak mousewheel scrolling: do not mix line and page events (#1234).
+  * Tweak mousewheel scrolling: page scrolling one line less, consistent with keyboard paging (#1234).
+  * Send Alt modifier with mousewheel events (#1234).
+  * New DECSET 7765 to exchange normal and Alt-modified mouse wheel scrolling (#1234).
+  * Tweak double-click filename/URL selection with colon (#1236).
+
+Font rendering
+  * Support size adjustment of alternative fonts, for use as secondary fonts (mintty/wsltty#341).
+
+Configuration
+  * Alternative font specification supports initial + for size increase (mintty/wsltty#341).
+
 ### 3.6.5 (3 September 2023) ###
 
 Pathname handling
