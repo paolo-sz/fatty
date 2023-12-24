@@ -4,6 +4,8 @@
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
+#define _GNU_SOURCE
+
 #include <algorithm>
 
 using std::max;
@@ -295,28 +297,78 @@ void
     free(selstr);
 }
 
-static bool
-contains(string s, wchar c)
+static bool filter_NUL;
+static char filter[69];
+
+#define set_filter(...) (set_filter)(child_p, ##__VA_ARGS__)
+static void
+(set_filter)(struct child* child_p, string s)
 {
-  string tag;
-  switch (c) {
-    when '\b': tag = "BS";
-    when '\t': tag = "HT";
-    when '\n': tag = "NL";
-    when '\r': tag = "CR";
-    when '\f': tag = "FF";
-    when '\e': tag = "ESC";
-    when '\177': tag = "DEL";
-    othwise:
-      if (c < ' ')
-        tag = "C0";
-      else if (c >= 0x80 && c < 0xA0)
-        tag = "C1";
-      else
-        return false;
+  CHILD_VAR_REF(true)
+
+  auto do_filter = [&](string tag) -> bool
+  {
+#if CYGWIN_VERSION_API_MINOR >= 171
+    char * match = strcasestr(s, tag);
+#else
+    char * match = strstr(s, tag);
+#endif
+    //return match;  // a bit simplistic, we should probably properly parse...
+    if (!match)
+      return false;
+    return (match == s || *(match - 1) < '@')
+           && match[strlen(tag)] < '@';
+  };
+
+  filter_NUL = false;
+  *filter = 0;
+  if (do_filter("C0")) {
+    filter_NUL = true;
+    strcat(filter, "\t\n\r");
   }
-  return strstr(s, tag);
-  // a bit simplistic, we should probably properly parse...
+  else {
+    if (do_filter("BS")) strcat(filter, "\b");
+    if (do_filter("HT")) strcat(filter, "\t");
+    if (do_filter("NL")) strcat(filter, "\n");
+    if (do_filter("CR")) strcat(filter, "\r");
+    if (do_filter("FF")) strcat(filter, "\f");
+    if (do_filter("ESC")) strcat(filter, "\e");
+  }
+  if (do_filter("DEL"))
+    strcat(filter, "\177");
+  if (do_filter("C1")) {
+    filter_NUL = true;
+    strcat(filter, "\200\201\202\203\204\205\206\207"
+                   "\210\211\212\213\214\215\216\217"
+                   "\220\221\222\223\224\225\226\227"
+                   "\230\231\232\233\234\235\236\237");
+  }
+  if (do_filter("STTY")) {
+    int i = strlen(filter);
+    auto addchar = [&](wchar c)
+    {
+      if (c)
+        filter[i++] = c;
+      else
+        filter_NUL = true;
+    };
+    uchar * c_cc = child_termios_chars();
+    addchar(c_cc[VINTR]);
+    addchar(c_cc[VQUIT]);
+    addchar(c_cc[VSUSP]);
+    addchar(c_cc[VSWTC]);
+    filter[i] = 0;
+  }
+}
+
+static bool
+isin_filter(wchar c)
+{
+  if (c & 0xFFFFFF00)
+    return false;
+  if (!c)
+    return filter_NUL;
+  return strchr(filter, c);
 }
 
 void
@@ -325,6 +377,10 @@ void
   TERM_VAR_REF(true)
   
   term_cancel_paste();
+
+  // set/refresh list of characters to be filtered;
+  // stty settings may have changed
+  set_filter(cfg.filter_paste);
 
   uint size = len;
   term.paste_buffer = newn(wchar, len);
@@ -349,7 +405,7 @@ void
     wchar wc = data[i];
     if (wc == '\n')
       wc = '\r';
-    if (!all && *cfg.filter_paste && contains(cfg.filter_paste, wc))
+    if (!all && *cfg.filter_paste && isin_filter(wc))
       wc = ' ';
 
     if (data[i] != '\n')
@@ -715,7 +771,23 @@ static char *
         hprintf(hf, "  .background {\n");
       }
 
-      hprintf(hf, "    background-image: url('%s');\n", bg);
+      char * bgg = guardpath(bg, 4);
+      if (bgg) {
+        wchar * bgw = path_posix_to_win_w(bgg);
+        free(bgg);
+        free(bg);
+        bg = cs__wcstoutf(bgw);
+        free(bgw);
+        char * cc = bg;
+        while (*cc) {
+          if (*cc == '\\')
+            *cc = '/';
+          cc++;
+        }
+
+        hprintf(hf, "    background-image: url('file:///%s');\n", bg);
+      }
+
       if (!tiled) {
         hprintf(hf, "    background-attachment: no-repeat;\n");
         hprintf(hf, "    background-size: 100%% 100%%;\n");

@@ -1,7 +1,7 @@
 // wininput.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
-// Copyright 2008-22 Andy Koppe, 2015-2022 Thomas Wolff
+// Copyright 2008-23 Andy Koppe, 2015-2023 Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include <algorithm>
@@ -1977,7 +1977,8 @@ static struct function_def cmd_defs[] = {
   {"tek-copy", {IDM_TEKCOPY}, mflags_tek_mode},
   {"save-image", {IDM_SAVEIMG}, 0},
   {"break", {IDM_BREAK}, 0},
-  //{"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
+  {"intr", {.fct = child_intr}, 0},
+//  {"flipscreen", {IDM_FLIPSCREEN}, mflags_flipscreen},
   {"open", {IDM_OPEN}, mflags_open},
   {"toggle-logging", {IDM_TOGLOG}, mflags_logging},
   {"toggle-char-info", {IDM_TOGCHARINFO}, mflags_char_info},
@@ -2174,7 +2175,7 @@ static struct {
   {VK_TAB, 0, "Tab"},
   {VK_RETURN, 0, "Enter"},
   {VK_PAUSE, 1, "Pause"},
-  {VK_ESCAPE, 0, "Esc"},
+  {VK_ESCAPE, 1, "Esc"},  // 'unmod' enabled with #1245
   {VK_SPACE, 0, "Space"},
   {VK_SNAPSHOT, 1, "PrintScreen"},
   {VK_LWIN, 1, "LWin"},
@@ -2735,7 +2736,9 @@ static LONG last_key_time = 0;
   }
 
   if (key == VK_MENU) {
-    if (!repeat && mods == MDK_ALT && alt_state == ALT_NONE)
+    if (!repeat && mods == MDK_ALT && alt_state == ALT_NONE &&
+        (!altgr0 || cfg.altgr_is_alt)  // #1245
+       )
       alt_state = ALT_ALONE;
     return true;
   }
@@ -4114,6 +4117,9 @@ bool
   if (key == VK_MENU) {
     if (alt_state > ALT_ALONE && alt_code) {
       insert_alt_code();
+    } else if (alt_state == ALT_ALONE) {
+      // support KeyFunctions=Alt:"alt" (#1245)
+      pick_key_function(cfg.key_commands, const_cast<char *>("Alt"), 0, key, (mod_keys)0, (mod_keys)0, scancode);
     }
     alt_state = ALT_NONE;
     return true;

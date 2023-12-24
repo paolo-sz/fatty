@@ -48,6 +48,8 @@ extern void child_terminate(struct child* child_p);
 extern void (child_write)(struct child* child_p, const char *, uint len);
 #define child_break(...) (child_break)(child_p, ##__VA_ARGS__)
 extern void (child_break)(struct child* child_p);
+#define child_intr(...) (child_intr)(term_p, ##__VA_ARGS__)
+extern void (child_intr)(struct term* term_p);
 #define child_printf(...) (child_printf)(child_p, ##__VA_ARGS__)
 extern void (child_printf)(struct child* child_p, const char * fmt, ...) __attribute__((format(printf, 2, 3)));
 #define child_send(...) (child_send)(child_p, ##__VA_ARGS__)
@@ -58,9 +60,12 @@ extern void (child_sendw)(struct child* child_p, const wchar *, uint len);
 extern void (child_resize)(struct child* child_p, struct winsize * winp);
 extern bool child_is_alive(struct child* child_p);
 extern bool child_is_parent(struct child* child_p);
+extern char * procres(int pid, char * res);
 //extern wchar * grandchild_process_list(void);
 #define child_tty(...) (child_tty)(child_p, ##__VA_ARGS__)
 extern char * (child_tty)(struct child* child_p);
+#define child_termios_chars(...) (child_termios_chars)(child_p, ##__VA_ARGS__)
+extern uchar * (child_termios_chars)(struct child* child_p);
 extern bool child_is_any_parent();
 #define foreground_prog(...) (foreground_prog)(child_p, ##__VA_ARGS__)
 extern char * (foreground_prog)(struct child* child_p);  // to be free()d

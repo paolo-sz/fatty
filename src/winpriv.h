@@ -127,6 +127,7 @@ extern void (win_tab_prefix_title)(struct term* term_p, const wstring);
 #define win_tab_unprefix_title(...) (win_tab_unprefix_title)(term_p, ##__VA_ARGS__)
 extern void (win_tab_unprefix_title)(struct term* term_p, const wstring);
 extern void win_set_icon(char * s, int icon_index);
+extern char * guardpath(string path, int level);
 
 extern void win_show_tip(int x, int y, int cols, int rows);
 extern void win_destroy_tip(void);

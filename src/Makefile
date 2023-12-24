@@ -117,7 +117,7 @@ downldlib=
 ifneq ($(platform), msys)
   emojilib=-lgdiplus
 endif
-extralibs=$(scriptlib) $(downldlib) $(emojilib)
+extralibs=$(scriptlib) $(downldlib) $(emojilib) -lshlwapi
 LDFLAGS := -L$(shell $(CC) -print-file-name=w32api) -static-libgcc -static-libstdc++
 LDLIBS := -mwindows $(extralibs) -lcomctl32 -limm32 -lwinmm -lwinspool -lole32 -luuid -ld2d1 -lmpr
 #override LDFLAGS += -L$(shell $(CC) -print-file-name=w32api) -static-libgcc
@@ -223,6 +223,8 @@ clean-unicode:
 clean-unicode-data:	clean-unicode
 	rm -f $(unicodedata) $(unicodeemoji)
 
+unicode-update:	clean-unicode-data bin
+
 combining.t:	# UnicodeData.txt Blocks.txt
 	uniset +cat=Me +cat=Mn +cat=Cf -00AD +1160-11FF +200B +D7B0-D7C6 +D7CB-D7FB c > combining.t
 	# xterm 373:
@@ -283,9 +285,11 @@ univer = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\.\([0-9]\)\.\([0-9]\)[^0-9]*
 unibasever = `sed -e '/^\# Blocks-/ s,[^0-9]*\([0-9]*\)\..*,\1.0,' -e t -e d Blocks.txt`
 
 # Emoji version may advance Unicode version
-emojiver = $(unibasever)
-# override Emoji version if not in sync (or extract from emoji-data.txt)
-emojiver = 15.0
+#emojiver = $(unibasever)
+# extract Emoji version from emoji-data.txt
+emojiver = `sed -e 's,^\#.*Emoji Version \([0-9][0-9.]*\).*,\1,' -e t -e d emoji-data.txt`
+# override Emoji version if not in sync
+##emojiver = 15.0
 
 # until 12.0:
 #emoji-%.txt:	Blocks.txt
@@ -308,9 +312,10 @@ unicodever.t:	# Blocks.txt
 	echo "#define UNICODE_VERSION $(unicodever)" > unicodever.t
 
 univer:	Blocks.txt
-	echo $(univer)
-	echo $(unibasever)
-	echo $(unicodever)
+	echo univer: $(univer)
+	echo unibasever: $(unibasever)
+	echo unicodever: $(unicodever)
+	echo emojiver: $(emojiver)
 
 %.txt:
 	$(WGET) http://www.unicode.org/Public/UNIDATA/$@

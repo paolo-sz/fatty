@@ -289,7 +289,8 @@ option as most config files are read before command line parameters are evaluate
 
 .TQ
 \fB--trace\fP \fIOUTPUT\fP
-This option redirects reporting (and debug) output to a file.
+This option redirects reporting output (see option \fB-R\fP) to a file.
+It also captures debug output (none in a release version).
 
 .TQ
 \fB--store-taskbar-properties\fP
@@ -779,6 +780,10 @@ Tips wiki page \fIhttps://github.com/mintty/mintty/wiki/Tips#terminating-the-for
 Note that Ctrl+C is often configured to raise a SIGINT signal. However, 
 this is not a terminal feature and can also be reconfigured (stty), so 
 in fact BRK and Ctrl+C are inherently different functions.
+The user-definable function intr can be used to send the character that 
+is currently assigned to the SIGINT signal via stty settings; note however, 
+this does not work e.g. through ssh if the pty setting is changed, as the 
+remote side does not change the client side towards mintty.
 
 .SS Mouse tracking
 
@@ -2849,7 +2854,7 @@ programming languages.
 This string can list characters that are to be excluded from word selection.
 
 .TQ
-\fBFiltering pasted text\fP (FilterPasteControls=)
+\fBFiltering pasted text\fP (FilterPasteControls=STTY)
 With this setting, pasted text can be filtered for selected control 
 characters which are then replaced by space. Filtering is not applied 
 when Control is held while pasting. The option is a comma-separated list 
@@ -2872,6 +2877,8 @@ of character tags:
 \(en \fBC0\fP other control characters < \(aq \(aq
 .br
 \(en \fBC1\fP control characters 0x80...0x9F
+.br
+\(en \fBSTTY\fP characters that are configured to cause INT, QUIT, TSTP signals, according to the current stty settings
 .br
 (Corresponds to the xterm resource \fBdisallowedPasteControls\fP.)
 
@@ -2964,9 +2971,9 @@ attached with a "+" separator, e.g. \fBCS+F9\fP;
 or a prefix "*" that applies the definition for all modified variations 
 of the key, e.g. \fB*Menu\fP
 .br
-\(en special keys (some of which do not occur on typical keyboards) 
-and keypad keys, as well as modified special and keypad keys; 
-Space, Enter, Esc and Tab are only considered with at least one modifier
+\(en special keys (some of which do not occur on typical keyboards)
+and keypad keys, as well as modified special and keypad keys.
+Space, Enter and Tab are only considered with at least one modifier.
   Esc, Tab
   Enter, KP_Enter
   Space, Back
@@ -2974,6 +2981,7 @@ Space, Enter, Esc and Tab are only considered with at least one modifier
   ScrollLock, NumLock, CapsLock
   (PrintScreen)
   LWin, RWin
+  Alt (when used on its own)
   Menu
   Insert, KP_Insert
   Delete, KP_Delete
@@ -3125,6 +3133,8 @@ Supported actions are described as follows:
 .br
 \(en \fBbreak\fP: sends a break condition to the application
 .br
+\(en \fBintr\fP: sends the character mapped to SIGINT via stty settings
+.br
 \(en \fBflipscreen\fP: switches the alternate screen
 .br
 \(en \fBno-scroll\fP: locks output until input key is pressed
@@ -3249,6 +3259,12 @@ Ctrl+_ assignment already
 \(en \fBKeyFunctions=C+F2:new-tab-cwd;AC+F2:new-window-cwd\fP will open 
 a new tab in same directory as current process on Control+F2, or as a 
 new window on Alt+Control+F2
+.br
+\(en \fBKeyFunctions=Alt:\(ha[\fP will make Alt send the Esc keycode when it is
+pressed and released on its own, for when the Esc key seems too far away from
+the home row
+.br
+\(en \fBKeyFunctions=Alt:menu-text\fP will make Alt open the context menu
 .br
 \(en \fBKeyFunctions=c:copy;v:paste\fP in combination with setting 
 \fB-o CtrlExchangeShift=true\fP will assign copy/paste to ^C and ^V 
@@ -3552,6 +3568,18 @@ This option can be set to support either DPI handling modes 1 or 2
 If non-zero (e.g. 900), mintty checks whether there is a version 
 update available whenever the Options dialog is opened and this was 
 not checked within the last given number of seconds.
+
+.TQ
+\fBGuard against usage of dynamic network pathnames\fP (GuardNetworkPaths=7)
+Dynamic pathnames as used in escape sequences can access arbitrary files.
+These settings guard the respective functions against network file access.
+The value is a bitmask, adding the following values:
+.br
+\(en \fB1\fP guard background image (OSC 11), sound (OSC 440), icon (OSC I)
+.br
+\(en \fB2\fP guard set directory (OCS 7) for window cloning (Alt+F2)
+.br
+\(en \fB4\fP guard open file via link (OSC 8) or hovering
 
 .TQ
 \fBSixel image clipboard substitution\fP (SixelClipChars=\fIspace\fP)
@@ -4003,7 +4031,7 @@ Additional information can be found on the wiki on the mintty project page
 
 .SH LICENSE
 
-Copyright (C) 2022 Thomas Wolff, Andy Koppe
+Copyright (C) 2023 Thomas Wolff, Andy Koppe
 
 Mintty is released under the terms of the the \fIGNU General Public License\fP
 version 3.

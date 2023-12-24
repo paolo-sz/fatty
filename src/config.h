@@ -206,6 +206,7 @@ typedef struct {
   string suppress_nrc;
   string suppress_wheel;
   string filter_paste;
+  int guard_path;
   int bracketed_paste_split;
   int suspbuf_max;
   int printable_controls;

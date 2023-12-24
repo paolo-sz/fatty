@@ -1,4 +1,21 @@
+Misc
+  * Fix handling of options to be saved (#1246, #1247).
+  * Tune and fix click-opening URL (mintty/wsltty#346).
+
+Configuration
+  * New user-definable key Alt for option KeyFunctions (#1245).
+  * New user-definable function intr (~#1245).
+
+### 3.7.0 (14 November 2023) ###
+
+Misc
   * Fix memory leak (mintty/wsltty#340) caused by dynamic emoji checking.
+  * Revise and unify handling of dynamic pathnames for terminal control.
+  * Guard network access via dynamic pathnames.
+
+Unicode and Emoji data
+  * Unicode 15.1 update.
+  * Adapt getemojis script to reduced format of unicode.org emoji charts (#1240).
 
 Terminal features
   * Tweak mousewheel scrolling: do not mix line and page events (#1234).
@@ -6,12 +23,20 @@ Terminal features
   * Send Alt modifier with mousewheel events (#1234).
   * New DECSET 7765 to exchange normal and Alt-modified mouse wheel scrolling (#1234).
   * Tweak double-click filename/URL selection with colon (#1236).
+  * Filter paste characters causing interrupt signals, according to the current stty settings.
+  * Fixed background in HTML screen dump.
+
+Window handling
+  * Better error handling if click-opening file fails.
+  * Save image file with proper access rights.
 
 Font rendering
   * Support size adjustment of alternative fonts, for use as secondary fonts (mintty/wsltty#341).
 
 Configuration
   * Alternative font specification supports initial + for size increase (mintty/wsltty#341).
+  * New option GuardNetworkPaths.
+  * Added STTY to FilterPasteControls settings (xterm 388), as default.
 
 ### 3.6.5 (3 September 2023) ###
 

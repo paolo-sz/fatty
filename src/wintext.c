@@ -2316,7 +2316,11 @@ static wchar *
   if (wallp)
     bgfn = wcsdup(wallpfn);
   else {
-    // path transformations
+    // path transformations:
+    // for dynamic changes (OSC 11) they are already handled 
+    // before setting cfg.background in termout.c,
+    // but for static configuration (option Background) they 
+    // need to be applied here as well
     if (0 == strncmp("~/", bf, 2)) {
       char * bfexp = asform("%s/%s", home, bf + 2);
       free(bf);
@@ -2331,6 +2335,8 @@ static wchar *
       }
     }
 
+#ifdef pathname_conversion_here
+#warning now deprecated; handled via guardpath
     if (support_wsl && !wallp) {
       wchar * wbf = cs__utftowcs(bf);
       wchar * wdewbf = dewsl(wbf);  // free(wbf)
@@ -2339,6 +2345,7 @@ static wchar *
       free(bf);
       bf = dewbf;
     }
+#endif
 
     bgfn = path_posix_to_win_w(bf);
   }

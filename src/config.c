@@ -1,5 +1,5 @@
 // config.c (part of FaTTY)
-// Copyright 2008-2022 Andy Koppe, 2015-2022 Thomas Wolff
+// Copyright 2008-2023 Andy Koppe, 2015-2023 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -221,6 +221,7 @@ const config default_cfg = {
   suppress_nrc : "",  // unused
   suppress_wheel : "",
   filter_paste : "",
+  guard_path : 7,
   bracketed_paste_split : 0,
   suspbuf_max : 8080,
   printable_controls : 0,
@@ -556,6 +557,7 @@ options[] = {
   {"SuppressNRC", OPT_STRING, offcfg(suppress_nrc)},  // unused
   {"SuppressMouseWheel", OPT_STRING, offcfg(suppress_wheel)},
   {"FilterPasteControls", OPT_STRING, offcfg(filter_paste)},
+  {"GuardNetworkPaths", OPT_INT, offcfg(guard_path)},
   {"BracketedPasteByLine", OPT_INT, offcfg(bracketed_paste_split)},
   {"SuspendWhileSelecting", OPT_INT, offcfg(suspbuf_max)},
   {"PrintableControls", OPT_INT, offcfg(printable_controls)},
@@ -875,9 +877,9 @@ find_option(bool from_file, string name)
 #define MAX_COMMENTS (lengthof(options) * 3)
 static struct {
   char * comment;
-  uchar opti;
+  ushort opti;
 } file_opts[lengthof(options) + MAX_COMMENTS];
-static uchar arg_opts[lengthof(options)];
+static ushort arg_opts[lengthof(options)];
 static uint file_opts_num = 0;
 static uint arg_opts_num;
 
@@ -904,7 +906,10 @@ seen_file_option(uint i)
 static bool
 seen_arg_option(uint i)
 {
-  return memchr(arg_opts, i, arg_opts_num);
+  for (uint k = 0; k < arg_opts_num; k++)
+    if (arg_opts[k] == i)
+      return true;
+  return false;
 }
 
 static void

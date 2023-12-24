@@ -74,7 +74,8 @@ shell_exec_thread(void *data)
   cygwin_internal(CW_SYNC_WINENV);
 #endif
 
-  if ((INT_PTR)ShellExecuteW(wnd, 0, wpath, 0, 0, SW_SHOWNORMAL) <= 32) {
+  SetLastError(ERROR_PATH_NOT_FOUND);  // in case !*wpath
+  if (!*wpath || (INT_PTR)ShellExecuteW(wnd, 0, wpath, 0, 0, SW_SHOWNORMAL) <= 32) {
     uint error = GetLastError();
     if (error != ERROR_CANCELLED) {
       int msglen = 1024;
@@ -124,22 +125,6 @@ ispathprefix(string pref, string path)
     path++;
   int len = strlen(pref);
   if (0 == strncmp(pref, path, len)) {
-    path += len;
-    if (!*path || *path == '/')
-      return true;
-  }
-  return false;
-}
-
-static bool
-ispathprefixw(wstring pref, wstring path)
-{
-  if (*pref == '/')
-    pref++;
-  if (*path == '/')
-    path++;
-  int len = wcslen(pref);
-  if (0 == wcsncmp(pref, path, len)) {
     path += len;
     if (!*path || *path == '/')
       return true;
@@ -335,46 +320,6 @@ wslmntmapped(void)
 }
 
 static char *
-unwslpath(wchar * wpath)
-{
-  char * res = null;
-  if (wslmntmapped()) {
-    char * wslpath = cs__wcstoutf(wpath);
-    if (wsl_conf_mnt && ispathprefix(wsl_conf_mnt, wslpath))
-      res = asform("/cygdrive%s", &wslpath[strlen(wsl_conf_mnt)]);
-    else
-      for (int i = 0; i < wsl_fstab_len; i++) {
-#if defined(debug_wslpath) && debug_wslpath > 2
-        printf("unwslpath <%s> <%s> (%s)\n", wslpath, wsl_fstab[i].mount_point, wsl_fstab[i].dev_fs);
-#endif
-        if (ispathprefix(wsl_fstab[i].mount_point, wslpath)) {
-          if (wsl_fstab[i].dev_fs[1] == ':') {
-            res = asform(
-#if defined(__MSYS__) || defined(__MINGW32)
-#else
-                         "/cygdrive"
-#endif
-                         "/%c%s%s", 
-                         tolower((int)wsl_fstab[i].dev_fs[0]), 
-                         &wsl_fstab[i].dev_fs[2], 
-                         &wslpath[strlen(wsl_fstab[i].mount_point)]);
-            break;
-          }
-          else {  // handle UNC path mount
-            res = asform("%s%s", wsl_fstab[i].dev_fs, wslpath + strlen(wsl_fstab[i].mount_point));
-            for (char * r = res; *r; r++)
-              // cygwin path conversion fails on backslash UNC paths
-              if (*r == '\\')
-                *r = '/';
-          }
-        }
-      }
-    free(wslpath);
-  }
-  return res;
-}
-
-static char *
 wslpath(char * path)
 {
   char * res = null;
@@ -431,6 +376,64 @@ wslpath(char * path)
     }
   }
   // cygwin-internal paths not supported
+  return res;
+}
+
+#ifdef pathname_conversion_here
+
+static bool
+ispathprefixw(wstring pref, wstring path)
+{
+  if (*pref == '/')
+    pref++;
+  if (*path == '/')
+    path++;
+  int len = wcslen(pref);
+  if (0 == wcsncmp(pref, path, len)) {
+    path += len;
+    if (!*path || *path == '/')
+      return true;
+  }
+  return false;
+}
+
+static char *
+unwslpath(wchar * wpath)
+{
+  char * res = null;
+  if (wslmntmapped()) {
+    char * wslpath = cs__wcstoutf(wpath);
+    if (wsl_conf_mnt && ispathprefix(wsl_conf_mnt, wslpath))
+      res = asform("/cygdrive%s", &wslpath[strlen(wsl_conf_mnt)]);
+    else
+      for (int i = 0; i < wsl_fstab_len; i++) {
+#if defined(debug_wslpath) && debug_wslpath > 2
+        printf("unwslpath <%s> <%s> (%s)\n", wslpath, wsl_fstab[i].mount_point, wsl_fstab[i].dev_fs);
+#endif
+        if (ispathprefix(wsl_fstab[i].mount_point, wslpath)) {
+          if (wsl_fstab[i].dev_fs[1] == ':') {
+            res = asform(
+#if defined(__MSYS__) || defined(__MINGW32)
+#else
+                         "/cygdrive"
+#endif
+                         "/%c%s%s", 
+                         tolower((int)wsl_fstab[i].dev_fs[0]), 
+                         &wsl_fstab[i].dev_fs[2], 
+                         &wslpath[strlen(wsl_fstab[i].mount_point)]);
+            break;
+          }
+          else {  // handle UNC path mount
+            res = asform("%s%s", wsl_fstab[i].dev_fs, wslpath + strlen(wsl_fstab[i].mount_point));
+            for (char * r = res; *r; r++)
+              // cygwin path conversion fails on backslash UNC paths
+              if (*r == '\\')
+                *r = '/';
+          }
+        }
+      }
+    free(wslpath);
+  }
   return res;
 }
 
@@ -500,6 +503,8 @@ dewsl(wchar * wpath)
   return wpath;
 }
 
+#endif
+
 #if CYGWIN_VERSION_API_MINOR < 206
 #define wcsncasecmp wcsncmp
 #define wmemcpy(t, s, n)	memcpy(t, s, 2 * n)
@@ -510,7 +515,6 @@ void
 // frees wpath
 {
   TERM_VAR_REF(true)
-  string &child_dir = term.child->dir;
     
   size_t wl = wcslen(wpath);
   wchar *wbuf = newn(wchar, wl + 1);
@@ -537,15 +541,28 @@ void
     }
   }
   wbuf[wl] = 0;
+  //printf("win_open %ls wbuf %ls\n", wpath, wbuf);
   delete(wpath);
 
+  // check for URL
   wchar *p = wbuf;
   while (iswalpha(*p)) p++;
-  if (*p == ':' || *wbuf == '\\' || !wcsncasecmp(W("www."), wbuf, 4)) {
-    // Looks like it's a Windows path or URI
+  if (*p == ':' && p - wbuf > 2) {
     shell_exec(wbuf); // frees wbuf
+    return;
   }
-  else {
+
+  // guard file opening against foreign network access
+  char * buf = cs__wcstoutf(wbuf);
+  char * gbuf = guardpath(buf, 4);
+  //printf("win_open buf %s grd %s\n", buf, gbuf);
+  free(buf);
+  if (!gbuf)
+    return;
+
+  {
+#ifdef pathname_conversion_here
+#warning now deprecated; handled via guardpath
     // Need to convert POSIX path to Windows first
     if (support_wsl) {
       // First, we need to replicate some of the handling of relative paths
@@ -568,6 +585,11 @@ void
       wbuf = dewsl(wbuf);
     }
     wstring conv_wpath = child_conv_path(wbuf, adjust_dir);
+#else
+    (void)adjust_dir;
+    wchar *conv_wpath = path_posix_to_win_w(gbuf);
+    free(gbuf);
+#endif
 #ifdef debug_wslpath
     printf("win_open <%ls> <%ls>\n", wbuf, conv_wpath);
 #endif
