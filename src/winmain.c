@@ -812,6 +812,28 @@ manage_tab_hiding(void)
 }
 
 /*
+  Fix instable tab set behaviour (#1242). There are 3 changes below;
+  a weird set of 4 combinations of them fixes the issue while the others don't.
+  Def. fix1242 chooses among the set of working fixes, 
+  0 (none, default), 1 (a and b), 2 (b), 3 (c)
+  As they might interfere with future changes related to tabs, these options 
+  are kept in the source for documentation.
+ */
+#ifndef fix1242
+#define fix1242 0
+#endif
+#if fix1242 == 1
+#define fix1242a
+#define fix1242b
+#endif
+#if fix1242 == 2
+#define fix1242b
+#endif
+#if fix1242 == 3
+#define fix1242c
+#endif
+
+/*
   Notify tab focus. Manage hidden tab status.
  */
 #define win_set_tab_focus(...) (win_set_tab_focus)(term_p, ##__VA_ARGS__)
@@ -826,9 +848,11 @@ static void
   // guard by is_init to avoid hiding background tabs by early WM_ACTIVATE
   if (is_init && manage_tab_hiding()) {
     // hide background tabs; rather here than below?
+#ifdef fix1242a
     if (cfg.window)  // not hidden explicitly
       // attempt to suppresses initial Ctrl+TAB
       win_hide_other_tabs(wnd);
+#endif
 
     //printf("[%p] set_tab_focus %c focus %d\n", wnd, tag, GetFocus() == wnd);
     // don't need to unhide as we don't hide above
@@ -841,6 +865,12 @@ static void
     LONG style = GetWindowLong(wnd, GWL_EXSTYLE);
     style &= ~WS_EX_TOOLWINDOW;
     SetWindowLong(wnd, GWL_EXSTYLE, style);
+
+#ifndef fix1242a
+    // hide background tabs
+    if (cfg.window)  // not hidden explicitly
+      win_hide_other_tabs(wnd);
+#endif
   }
 }
 
@@ -3359,12 +3389,16 @@ void
   LONG style = GetWindowLong(wnd, GWL_EXSTYLE);
 
   // check whether this is actually a background tab that should be hidden
+#ifdef fix1242b
   if (style & WS_EX_TOOLWINDOW) {
+    //printf("[%p] SetLayeredWindowAttributes\n", wnd);
     // for virtual hiding, set max transparency
     SetWindowLong(wnd, GWL_EXSTYLE, style | WS_EX_LAYERED);
     SetLayeredWindowAttributes(wnd, 0, 0, LWA_ALPHA);
   }
-  else {
+  else
+#endif
+  {
     // otherwise, set actual transparency
     style = trans ? style | WS_EX_LAYERED : style & ~WS_EX_LAYERED;
     SetWindowLong(wnd, GWL_EXSTYLE, style);
@@ -3828,6 +3862,7 @@ show_iconwarn(wchar * winmsg)
 #define dont_debug_only_focus_messages
 #define dont_debug_only_sizepos_messages
 #define dont_debug_mouse_messages
+#define dont_debug_minor_messages
 #define dont_debug_hook
 
 static void win_global_keyboard_hook(bool on);
@@ -3876,6 +3911,9 @@ static struct {
 # ifndef debug_mouse_messages
       && message != WM_SETCURSOR
       && message != WM_MOUSEMOVE && message != WM_NCMOUSEMOVE
+# endif
+# ifndef debug_minor_messages
+      && !strstr(wm_name, "_GET") && !strstr(wm_name, "_IME")
 # endif
      )
 # ifdef debug_only_sizepos_messages
@@ -4040,7 +4078,7 @@ static struct {
       wm_user = false;
 
     when WM_COMMAND case_or WM_SYSCOMMAND: {
-# ifdef debug_messages
+# if defined(debug_messages) || defined(debug_tabs)
       static struct {
         uint idm_;
         char * idm_name;
@@ -5010,10 +5048,40 @@ static int olddelta;
       break;
     }
 
-#ifdef debug_stylestuff
-    when WM_STYLECHANGING: {
-      printf("STYLE %08X -> %08X\n", ((STYLESTRUCT *)lp)->styleOld, ((STYLESTRUCT *)lp)->styleNew);
-      //return 0;
+#if defined(debug_stylestuff) || defined(debug_messages)
+    when /* WM_STYLECHANGING or */ WM_STYLECHANGED: {
+      string what = message == WM_STYLECHANGING ? "CHNGING" : "CHANGED";
+      string which = (int)wp == GWL_EXSTYLE ? "EX" : (int)wp == GWL_STYLE ? "" : "?";
+      DWORD old = ((STYLESTRUCT *)lp)->styleOld;
+      DWORD new = ((STYLESTRUCT *)lp)->styleNew;
+      DWORD off = old & ~new;
+      DWORD on = new & ~old;
+      printf("%sSTYLE%s %08X -> %08X, off %08X on %08X\n", which, what, old, new, off, on);
+
+typedef struct {
+  DWORD st;
+  string style;
+} style_desc;
+#ifndef WS_EX_NOREDIRECTIONBITMAP
+#define WS_EX_NOREDIRECTIONBITMAP 0x00200000
+#endif
+#include "_wstyles.t"
+      void stylebits(bool off, DWORD bits, style_desc * styles, int len)
+      {
+        for (int i = 0; i < len; i++)
+          if (styles[i].st && (bits & styles[i].st) == styles[i].st)
+            printf("               %c %s\n", off ? '-' : '+', styles[i].style);
+      }
+      if ((int)wp == GWL_EXSTYLE) {
+        stylebits(true, off, ws_ex_styles, lengthof(ws_ex_styles));
+        stylebits(false, on, ws_ex_styles, lengthof(ws_ex_styles));
+      }
+      else if ((int)wp == GWL_STYLE) {
+        stylebits(true, off, ws_styles, lengthof(ws_styles));
+        stylebits(false, on, ws_styles, lengthof(ws_styles));
+      }
+
+      //if (message == WM_STYLECHANGING) return 0;
     }
 
     when WM_ERASEBKGND:
@@ -7666,8 +7734,10 @@ main(int argc, char *argv[])
 
     //printf("check all_hidden %d vanished %d\n", all_hidden, vanished);
     if (manage_tab_hiding() && all_hidden) {
+#ifdef fix1242c
       // unhide myself, hide other tabs:
       win_set_tab_focus('U');
+#endif
       // maybe not necessary to repeat this:
       win_update_transparency(cfg.transparency, cfg.opaque_when_focused);
     }

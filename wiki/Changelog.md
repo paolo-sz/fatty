@@ -1,6 +1,12 @@
+Terminal features
+  * Dropped DSR 53 (legacy xterm mistake, dropped in xterm 389).
+
 Misc
   * Fix handling of options to be saved (#1246, #1247).
   * Tune and fix click-opening URL (mintty/wsltty#346).
+
+Window handling
+  * Fix instable window switching after minimize/restore (#1242, #1249).
 
 Configuration
   * New user-definable key Alt for option KeyFunctions (#1245).
