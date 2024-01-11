@@ -566,7 +566,7 @@ static struct procinfo {
   char * cmdline;
 } * ttyprocs = 0;
 static uint nttyprocs = 0;
-
+*/
 char *
 procres(int pid, char * res)
 {
@@ -587,7 +587,7 @@ procres(int pid, char * res)
     *nl = 0;
   return strdup(fbuf);
 }
-
+/*
 static int
 procresi(int pid, char * res)
 {
