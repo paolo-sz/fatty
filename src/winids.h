@@ -57,11 +57,16 @@
 #define IDM_CTXMENUFUNCTION 0xA000
 #define IDM_GOTAB           0xD000
 
-#define IDM_NEWTAB          0x0800
-#define IDM_KILLTAB         0x0810
-#define IDM_PREVTAB     0x0820
-#define IDM_NEXTTAB     0x0830
-#define IDM_MOVELEFT    0x0840
-#define IDM_MOVERIGHT   0x0850
+#ifdef sanitize_min_restore_via_sync
+#define IDM_RESTORE         0x0800
+#define IDM_FOCUS           0x0810
+#endif
+
+#define IDM_NEWTAB          0x0900
+#define IDM_KILLTAB         0x0910
+#define IDM_PREVTAB     0x0920
+#define IDM_NEXTTAB     0x0930
+#define IDM_MOVELEFT    0x0940
+#define IDM_MOVERIGHT   0x0950
 
 #endif
