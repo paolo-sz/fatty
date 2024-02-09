@@ -2455,7 +2455,7 @@ static void
             do_update();
             usleep(1000);  // flush update
           }
-        when 2027:
+        when 7723 case_or 2027: /* Reflow mode; 2027 is deprecated */
           term.curs.rewrap_on_resize = state;
       }
     }
@@ -2627,7 +2627,7 @@ static int
         return 2 - !!(term.curs.bidimode & LATTR_BOXMIRROR);
       when 2501: /* bidi direction auto-detection */
         return 2 - !(term.curs.bidimode & LATTR_BIDISEL);
-      when 2027:
+      when 7723 case_or 2027: /* Reflow mode; 2027 is deprecated */
         return 2 - term.curs.rewrap_on_resize;
       othwise:
         return 0;

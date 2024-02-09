@@ -1,13 +1,17 @@
 Terminal features
   * Dropped DSR 53 (legacy xterm mistake, dropped in xterm 389).
+  * HTML screen dump supports subscript or superscript.
+  * HTML screen dump supports DEC double-width lines and pairs of double-height lines.
 
 Misc
   * Fix handling of options to be saved (#1246, #1247).
-  * Tune and fix click-opening URL (mintty/wsltty#346).
+  * Tune and fix click-opening URL (mintty/wsltty#346, #1254).
 
 Window handling
   * Fix instable window switching after minimize/restore (#1242, #1249).
   * Fix window switching (Ctrl+ALT) after minimize/restore (#1242).
+  * New rewrap per-line disable mode DECRST 7723 (deprecated 2027, #1255).
+  * Semi-workaround for transparency loss when resizing unfocused grid-snapped window (#1256).
 
 Configuration
   * New user-definable key Alt for option KeyFunctions (#1245).

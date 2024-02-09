@@ -227,7 +227,10 @@ static clip_workbuf *
     }
     if (nl) {
       clip_addchar(buf, '\r', 0, false, hint);
-      clip_addchar(buf, '\n', 0, false, hint);
+      // mark lineend with line attributes, particularly double-width/height
+      cattr lcattr = CATTR_DEFAULT;
+      lcattr.link = line->lattr;
+      clip_addchar(buf, '\n', &lcattr, false, hint);
     }
     start.y++;
     start.x = rect ? old_top_x : 0;
@@ -719,6 +722,12 @@ static char *
     );
   if (level >= 3)
     hprintf(hf, "  body.fatty { margin: 0; padding: 0; }\n");
+  hprintf(hf, "  .super, .sub, .small { line-height: 0; font-size: 0.7em; letter-spacing: 0.3em; }\n");
+  hprintf(hf, "  .super { vertical-align: super; }\n");
+  hprintf(hf, "  .sub { vertical-align: sub; }\n");
+  hprintf(hf, "  .double-width {display: inline-block; line-height: 1.2; transform-origin: left; transform: scale(2, 1);}\n");
+  hprintf(hf, "  .double-height-top {display: inline-block; line-height: 2.4; transform-origin: left; transform: scale(2, 2);}\n");
+  hprintf(hf, "  .double-height-bottom {display: none;}\n");
   hprintf(hf, "  #vt100 span {\n");
   if (level >= 2) {
     // font needed in <span> for some tools (e.g. Powerpoint)
@@ -876,11 +885,13 @@ static char *
   hprintf(hf, "<body class=fatty onload='setup();'>\n");
   //hprintf(hf, "  <table border=0 cellpadding=0 cellspacing=0><tr><td>\n");
   hprintf(hf, "  <div class=background id='vt100'>\n");
-  hprintf(hf, "   <pre>");
+  hprintf(hf, "   <pre\n>");
 
   clip_workbuf * buf = get_selection(true, start, end, rect, level >= 3, false);
   int i0 = 0;
   bool odd = true;
+  bool new_line = true;
+  ushort lattr = LATTR_NORM;
   for (uint i = 0; i < buf->len; i++) {
     if (!buf->text[i] || buf->text[i] == '\r' || buf->text[i] == '\n'
         // buf->cattrs[i] ~!= buf->cattrs[i0] ?
@@ -893,6 +904,21 @@ static char *
         || buf->cattrs[i].ulcolr != buf->cattrs[i0].ulcolr
        )
     {
+      if (new_line) {
+        wchar * nl = wcschr(&buf->text[i], '\n');
+        if (nl) {
+          int offset = nl - &buf->text[i];
+          lattr = (ushort)buf->cattrs[i + offset].link & LATTR_MODE;
+        }
+        else
+          lattr = LATTR_NORM;
+        if (lattr)
+          hprintf(hf, "<div class='double-%s'>",
+                      lattr == LATTR_WIDE ? "width" :
+                      lattr == LATTR_TOP ? "height-top" : "height-bottom");
+        new_line = false;
+      }
+
       // flush chunk with equal attributes
       hprintf(hf, "<span class='%s", odd ? "od" : "ev");
 
@@ -938,6 +964,14 @@ static char *
       // add marker classes
       if (ca->attr & ATTR_FRAMED)
         hprintf(hf, " emoji");  // mark emoji style
+
+      // add subscript or superscript
+      if ((ca->attr & (ATTR_SUBSCR | ATTR_SUPERSCR)) == (ATTR_SUBSCR | ATTR_SUPERSCR))
+        hprintf(hf, " small");
+      else if (ca->attr & ATTR_SUBSCR)
+        hprintf(hf, " sub");
+      else if (ca->attr & ATTR_SUPERSCR)
+        hprintf(hf, " super");
 
       // style adding function
       bool with_style = false;
@@ -1124,16 +1158,39 @@ static char *
         // more precise cursor colour adjustments could be made...
       }
 
+      // finish styles
+      hprintf(hf, "'>");
+
       // retrieve chunk of text from buffer
       wchar save = buf->text[i];
       buf->text[i] = 0;
       char * s = cs__wcstoutf(&buf->text[i0]);
       buf->text[i] = save;
+      // here we could:
+      // * handle the chunk string by Unicode glyphs
+      // * check whether each char is an emoji char or sequence
+      // * check its terminal width
+      // * scale width to actual (narrow or multi-cell) width
 
       // write chunk, apply HTML escapes
+      auto hprinttext = [&](char * t) {
+        if (ca->attr & ATTR_FRAMED)
+          while (*t) {
+            hprintf(hf, "%c", *t++);
+#ifdef export_emoji_style
+            // here we should, in addition to the above:
+            // * check whether each char actually has an emoji presentation:
+            //   (emoji_tags(emoji_idx(ch)) & EM_emoj)
+            //   and only append 0xFE0F then
+            if ((*t & 0xC0) != 0x80)
+              hprintf(hf, "️");
+#endif
+          }
+        else
+          hprintf(hf, "%s", t);
+      };
       char * s1 = strpbrk(s, "<&");
       if (s1) {
-        hprintf(hf, "'>");
         char * s0 = s;
         do {
           if (*s0 == '<') {
@@ -1148,7 +1205,7 @@ static char *
             char c = s1 ? *s1 : 0;
             if (s1)
               *s1 = 0;
-            hprintf(hf, "%s", s0);
+            hprinttext(s0);
             if (s1) {
               *s1 = c;
               s0 = s1;
@@ -1158,11 +1215,11 @@ static char *
           }
           s1 = strpbrk(s0, "<&");
         } while (*s0);
-        hprintf(hf, "</span>");
       }
       else
-        hprintf(hf, "'>%s</span>", s);
+        hprinttext(s);
       free(s);
+      hprintf(hf, "</span>");
 
       // forward chunk pointer
       i0 = i;
@@ -1176,12 +1233,17 @@ static char *
     if (buf->text[i] == '\n') {
       i++;
       i0 = i;
+      if (lattr)
+        hprintf(hf, "</div>");
       if (enhtml)
-        // <br> needed for Powerpoint
-        hprintf(hf, "<br\n>");
+        // <br> needed for HTML and for Powerpoint
+        hprintf(hf, "<br%s\n>", lattr == LATTR_BOT ? " class='double-height-bottom'" : "");
       else
         hprintf(hf, "\n");
       odd = !odd;
+
+      new_line = true;
+      lattr = LATTR_NORM;
     }
   }
   destroy_clip_workbuf(buf);
