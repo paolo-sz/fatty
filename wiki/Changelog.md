@@ -1,8 +1,14 @@
+### 3.7.1 (24 February 2024) ###
+
 Terminal features
   * Dropped DSR 53 (legacy xterm mistake, dropped in xterm 389).
   * HTML screen dump supports subscript or superscript.
   * HTML screen dump supports DEC double-width lines and pairs of double-height lines.
-  * Tweak DECRQCRA Rectangular Checksum to match xterm (~#1225).
+  * Tweak DECRQCRA Rectangular Checksum to match xterm (~#1225, xterm 390).
+  * Fix status area refresh, especially after restoring a minimized window.
+  * Workaround for rendering failure of top-left background text on background image.
+  * Fix invisible and blinking attributes on background image.
+  * Added XTQMODKEYS to DECRQSS (#1189, xterm 389).
 
 Misc
   * Fix handling of options to be saved (#1246, #1247).
