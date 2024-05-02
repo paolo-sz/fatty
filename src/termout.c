@@ -1581,14 +1581,14 @@ static void
   
   term_cursor *curs = &term.curs;
   term.state = NORMAL;
-  term.autowrap = false;
-  term.rev_wrap = false;
   term.esc_mod = 0;
   switch (c) {
     when '\e':
       term.state = ESCAPE;
     when '<':  /* Exit VT52 mode (Enter VT100 mode). */
       term.vt52_mode = 0;
+      term.autowrap = term.save_autowrap;
+      term.rev_wrap = term.save_rev_wrap;
     when '=':  /* Enter alternate keypad mode. */
       term.app_keypad = true;
     when '>':  /* Exit alternate keypad mode. */
@@ -2249,8 +2249,13 @@ static void
             term.curs.cset_single = CSET_ASCII;
             term_update_cs();
           }
-          else
+          else {
             term.vt52_mode = 1;
+            term.save_autowrap = term.autowrap;
+            term.save_rev_wrap = term.rev_wrap;
+            term.autowrap = false;
+            term.rev_wrap = false;
+          }
         when 3:  /* DECCOLM: 80/132 columns */
           if (term.deccolm_allowed) {
             term.selected = false;
@@ -3231,6 +3236,13 @@ static void
           term.tabs[i] = false;
         term.newtab = 0;  // don't set new default tabs on resize
       }
+    when CPAIR('?', 'W'):  /* DECST8C: reset tab stops (VT510, xterm 389) */
+      if (arg0 == 5 && term.tabs) {
+        for (int i = 0; i < term.cols; i++)
+          term.tabs[i] = (i % 8 == 0);
+      }
+    when CPAIR('"', 'v'):  /* DECRQDE: request display extent (VT340, xterm 387) */
+      child_printf("\e[%d;%d;1;1;1\"w", term.rows, term.cols);
     when 'r': {      /* DECSTBM: set scrolling region */
       int top = arg0_def1 - 1;
       int bot = (arg1 ? min(arg1, term.rows) : term.rows) - 1;
