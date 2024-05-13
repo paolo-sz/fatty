@@ -4370,10 +4370,6 @@ static void
   int len;
   int ret;
 
-  if (!cfg.allow_set_selection) {
-    return;
-  }
-
   while (*s != ';' && *s != '\0') {
     s += 1;
   }
@@ -4381,10 +4377,30 @@ static void
     return;
   }
   s += 1;
-  if (*s == '?') {
-    /* Reading from clipboard is unsupported */
+  if (0 == strcmp(s, "?")) {
+    if (!cfg.allow_paste_selection) {
+      return;
+    }
+
+    char * cb = get_clipboard();
+    if (!cb)
+      return;
+    char * b64 = base64(cb);
+    //printf("<%s> -> <%s>\n", s, cb, b64);
+    free(cb);
+    if (!b64)
+      return;
+
+    child_printf("\e]52;;%s%s", b64, osc_fini());
+
+    free(b64);
     return;
   }
+
+  if (!cfg.allow_set_selection) {
+    return;
+  }
+
   len = strlen(s);
 
   output = (char *)malloc(len + 1);
@@ -4397,6 +4413,9 @@ static void
     output[ret] = '\0';
     win_copy_text(output);
   }
+  else
+    // clear selection
+    win_copy(W(""), 0, 1);
   free(output);
 }
 

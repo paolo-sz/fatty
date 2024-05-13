@@ -55,8 +55,6 @@ extern void win_set_title(wchar *wtitle);
 #define win_copy_title(...) (win_copy_title)(term_p, ##__VA_ARGS__)
 extern void (win_copy_title)(struct term *term_p);
 extern char * win_get_title(void);
-#define win_copy_text(...) (win_copy_text)(term_p, ##__VA_ARGS__)
-extern void (win_copy_text)(struct term *term_p, const char *s);
 
 /* colour */
 #define win_get_colour(...) (win_get_colour)(term_p, ##__VA_ARGS__)
@@ -112,6 +110,8 @@ extern wchar win_combine_chars(wchar bc, wchar cc, cattrflags attr);
 
 #define win_open(...) (win_open)(term_p, ##__VA_ARGS__)
 extern void (win_open)(struct term *term_p, wstring path, bool adjust_dir);
+#define win_copy_text(...) (win_copy_text)(term_p, ##__VA_ARGS__)
+extern void (win_copy_text)(struct term *term_p, const char *s);
 #define win_copy(...) (win_copy)(term_p, ##__VA_ARGS__)
 extern void (win_copy)(struct term *term_p, const wchar *data, cattr *cattrs, int len);
 #define win_copy_as(...) (win_copy_as)(term_p, ##__VA_ARGS__)
@@ -120,6 +120,7 @@ extern void (win_copy_as)(struct term *term_p, const wchar *data, cattr *cattrs,
 extern void (win_paste)(struct term *term_p);
 #define win_paste_path(...) (win_paste_path)(term_p, ##__VA_ARGS__)
 extern void (win_paste_path)(struct term *term_p);
+extern char * get_clipboard(void);
 
 extern void win_set_timer(void (*cb)(void*), void* data, uint ticks);
 

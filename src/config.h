@@ -149,6 +149,7 @@ typedef struct {
   int copy_as_rtf_font_size;
   bool trim_selection;
   bool allow_set_selection;
+  bool allow_paste_selection;
   int selection_show_size;
   // Window
   int cols, rows;

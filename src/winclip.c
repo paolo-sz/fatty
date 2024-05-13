@@ -651,6 +651,22 @@ static cattrflags
 }
 
 void
+(win_copy_text)(struct term *term_p, const char *s)
+{
+  unsigned int size;
+  wchar *text = cs__mbstowcs(s);
+
+  if (text == NULL) {
+    return;
+  }
+  size = wcslen(text);
+  if (size > 0) {
+    win_copy(text, 0, size + 1);
+  }
+  free(text);
+}
+
+void
 (win_copy)(struct term *term_p, const wchar *data, cattr *cattrs, int len)
 {
   win_copy_as(data, cattrs, len, 0);
@@ -1354,6 +1370,36 @@ static void
   }
 
   CloseClipboard();
+}
+
+char *
+get_clipboard(void)
+{
+  if (!OpenClipboard(null))
+    return 0;
+
+  HGLOBAL data;
+  char * res;
+  if ((data = GetClipboardData(CF_UNICODETEXT))) {
+    wchar *s = (wchar *)GlobalLock(data);
+    //printf("CF_UNICODETEXT <%ls>\n", s);
+    res = cs__wcstombs(s);
+    GlobalUnlock(data);
+  }
+  else if ((data = GetClipboardData(CF_TEXT))) {
+    char *cs = (char *)GlobalLock(data);
+    //printf("CF_TEXT <%s>\n", cs);
+    uint l = MultiByteToWideChar(CP_ACP, 0, cs, -1, 0, 0) - 1;
+    wchar s[l];
+    MultiByteToWideChar(CP_ACP, 0, cs, -1, s, l);
+    res = cs__wcstombs(s);
+    GlobalUnlock(data);
+  }
+  else
+    res = 0;
+
+  CloseClipboard();
+  return res;
 }
 
 void

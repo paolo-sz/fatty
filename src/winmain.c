@@ -237,6 +237,8 @@ static COLORREF (WINAPI * pGetThemeSysColor)(HTHEME hth, int colid) = 0;
 static HTHEME (WINAPI * pOpenThemeData)(HWND, LPCWSTR pszClassList) = 0;
 static HRESULT (WINAPI * pCloseThemeData)(HTHEME) = 0;
 
+static BOOL (WINAPI * pGetLayeredWindowAttributes)(HWND, COLORREF *, BYTE *, DWORD *) = 0;
+
 
 #define dont_debug_guardpath
 
@@ -519,6 +521,8 @@ load_dwm_funcs(void)
       (HRESULT (*)(HWND, void*))((void (*)(void))GetProcAddress(user32, "SetWindowCompositionAttribute"));
     pSystemParametersInfo =
       (BOOL (*)(UINT, UINT, PVOID, UINT))((void (*)(void))GetProcAddress(user32, "SystemParametersInfoW"));
+    pGetLayeredWindowAttributes =
+      (BOOL (*)(HWND, COLORREF *, BYTE *, DWORD *))((void (*)(void))GetProcAddress(user32, "GetLayeredWindowAttributes"));
   }
   if (uxtheme) {
     DWORD win_version = GetVersion();
@@ -1146,22 +1150,6 @@ win_get_title(void)
   wchar title[len + 1];
   GetWindowTextW(wnd, title, len + 1);
   return cs__wcstombs(title);
-}
-
-void
-(win_copy_text)(struct term *term_p, const char *s)
-{
-  unsigned int size;
-  wchar *text = cs__mbstowcs(s);
-
-  if (text == NULL) {
-    return;
-  }
-  size = wcslen(text);
-  if (size > 0) {
-    win_copy(text, 0, size + 1);
-  }
-  free(text);
 }
 
 /*
@@ -6874,22 +6862,26 @@ main(int argc, char *argv[])
 #endif
 
 #define dont_debug_wsl
-#define wslbridge2
+
+  bool wslbridge2 = access("/bin/wslbridge2", X_OK) == 0
+                 || access("/bin/wslbridge", X_OK) < 0;
 
   // Work out what to execute.
   argv += optind;
   if (wsl_guid && wsl_launch) {
     argc -= optind;
-#ifdef wslbridge2
+    char * cmd0;
+    if (wslbridge2) {
 # ifndef __x86_64__
-    argc += 2;  // -V 1/2
+      argc += 2;  // -V 1/2
 # endif
-    cmd = const_cast<char *>("/bin/wslbridge2");
-    char * cmd0 = const_cast<char *>("-wslbridge2");
-#else
-    cmd = const_cast<char *>("/bin/wslbridge");
-    char * cmd0 = const_cast<char *>("-wslbridge");
-#endif
+      cmd = const_cast<char *>("/bin/wslbridge2");
+      cmd0 = const_cast<char *>("-wslbridge2");
+    }
+    else {
+      cmd = const_cast<char *>("/bin/wslbridge");
+      cmd0 = const_cast<char *>("-wslbridge");
+    }
     bool login_dash = false;
     if (*argv && !strcmp(*argv, "-") && !argv[1]) {
       login_dash = true;
@@ -6897,9 +6889,8 @@ main(int argc, char *argv[])
       //argc--;
       //argc++; // for "-l"
     }
-#ifdef wslbridge2
-    argc += start_home;
-#endif
+    if (wslbridge2)
+      argc += start_home;
     argc += 10;  // -e parameters
 
     char ** new_argv = newn(char *, argc + 8 + start_home + (wsltty_appx ? 2 : 0));
@@ -6913,25 +6904,26 @@ main(int argc, char *argv[])
     }
     else
       *pargv++ = cmd;
-#ifdef wslbridge2
 # ifndef __x86_64__
-    *pargv++ = "-V";
-    if (wsl_ver > 1)
-      *pargv++ = "2";
-    else
-      *pargv++ = "1";
+    if (wslbridge2) {
+      *pargv++ = "-V";
+      if (wsl_ver > 1)
+        *pargv++ = "2";
+      else
+        *pargv++ = "1";
+    }
 # endif
-#endif
     if (*wsl_guid) {
-#ifdef wslbridge2
-      if (*wslname) {
-        *pargv++ = const_cast<char *>("-d");
-        *pargv++ = cs__wcstombs(wslname);
+      if (wslbridge2) {
+        if (*wslname) {
+          *pargv++ = const_cast<char *>("-d");
+          *pargv++ = cs__wcstombs(wslname);
+        }
       }
-#else
-      *pargv++ = "--distro-guid";
-      *pargv++ = wsl_guid;
-#endif
+      else {
+        *pargv++ = const_cast<char *>("--distro-guid");
+        *pargv++ = wsl_guid;
+      }
     }
 #ifdef wslbridge_t
     *pargv++ = "-t";
@@ -6949,12 +6941,12 @@ main(int argc, char *argv[])
       *pargv++ = const_cast<char *>("LC_ALL");
     }
     if (start_home) {
-#ifdef wslbridge2
-      *pargv++ = const_cast<char *>("--wsldir");
-      *pargv++ = const_cast<char *>("~");
-#else
-      *pargv++ = "-C~";
-#endif
+      if (wslbridge2) {
+        *pargv++ = const_cast<char *>("--wsldir");
+        *pargv++ = const_cast<char *>("~");
+      }
+      else
+        *pargv++ = const_cast<char *>("-C~");
     }
 
 #if CYGWIN_VERSION_API_MINOR >= 74
@@ -6994,15 +6986,15 @@ main(int argc, char *argv[])
     };
 
     if (wsltty_appx && lappdata && *lappdata) {
-#ifdef wslbridge2
-      char * wslbridge_backend = asform("%s/wslbridge2-backend", lappdata);
-      char * bin_backend = const_cast<char *>("/bin/wslbridge2-backend");
-      bool ok = copyfile(bin_backend, wslbridge_backend, true);
-#else
-      char * wslbridge_backend = asform("%s/wslbridge-backend", lappdata);
-      bool ok = copyfile("/bin/wslbridge-backend", wslbridge_backend, true);
-#endif
-      (void)ok;
+      char * wslbridge_backend;
+      if (wslbridge2) {
+        wslbridge_backend = asform("%s/wslbridge2-backend", lappdata);
+        copyfile(const_cast<char *>("/bin/wslbridge2-backend"), wslbridge_backend, true);
+      }
+      else {
+        wslbridge_backend = asform("%s/wslbridge-backend", lappdata);
+        copyfile(const_cast<char *>("/bin/wslbridge-backend"), wslbridge_backend, true);
+      }
 
       *pargv++ = const_cast<char *>("--backend");
       *pargv++ = wslbridge_backend;
@@ -7823,10 +7815,10 @@ main(int argc, char *argv[])
       WINDOWINFO curr_wnd_info;
       curr_wnd_info.cbSize = sizeof(WINDOWINFO);
       GetWindowInfo(curr_wnd, &curr_wnd_info);
-      if (class_atom == curr_wnd_info.atomWindowType) {
+      if (class_atom == curr_wnd_info.atomWindowType && pGetLayeredWindowAttributes) {
         bool layered = GetWindowLong(curr_wnd, GWL_EXSTYLE) & WS_EX_LAYERED;
         BYTE b;
-        GetLayeredWindowAttributes(curr_wnd, 0, &b, 0);
+        pGetLayeredWindowAttributes(curr_wnd, 0, &b, 0);
         bool hidden = layered && !b;
         if (!hidden) {
           all_hidden = false;
@@ -7871,10 +7863,14 @@ main(int argc, char *argv[])
         if (!manage_tab_hiding())
           break;
       }
-      else if (manage_tab_hiding() && class_atom == curr_wnd_info.atomWindowType) {
+      else if (manage_tab_hiding()
+               && class_atom == curr_wnd_info.atomWindowType
+               && pGetLayeredWindowAttributes
+              )
+      {
         bool layered = GetWindowLong(curr_wnd, GWL_EXSTYLE) & WS_EX_LAYERED;
         BYTE b;
-        GetLayeredWindowAttributes(curr_wnd, 0, &b, 0);
+        pGetLayeredWindowAttributes(curr_wnd, 0, &b, 0);
         bool hidden = layered && !b;
         //printf("check [%p] min %d %p hidden %d\n", wnd, currmin, curr_wnd, hidden);
         //printf("[%p] layered %d attr %d hidden %d\n", wnd, layered, b, hidden);
