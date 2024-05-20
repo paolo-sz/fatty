@@ -134,6 +134,9 @@ extern void (win_update_transparency)(struct term* term_p, int transparency, boo
 extern void (win_tab_prefix_title)(struct term* term_p, const wstring);
 #define win_tab_unprefix_title(...) (win_tab_unprefix_title)(term_p, ##__VA_ARGS__)
 extern void (win_tab_unprefix_title)(struct term* term_p, const wstring);
+//extern void win_prefix_title(const wstring);
+//extern void win_unprefix_title(const wstring);
+extern void strip_title(wchar * title);
 extern void win_set_icon(char * s, int icon_index);
 extern char * guardpath(string path, int level);
 

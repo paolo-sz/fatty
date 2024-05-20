@@ -326,7 +326,8 @@ namespace and converted before opening in Windows.
 \fB\-\-WSL\fP=\fIWSL DISTRIBUTION NAME\fP
 Run a WSL session, setting other parameters as appropriate and involving 
 the \fIwslbridge2\fP gateway implicitly 
-(which should be installed in /bin for this purpose).
+(which should be installed in /bin for this purpose; 
+fallback to legacy wslbridge on older Windows is supported).
 If the distribution name is empty, the default WSL installation is run; 
 otherwise, it refers to the installed WSL packages as listed by the 
 Windows tool \fBwslconfig /l\fP or \fBwsl \-l\fP.
@@ -3962,6 +3963,11 @@ synchronization to the given level as if also setting
 \fINote:\fP The tabbar can also be switched dynamically 
 with the user-definable function toggle-tabbar assigned to a hotkey or 
 configured into the context menu.
+
+.TQ
+\fBTabbar font\fP (TabFont=)
+This setting selects a font for the tabbar. 
+If empty, the default terminal font is used.
 
 .TQ
 \fBTabbar grouping\fP (NewTabs=0)

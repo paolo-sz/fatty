@@ -161,6 +161,7 @@ static bool wsltty_appx = true;
 #else
 static bool wsltty_appx = false;
 #endif
+OSVERSIONINFO winver;
 
 
 static HBITMAP caretbm;
@@ -885,6 +886,14 @@ static void
   }
 }
 
+void
+strip_title(wchar * title)
+{
+  wchar * tp = title + wcslen(title) - 1;
+  while (tp > title && *tp == L'\u00A0')
+    *tp-- = 0;
+}
+
 /*
   Enumerate all windows of the mintty class.
   ///TODO: Maintain a local list of them.
@@ -914,6 +923,7 @@ refresh_tab_titles(bool trace)
       }
       wchar title[len + 1];
       GetWindowTextW(curr_wnd, title, len + 1);
+      strip_title(title);
 #ifdef debug_tabbar
       printf("[%8p] get tab %8p: <%ls>\n", wnd, curr_wnd, title);
 #endif
@@ -1117,19 +1127,40 @@ win_set_icon(char * s, int icon_index)
   }
 }
 
+static wchar * iconlabelpad = const_cast<wchar *>(W("                                                  "));
+
 void
 win_set_title(wchar *wtitle)
 {
   //printf("win_set_title settable %d <%s>\n", title_settable, title);
+static int padlen = -1;
+  if (padlen < 0) {
+    if (winver.dwMajorVersion >= 0xA0 && winver.dwBuildNumber >= 22000)
+      // Windows 11
+      padlen = wcslen(iconlabelpad);
+    else {
+      padlen = 0;
+      iconlabelpad = 0;
+    }
+  }
+
   if (title_settable) {
-    // check current title to suppress unnecessary update_tab_titles()
-    int len = GetWindowTextLengthW(wnd);
-    wchar oldtitle[len + 1];
-    GetWindowTextW(wnd, oldtitle, len + 1);
-    if (0 != wcscmp(wtitle, oldtitle)) {
-      SetWindowTextW(wnd, wtitle);
-      usleep(1000);
-      update_tab_titles();
+    wchar tmp_wtitle[wcslen(wtitle) + 1 + padlen];
+    wcscpy(tmp_wtitle, wtitle);
+    {
+      // check current title to suppress unnecessary update_tab_titles()
+      int len = GetWindowTextLengthW(wnd);
+      wchar oldtitle[len + 1];
+      GetWindowTextW(wnd, oldtitle, len + 1);
+      strip_title(oldtitle);
+      if (0 != wcscmp(tmp_wtitle, oldtitle)) {
+        if (padlen > 0)
+          // Windows 11: pad title with trailing non-break space
+          wcscat(tmp_wtitle, iconlabelpad);
+        SetWindowTextW(wnd, tmp_wtitle);
+        usleep(1000);
+        update_tab_titles();
+      }
     }
   }
 }
@@ -1140,7 +1171,8 @@ void
   int len = GetWindowTextLengthW(wnd);
   wchar title[len + 1];
   len = GetWindowTextW(wnd, title, len + 1);
-  win_copy(title, 0, len + 1);
+  strip_title(title);
+  win_copy(title, 0, wcslen(title) + 1);
 }
 
 char *
@@ -1149,8 +1181,72 @@ win_get_title(void)
   int len = GetWindowTextLengthW(wnd);
   wchar title[len + 1];
   GetWindowTextW(wnd, title, len + 1);
+  strip_title(title);
   return cs__wcstombs(title);
 }
+
+//void
+//win_prefix_title(const wstring prefix)
+//{
+//  int len = GetWindowTextLengthW(wnd);
+//  int plen = wcslen(prefix);
+//  wchar ptitle[plen + len + 1];
+//  wcscpy(ptitle, prefix);
+//  wchar * title = & ptitle[plen];
+//  len = GetWindowTextW(wnd, title, len + 1);
+//  SetWindowTextW(wnd, ptitle);
+//  // "[Printing...] " or "TERMINATED"
+//  update_tab_titles();
+//}
+//
+//void
+//win_unprefix_title(const wstring prefix)
+//{
+//  int len = GetWindowTextLengthW(wnd);
+//  wchar ptitle[len + 1];
+//  GetWindowTextW(wnd, ptitle, len + 1);
+//  int plen = wcslen(prefix);
+//  if (!wcsncmp(ptitle, prefix, plen)) {
+//    wchar * title = & ptitle[plen];
+//    SetWindowTextW(wnd, title);
+//    // "[Printing...] "
+//    update_tab_titles();
+//  }
+//}
+//
+///*
+// * Title stack (implemented as fixed-size circular buffer)
+// */
+//static wstring titles[16];
+//static uint titles_i;
+//
+//void
+//win_save_title(void)
+//{
+//  int len = GetWindowTextLengthW(wnd);
+//  wchar *title = newn(wchar, len + 1);
+//  GetWindowTextW(wnd, title, len + 1);
+//  // don't strip_title; fill the stack transparently, with the padding
+//  delete(titles[titles_i]);
+//  titles[titles_i++] = title;
+//  if (titles_i == lengthof(titles))
+//    titles_i = 0;
+//}
+//
+//void
+//win_restore_title(void)
+//{
+//  if (!titles_i)
+//    titles_i = lengthof(titles);
+//  wstring title = titles[--titles_i];
+//  if (title) {
+//    // don't pad title; stack is filled transparently, with the padding
+//    SetWindowTextW(wnd, title);
+//    update_tab_titles();
+//    delete(title);
+//    titles[titles_i] = 0;
+//  }
+//}
 
 /*
  *  Switch to next or previous application window in z-order
@@ -1263,6 +1359,7 @@ wnd_enum_proc(HWND curr_wnd, LPARAM unused(lp))
     int len = GetWindowTextLengthW(curr_wnd);
     wchar title[len + 1];
     GetWindowTextW(curr_wnd, title, len + 1);
+    strip_title(title);
     printf("[%8p.%d]%1s %2s %8p %ls\n", wnd, (int)unused_lp,
            curr_wnd == wnd ? "=" : IsIconic(curr_wnd) ? "i" : "",
            !first_wnd && curr_wnd != wnd && !IsIconic(curr_wnd) ? "->" : "",
@@ -6332,6 +6429,10 @@ main(int argc, char *argv[])
     fflush(mtlog);
   }
 #endif
+
+  winver.dwOSVersionInfoSize = sizeof(OSVERSIONINFO);
+  GetVersionEx(&winver);
+
   // Determine home directory.
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
   // Before Cygwin 1.5, the passwd structure is faked.
@@ -7280,6 +7381,15 @@ main(int argc, char *argv[])
     window_style |= WS_HSCROLL;
   else if (horbar == 2 && horsqueeze())
     window_style |= WS_HSCROLL;
+
+  // Avoid twitching taskbar icon (#1263)
+  if (winver.dwMajorVersion >= 0xA0 && winver.dwBuildNumber >= 22000) {
+    // Windows 11: pad title with trailing non-break space
+    wchar * labelbuf = newn(wchar, wcslen(wtitle) + wcslen(iconlabelpad) + 1);
+    wcscpy(labelbuf, wtitle);
+    wcscat(labelbuf, iconlabelpad);
+    wtitle = labelbuf;
+  }
 
   // Create initial window.
 //  term.show_scrollbar = cfg.scrollbar;  // hotfix #597

@@ -224,6 +224,7 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
 //    int len = GetWindowTextLengthW(curr_wnd);
 //    wchar title[len + 1];
 //    len = GetWindowTextW(curr_wnd, title, len + 1);
+//    strip_title(title);
 //
 //    AppendMenuW((HMENU)menu, MF_ENABLED, IDM_GOTAB + tabi, title);
 //    MENUITEMINFOW mi;

@@ -23,19 +23,26 @@ static int prev_tab_width = 0;
 
 #define TABFONTSCALE 9/10
 
-static int
-fit_title(HDC dc, int tab_width, wchar_t *title_in, wchar_t *title_out, int olen)
+static void
+fit_title(HDC dc, int tab_width, wchar_t *title_in, wchar_t *title_out, int obuflen)
 {
+#ifdef debug_title_str
+  // reveal bug of previous wcsncpy usage
+  wcscpy(title_out, W("XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX"));
+  obuflen = 25;
+#endif
   int title_len = wcslen(title_in);
   SIZE text_size;
   GetTextExtentPoint32W(dc, title_in, title_len, &text_size);
   int text_width = text_size.cx;
   if (text_width <= tab_width) {
-    wcsncpy(title_out, title_in, olen);
-    return title_len;
+    title_out[0] = 0;
+    wcsncat(title_out, title_in, obuflen - 1);
+    return;
   }
-  wcsncpy(title_out, W("\u2026\u2026"), olen);
   title_out[0] = title_in[0];
+  title_out[1] = L'\u2026';
+  title_out[2] = 0;
   GetTextExtentPoint32W(dc, title_out, 2, &text_size);
   text_width = text_size.cx;
   int i;
@@ -47,8 +54,7 @@ fit_title(HDC dc, int tab_width, wchar_t *title_in, wchar_t *title_out, int olen
     else
       break;
   }
-  wcsncpy(title_out + 2, title_in + i + 1, olen - 2);
-  return wcsnlen(title_out, olen);
+  wcsncat(title_out + 2, title_in + i + 1, obuflen - 3);
 }
 
 static void
@@ -67,15 +73,19 @@ tabbar_update()
   //printf("width: %d %d %d\n", win_width, tab_width, ntabinfo);
   SendMessage(tab_wnd, TCM_SETITEMSIZE, 0, tab_width | tab_height << 16);
   TCITEMW tie;
-  tie.mask = TCIF_TEXT | TCIF_IMAGE | TCIF_PARAM;
+  tie.mask = TCIF_TEXT | TCIF_PARAM;
+#if 0
+  tie.mask |= TCIF_IMAGE;
+  //ImageList_Create, ImageList_AddIcon..., TCM_SETIMAGELIST
   tie.iImage = -1;
+#endif
   wchar_t title_fit[256];
   HDC tabdc = GetDC(tab_wnd);
   SelectObject(tabdc, tabbar_font);
   tie.pszText = title_fit;
   SendMessage(tab_wnd, TCM_DELETEALLITEMS, 0, 0);
   for (int i = 0; i < ntabinfo; i ++) {
-    fit_title(tabdc, tab_width, tabinfo[i].title, title_fit, 256);
+    fit_title(tabdc, tab_width, tabinfo[i].title, title_fit, lengthof(title_fit));
     tie.lParam = (LPARAM)tabinfo[i].wnd;
     SendMessage(tab_wnd, TCM_INSERTITEMW, i, (LPARAM)&tie);
     if (tabinfo[i].wnd == wnd) {
@@ -118,6 +128,26 @@ tab_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp, UINT_PTR uid, DWORD_PTR data
   return DefSubclassProc(hwnd, msg, wp, lp);
 }
 #endif
+
+static void
+create_tabbar_font()
+{
+  if (tabbar_font)
+    DeleteObject(tabbar_font);
+  tabbar_font = 0;
+  if (*cfg.tab_font)
+    tabbar_font = CreateFontW(cell_height * TABFONTSCALE, cell_width * TABFONTSCALE, 0, 0, FW_DONTCARE, false, false, false,
+                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                              DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE,
+                              cfg.tab_font);
+  if (!tabbar_font) {
+    tabbar_font = CreateFontW(cell_height * TABFONTSCALE, cell_width * TABFONTSCALE, 0, 0, FW_DONTCARE, false, false, false,
+                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
+                              DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE,
+                              cfg.font.name);
+  }
+  SendMessage(tab_wnd, WM_SETFONT, (WPARAM)tabbar_font, 1);
+}
 
 // We need to make a container for the tabbar for handling WM_NOTIFY, also for further extensions
 static LRESULT CALLBACK
@@ -163,13 +193,7 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
 #if CYGWIN_VERSION_API_MINOR >= 74
     SetWindowSubclass(tab_wnd, tab_proc, 0, 0);
 #endif
-    if (tabbar_font)
-      DeleteObject(tabbar_font);
-    tabbar_font = CreateFontW(cell_height * TABFONTSCALE, cell_width * TABFONTSCALE, 0, 0, FW_DONTCARE, false, false, false,
-                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                              DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE,
-                              cfg.font.name);
-    SendMessage(tab_wnd, WM_SETFONT, (WPARAM)tabbar_font, 1);
+    create_tabbar_font();
   }
   else if (msg == WM_SHOWWINDOW) {
     //printf("tabbar con_proc WM_SHOWWINDOW\n");
@@ -182,13 +206,7 @@ container_proc(HWND hwnd, UINT msg, WPARAM wp, LPARAM lp)
   }
   else if (msg == WM_SIZE) {
     //printf("tabbar con_proc WM_SIZE\n");
-    if (tabbar_font)
-      DeleteObject(tabbar_font);
-    tabbar_font = CreateFontW(cell_height * TABFONTSCALE, cell_width * TABFONTSCALE, 0, 0, FW_DONTCARE, false, false, false,
-                              DEFAULT_CHARSET, OUT_DEFAULT_PRECIS, CLIP_DEFAULT_PRECIS,
-                              DEFAULT_QUALITY, FIXED_PITCH | FF_DONTCARE,
-                              cfg.font.name);
-    SendMessage(tab_wnd, WM_SETFONT, (WPARAM)tabbar_font, 1);
+    create_tabbar_font();
 
     SetWindowPos(tab_wnd, 0,
                  0, 0,
