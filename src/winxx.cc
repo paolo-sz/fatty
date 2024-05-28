@@ -8,6 +8,8 @@
 #include <string>
 #include <sstream>
 #include <mutex>
+#include <shellscalingapi.h>
+#include <math.h>
 
 #include <unistd.h>
 #include <stdlib.h>
@@ -23,6 +25,7 @@ extern "C" {
   #include "winsearch.h"
 
   extern wchar * cs__mbstowcs(const char * s);
+  extern void * load_library_func(string lib, string func);
 }
 
 #define lengthof(array) (sizeof(array) / sizeof(*(array)))
@@ -41,16 +44,34 @@ static std::mutex term_mutex;
 
 static float g_xscale, g_yscale;
 
+#define TAB_X_PADDING 7
+#define TAB_Y_PADDING 5
+#define TAB_FONT_SIZE 14
+
+static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
+static HRESULT (WINAPI * pGetScaleFactorForMonitor)(HMONITOR mon, DEVICE_SCALE_FACTOR * pScale) = 0;
+
 static void init_scale_factors() {
-    static ID2D1Factory* d2d_factory = nullptr;
-    if (d2d_factory == nullptr) {
-        D2D1CreateFactory(D2D1_FACTORY_TYPE_SINGLE_THREADED, &d2d_factory);
+    UINT xdpi = 96, ydpi = 96;
+    DEVICE_SCALE_FACTOR scale = SCALE_100_PERCENT;
+    RECT wr;
+    pGetDpiForMonitor =
+      (HRESULT (*)(HMONITOR, int, uint*, uint*))((void (*)(void))load_library_func("shcore.dll", "GetDpiForMonitor"));
+    pGetScaleFactorForMonitor = 
+      (HRESULT (*)(HMONITOR, DEVICE_SCALE_FACTOR *))((void (*)(void))load_library_func("shcore.dll", "GetScaleFactorForMonitor"));
+    HMONITOR mon = MonitorFromWindow(wnd, MONITOR_DEFAULTTONEAREST);
+    if (pGetDpiForMonitor) {
+      pGetScaleFactorForMonitor(mon, &scale);
+      pGetDpiForMonitor(mon, 0, &xdpi, &ydpi);
     }
-    float xdpi, ydpi;
-    d2d_factory->ReloadSystemMetrics();
-    d2d_factory->GetDesktopDpi(&xdpi, &ydpi);
-    g_xscale = xdpi / 96.0f;
-    g_yscale = ydpi / 96.0f;
+    if ((g_xscale != (float)xdpi / 96.0f) || (g_yscale != (float)ydpi / 96.0f)) {
+      g_xscale = (float)xdpi / 96.0f;
+      g_yscale = (float)ydpi / 96.0f;
+      GetWindowRect(fatty_tab_wnd, &wr);
+      OFFSET = (int)(scale / 100 * (TAB_Y_PADDING + TAB_Y_PADDING + TAB_FONT_SIZE)) + PADDING;
+      TabCtrl_SetItemSize(fatty_tab_wnd, wr.right - wr.left, OFFSET);
+      TabCtrl_SetPadding(fatty_tab_wnd, g_xscale * TAB_X_PADDING * (float)scale / 100 * (scale != 100 ? 4 : 1), g_yscale * TAB_Y_PADDING * (float)scale / 100);
+    }
 }
 
 Tab::Tab() : terminal(new term), chld(new child) {
@@ -436,7 +457,7 @@ extern "C" {
   }
 
   static int tab_font_size() {
-      return 14 * g_yscale;
+      return (int)(g_yscale * TAB_FONT_SIZE);
   }
 
   static HGDIOBJ new_tab_font() {
