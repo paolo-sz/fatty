@@ -1135,7 +1135,7 @@ win_set_title(wchar *wtitle)
   //printf("win_set_title settable %d <%s>\n", title_settable, title);
 static int padlen = -1;
   if (padlen < 0) {
-    if (winver.dwMajorVersion >= 0xA0 && winver.dwBuildNumber >= 22000)
+    if (winver.dwMajorVersion >= 10 && winver.dwBuildNumber >= 22000)
       // Windows 11
       padlen = wcslen(iconlabelpad);
     else {
@@ -7383,7 +7383,7 @@ main(int argc, char *argv[])
     window_style |= WS_HSCROLL;
 
   // Avoid twitching taskbar icon (#1263)
-  if (winver.dwMajorVersion >= 0xA0 && winver.dwBuildNumber >= 22000) {
+  if (winver.dwMajorVersion >= 10 && winver.dwBuildNumber >= 22000) {
     // Windows 11: pad title with trailing non-break space
     wchar * labelbuf = newn(wchar, wcslen(wtitle) + wcslen(iconlabelpad) + 1);
     wcscpy(labelbuf, wtitle);
