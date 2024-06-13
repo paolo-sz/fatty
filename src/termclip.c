@@ -29,10 +29,11 @@ typedef struct {
 } clip_workbuf;
 
 static void
-destroy_clip_workbuf(clip_workbuf * b)
+destroy_clip_workbuf(clip_workbuf * b, bool with_text)
 {
   assert(b && b->capacity); // we're only called after get_selection, which always allocates
-  free(b->text);
+  if (with_text)
+    free(b->text);
   if (b->with_attrs)
     // the attributes part of the buffer was only filled as requested
     free(b->cattrs);
@@ -87,6 +88,7 @@ clip_addchar(clip_workbuf * b, wchar chr, cattr * ca, bool tabs, ulong sizehint)
   }
 
   cattr copattr = ca ? *ca : CATTR_DEFAULT;
+  //printf("setting clipbuf[%ld] = %02X\n", b->len, chr);
   if (copattr.attr & TATTR_CLEAR) {
     copattr.attr &= ~(ATTR_BOLD | ATTR_DIM | TATTR_CLEAR);
   }
@@ -108,6 +110,8 @@ static clip_workbuf *
   
   //printf("get_selection attrs %d all %d tabs %d\n", attrs, allinline, with_tabs);
 
+  if (with_tabs)
+    attrs = true;  // ensure we can check expanded TABs (#1269)
   clip_workbuf *buf = newn(clip_workbuf, 1);
   *buf = (clip_workbuf){0, 0, 0, attrs, 0};
 
@@ -250,7 +254,7 @@ static wchar *
   
   clip_workbuf * buf = get_selection(false, start, end, rect, allinline, with_tabs);
   wchar * selstr = buf->text;
-  free(buf);
+  destroy_clip_workbuf(buf, false);
   return selstr;
 }
 
@@ -270,7 +274,7 @@ void
   // for CopyAsHTML, get_selection will be called another time
   // but with different parameters
   win_copy_as(buf->text, buf->cattrs, buf->len, what);
-  destroy_clip_workbuf(buf);
+  destroy_clip_workbuf(buf, true);
 }
 
 void
@@ -1246,7 +1250,7 @@ static char *
       lattr = LATTR_NORM;
     }
   }
-  destroy_clip_workbuf(buf);
+  destroy_clip_workbuf(buf, true);
 
   hprintf(hf, "</pre>\n");
   hprintf(hf, "  </div>\n");
@@ -1313,7 +1317,7 @@ void
   clip_workbuf * buf = get_selection(false, start, end, rect, false, false);
   printer_wwrite(buf->text, buf->len);
   printer_finish_job();
-  destroy_clip_workbuf(buf);
+  destroy_clip_workbuf(buf, true);
 }
 
 }
