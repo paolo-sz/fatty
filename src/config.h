@@ -183,6 +183,7 @@ typedef struct {
   wstring printer;
   bool confirm_exit;
   bool confirm_reset;
+  bool confirm_multi_line_pasting;
   // Command line
   wstring classname;
   char hold;

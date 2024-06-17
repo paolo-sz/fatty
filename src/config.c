@@ -197,6 +197,7 @@ const config default_cfg = {
   printer : W(""),
   confirm_exit : true,
   confirm_reset : false,
+  confirm_multi_line_pasting : false,
   // Command line
   classname : W(""),
   hold : HOLD_START,
@@ -534,6 +535,7 @@ options[] = {
   {"Printer", OPT_WSTRING, offcfg(printer)},
   {"ConfirmExit", OPT_BOOL, offcfg(confirm_exit)},
   {"ConfirmReset", OPT_BOOL, offcfg(confirm_reset)},
+  {"ConfirmMultiLinePasting", OPT_BOOL, offcfg(confirm_multi_line_pasting)},
 
   // Command line
   {"Class", OPT_WSTRING, offcfg(classname)},
@@ -3949,10 +3951,19 @@ setup_config_box(controlbox * b)
         //__ Options - Text:
         s, _("Show bold"),
         50, showbold_handler, 0);
+
+      ctrl_columns(s, 1, 100);  // reset column stuff so we can rearrange them
+      ctrl_columns(s, 2, 50, 50);
       ctrl_checkbox(
         //__ Options - Text:
         s, _("&Allow blinking"),
-        dlg_stdcheckbox_handler, &new_cfg.allow_blinking);
+        dlg_stdcheckbox_handler, &new_cfg.allow_blinking
+      )->column = 0;
+      ctrl_checkbox(
+        //__ Options - Text:
+        s, _("Show dim as font"),
+        dlg_stdcheckbox_handler, &new_cfg.dim_as_font
+      )->column = 1;
      }
     }
   }
@@ -4038,15 +4049,25 @@ setup_config_box(controlbox * b)
       ctrl_combobox(
         s, _("Font smoothing"), 50, smoothing_handler, 0);
 
+#ifdef separate_font_attributes
       s = ctrl_new_set(b, _("Text"), null, null);
+#endif
       ctrl_combobox(
         //__ Options - Text:
         s, _("Show bold"),
         50, showbold_handler, 0);
+
+      ctrl_columns(s, 2, 50, 50);
       ctrl_checkbox(
         //__ Options - Text:
         s, _("&Allow blinking"),
-        dlg_stdcheckbox_handler, &new_cfg.allow_blinking);
+        dlg_stdcheckbox_handler, &new_cfg.allow_blinking
+      )->column = 0;
+      ctrl_checkbox(
+        //__ Options - Text:
+        s, _("Show dim as font"),
+        dlg_stdcheckbox_handler, &new_cfg.dim_as_font
+      )->column = 1;
      }
     }
   }

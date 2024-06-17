@@ -383,11 +383,29 @@ void
 {
   TERM_VAR_REF(true)
   
-  term_cancel_paste();
-
   // set/refresh list of characters to be filtered;
   // stty settings may have changed
   set_filter(cfg.filter_paste);
+
+  if (cfg.confirm_multi_line_pasting
+      && !(strchr(filter, '\r') && strchr(filter, '\n')))
+  {
+    // check multi-line pasting
+    bool multi_line = false;
+    for (uint i = 0; i < len; i++) {
+      if (data[i] == '\r' || data[i] == '\n') {
+        multi_line = true;
+        break;
+      }
+    }
+    if (multi_line
+        && !win_confirm_text(data, const_cast<wchar *>(W("Multi-line pasting – confirm?"))))
+    {
+      return;
+    }
+  }
+
+  term_cancel_paste();
 
   uint size = len;
   term.paste_buffer = newn(wchar, len);
