@@ -1330,6 +1330,18 @@ void
   if (cf && cf <= 10 && !(attr & FONTFAM_MASK))
     term.curs.attr.attr = attr | ((cattrflags)cf << ATTR_FONTFAM_SHIFT);
 
+  // Auto-expanded glyphs
+  if (width == 2
+      // && wcschr(W("〈〉《》「」『』【】〔〕〖〗〘〙〚〛"), wc)
+      && wc >= 0x3008 && wc <= 0x301B
+      && (wc | 1) != 0x3013  // exclude 〒〓 from the range
+      && win_char_width(wc, term.curs.attr.attr) < 2
+      // ensure symmetric handling of matching brackets
+      && win_char_width(wc ^ 1, term.curs.attr.attr) < 2)
+  {
+    term.curs.attr.attr |= TATTR_EXPAND;
+  }
+
   if (hwc) {
     if (width == 1
         && (cfg.charwidth == 10 || cs_single_forced)
@@ -5385,17 +5397,6 @@ static void
             width = 1;
           else if (wc < ' ' && cfg.printable_controls > 1)
             width = 1;
-        }
-
-        // Auto-expanded glyphs
-        if (width == 2
-            // && wcschr(W("〈〉《》「」『』【】〒〓〔〕〖〗〘〙〚〛"), wc)
-            && wc >= 0x3008 && wc <= 0x301B && (wc | 1) != 0x3013
-            && win_char_width(wc, term.curs.attr.attr) < 2
-            // ensure symmetric handling of matching brackets
-            && win_char_width(wc ^ 1, term.curs.attr.attr) < 2)
-        {
-          term.curs.attr.attr |= TATTR_EXPAND;
         }
 
         // Control characters

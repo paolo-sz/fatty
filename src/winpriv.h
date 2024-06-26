@@ -97,6 +97,8 @@ extern int lines_scrolled;
 extern bool kb_input;
 extern uint kb_trace;
 
+extern char * version(void);
+
 #define win_update_now(...) (win_update_now)(term_p, ##__VA_ARGS__)
 extern void (win_update_now)(struct term* term_p);
 

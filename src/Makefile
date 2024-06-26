@@ -24,7 +24,7 @@
 #############################################################################
 NAME := fatty
 
-.PHONY: exe src pkg zip pdf clean
+.PHONY: exe src pkg zip pdf clean stamp
 
 BINFOLDER = ../bin
 #BINDIR = $(BINFOLDER)/$(TARGET)
@@ -83,9 +83,9 @@ ifndef RELEASE
   endif
 endif
 
-version := \
+srcversion := \
   $(shell echo $(shell echo VERSION | cpp -P $(CPPFLAGS) --include appinfo.h))
-name_ver := $(NAME)-$(version)
+name_ver := $(NAME)-$(srcversion)
 
 #############################################################################
 # compilation parameters
@@ -161,6 +161,10 @@ $(BINDIR)/term.o: term.c emojibase.t emojiseqs.t
 $(BINDIR)/wintext.o: wintext.c
 	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -O0 -fstack-check $< -o $(BINDIR)/wintext.o
 
+$(BINDIR)/appinfo.o: stamp
+$(BINDIR)/appinfo.o: appinfo.c
+	$(CXX) -c $(DEPOPT) -O0 $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/appinfo.o
+
 $(BINDIR)/%.o: %.c
 	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/$*.o
 
@@ -172,6 +176,12 @@ $(BINDIR)/%.o: %.rc %.h %.mft
 	# broken in binutils 2.36; workaround:
 	$(CC) -E -xc -DRC_INVOKED $(DEPOPT) $(CPPFLAGS) $< | $(RC) -c 65001 -o $(BINDIR)/$*.o
 	-mv $*.d $(BINDIR)/
+
+gitversion := $(shell ./mkvertag "$(srcversion)")
+
+stamp:
+	echo "#define VERSION_STAMP \"$(gitversion)\"" > appinfo.n
+	cmp appinfo.n appinfo.t && rm -f appinfo.n || /bin/mv appinfo.n appinfo.t
 
 exe := $(NAME).exe
 exe: $(exe)
@@ -332,7 +342,7 @@ emojiseqs.t:	# emoji-sequences.txt emoji-zwj-sequences.txt emoji-test.txt
 composed.t:	# $(compose_list) $(keysymdefs)
 	sh ./mkcomposedt > composed.t
 
-XGETTEXT_OPTS=--package-name=fatty #--package-version=$(version)
+XGETTEXT_OPTS=--package-name=fatty #--package-version=$(srcversion)
 #XGETTEXT_OPTS+=--msgid-bugs-address=https://github.com/mintty/mintty/issues/700
 
 _:	localization checkloc
@@ -451,7 +461,8 @@ ver:
 	echo "$(call getappinfo,POINT_VERSION)"
 	echo "$(call getappinfo,COMMA_VERSION)"
 	echo "$(call getappinfo,DECIMAL_VERSION)"
-	echo version $(version)
+	echo src version $(srcversion)
+	echo version_stamp $(gitversion)
 
 #############################################################################
 # end

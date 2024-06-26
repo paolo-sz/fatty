@@ -11,6 +11,7 @@ Terminal features
 Text rendering
   * Render dim attribute as a Light font variation if available.
   * Tentatively changing default bold rendering as bold font.
+  * Fix CJK quote marks auto-expansion for FontChoice-set fonts (#1271).
 
 Keyboard handling
   * Revise AltGr handling to support flexible right-Alt+left-Ctrl combinations (#1266).
@@ -19,6 +20,8 @@ Misc
   * Support fallback to legacy wslbridge for old Windows versions (mintty/wsltty#350).
   * Fix CopyTab=yes crash condition (#1269).
   * Optional confirmation for pasting multi-line clipboard contents (#1268).
+  * Unsqueeze the Options dialog slightly.
+  * Ctrl+Win+mouse-scroll zooms font even if ZoomMouse is off.
 
 Desktop integration
   * Avoid taskbar icon width twitching in Windows 11 (#1263).
