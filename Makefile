@@ -8,4 +8,3 @@ checksrc:
 	cd src; $(MAKE) checksrc
 
 .NOTPARALLEL:  
-
