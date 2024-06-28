@@ -161,8 +161,7 @@ $(BINDIR)/term.o: term.c emojibase.t emojiseqs.t
 $(BINDIR)/wintext.o: wintext.c
 	$(CXX) -c $(DEPOPT) $(CPPFLAGS) $(CXXFLAGS) -O0 -fstack-check $< -o $(BINDIR)/wintext.o
 
-$(BINDIR)/appinfo.o: stamp
-$(BINDIR)/appinfo.o: appinfo.c
+$(BINDIR)/appinfo.o: appinfo.c appinfo.h appinfo.t
 	$(CXX) -c $(DEPOPT) -O0 $(CPPFLAGS) $(CXXFLAGS) -fstack-check $< -o $(BINDIR)/appinfo.o
 
 $(BINDIR)/%.o: %.c
@@ -178,6 +177,8 @@ $(BINDIR)/%.o: %.rc %.h %.mft
 	-mv $*.d $(BINDIR)/
 
 gitversion := $(shell ./mkvertag "$(srcversion)")
+
+appinfo.t:	stamp
 
 stamp:
 	echo "#define VERSION_STAMP \"$(gitversion)\"" > appinfo.n
