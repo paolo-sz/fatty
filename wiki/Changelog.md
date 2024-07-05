@@ -1,7 +1,15 @@
-### 3.7.3 (27 June 2024) ###
+### 3.7.4 (03 July 2024) ###
+
+Keyboard handling
+  * Tweak revised AltGr handling to avoid sticky Ctrl state (#1273, ~#1266).
+
+### 3.7.3 (28 June 2024) ###
 
 Misc
   * Fix version tag and package building problems.
+
+Configuration
+  * Prevent saving changed settings to /etc/minttyrc.
 
 ### 3.7.2 (27 June 2024) ###
 
