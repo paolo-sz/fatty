@@ -2122,6 +2122,8 @@ do_file_resources(control *ctrl, wstring pattern, bool list_dirs, str_fn fnh)
 
   for (int i = last_config_dir; i >= 0; i--) {
 #ifdef use_findfile
+    (void)fnh;  // CYGWIN_VERSION_API_MINOR < 74
+
     wstring suf = wcsrchr(pattern, L'.');
     int sufl = suf ? wcslen(suf) : 0;
 
@@ -2155,8 +2157,6 @@ do_file_resources(control *ctrl, wstring pattern, bool list_dirs, str_fn fnh)
             ffd.cFileName[len - sufl] = 0;
             if (ctrl)
               dlg_listbox_add_w(ctrl, ffd.cFileName);
-            else
-              (void)fnh;  // CYGWIN_VERSION_API_MINOR < 74
           }
         }
         ok = FindNextFileW(hFind, &ffd);
@@ -2182,7 +2182,7 @@ do_file_resources(control *ctrl, wstring pattern, bool list_dirs, str_fn fnh)
     DIR * dir = opendir(rcpat);
     if (dir) {
       struct dirent * direntry;
-      while ((direntry = readdir (dir)) != 0) {
+      while ((direntry = readdir(dir)) != 0) {
         if (patsuf && !strstr(direntry->d_name, patsuf))
           continue;
 

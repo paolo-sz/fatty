@@ -805,6 +805,18 @@ static void
 (open_popup_menu)(struct term *term_p, bool use_text_cursor, string menucfg, mod_keys mods)
 {
   //printf("open_popup_menu txtcur %d <%s> %X\n", use_text_cursor, menucfg, mods);
+
+  if (!menucfg) {
+    if (mods & MDK_ALT)
+      menucfg = cfg.menu_altmouse;
+    else if (mods & MDK_CTRL)
+      menucfg = cfg.menu_ctrlmouse;
+    else
+      menucfg = cfg.menu_mouse;
+  }
+  if (!*menucfg)
+    return;
+
   /* Create a new context menu structure every time the menu is opened.
      This was a fruitless attempt to achieve its proper DPI scaling.
      It also supports opening different menus (Ctrl+ for extended menu).
@@ -815,15 +827,6 @@ static void
 
   ctxmenu = CreatePopupMenu();
   //show_menu_info(ctxmenu);
-
-  if (!menucfg) {
-    if (mods & MDK_ALT)
-      menucfg = *cfg.menu_altmouse ? cfg.menu_altmouse : "ls";
-    else if (mods & MDK_CTRL)
-      menucfg = *cfg.menu_ctrlmouse ? cfg.menu_ctrlmouse : "e|ls";
-    else
-      menucfg = *cfg.menu_mouse ? cfg.menu_mouse : "b";
-  }
 
   bool vsep = false;
   bool hsep = false;
