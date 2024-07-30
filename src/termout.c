@@ -269,9 +269,15 @@ static void
   }
 }
 
+#define charwidth(...) (charwidth)(term_p, ##__VA_ARGS__)
 static int
-charwidth(xchar chr)
+(charwidth)(struct term* term_p, xchar chr)
 {
+  TERM_VAR_REF(true)
+  
+  // EMOJI MODIFIER FITZPATRICKs
+  if (term.emoji_width && chr >= 0x1F3FB && chr <= 0x1F3FF)
+    return 0;
 #if HAS_LOCALES
   if (cfg.charwidth % 10)
     return xcwidth(chr);
@@ -1072,6 +1078,24 @@ void
     }
   }
 
+  // check whether to continue an emoji joined sequence
+  if (term.emoji_width && curs->x > 0) {
+    // find previous character position
+    int x = curs->x - !curs->wrapnext;
+    if (line->chars[x].chr == UCSWIDE)
+      x--;
+    //printf("ini %d:%d prev :%d\n", curs->y, curs->x, x);
+    // if it's a pending emoji joined sequence, enforce handling of 
+    // current character like a combining character
+    if (line->chars[x].attr.attr & TATTR_EMOJI)
+      //printf("@:%d (%04X) %04X prev joiner\n", x, line->chars[x].chr, c),
+      width = 0;
+  }
+
+  // in insert mode, shift rest of line before insertion;
+  // do this after width trimming of ZWJ-joined characters,
+  // the case of subsequent widening of single-width characters 
+  // needs to be tuned later
   if (term.insert && width > 0)
     insert_char(width);
 
@@ -1144,11 +1168,94 @@ void
        /*
         * If the previous character is UCSWIDE, back up another one.
         */
+        bool is_wide = false;
         if (line->chars[x].chr == UCSWIDE) {
           assert(x > 0);
           x--;
+          is_wide = true;
         }
-       /* Try to precompose with the cell's base codepoint */
+        //printf("cur %d:%d prev :%d\n", curs->y, curs->x, x);
+
+        if (term.emoji_width) {
+         /* Mark pending emoji joined sequence;
+            check for a previous Fitzpatrick high surrogate 
+            before we add its low surrogate (add_cc below)
+         */
+          if (c == 0x200D)
+            //printf("%d:%d (%04X) %04X mark joiner\n", curs->y, curs->x, line->chars[x].chr, c),
+            line->chars[x].attr.attr |= TATTR_EMOJI;
+          else
+            line->chars[x].attr.attr &= ~TATTR_EMOJI;
+
+          auto last_comb = [&](termline *line, int col) -> wchar {
+            while (line->chars[col].cc_next)
+              col += line->chars[col].cc_next;
+            return line->chars[col].chr;
+          };
+          bool is_fitzpatrick = false;
+
+         /* Tune Fitzpatrick colour on non-emojis */
+          if (// U+1F3FB..U+1F3FF EMOJI MODIFIER FITZPATRICKs
+              // UTF-16: D83C DFFB .. D83C DFFF
+              c >= 0xDFFB && c <= 0xDFFF && last_comb(line, x) == 0xD83C)
+          {
+            is_fitzpatrick = true;
+            static colour skin_tone[5] = {
+              RGB(0xFB, 0xD8, 0xB7),
+              RGB(0xE0, 0xBE, 0x95),
+              RGB(0xBC, 0x92, 0x6A),
+              RGB(0x9B, 0x72, 0x44),
+              RGB(0x6E, 0x51, 0x3C)
+            };
+            line->chars[x].attr.attr &= ~ATTR_FGMASK;
+            line->chars[x].attr.attr |= TRUE_COLOUR << ATTR_FGSHIFT;
+            line->chars[x].attr.truefg = skin_tone[c - 0xDFFB];
+          }
+
+         /* Enforce wide with certain modifiers */
+          if (!is_wide &&
+              // enforce emoji sequence on:
+              // U+FE0F VARIATION SELECTOR-16
+              // U+200D ZERO WIDTH JOINER
+              (c == 0xFE0F || c == 0x200D
+              // U+1F3FB..U+1F3FF EMOJI MODIFIER FITZPATRICKs
+              // UTF-16: D83C DFFB .. D83C DFFF
+            || is_fitzpatrick
+              // U+E0020..U+E007F TAGs
+              // UTF-16: D83C DFFB .. D83C DFFF
+            || (c >= 0xDC20 && c <= 0xDC7F && last_comb(line, x) == 0xDB40)
+              )
+             )
+          {
+            // enforce double-width rendering of single-width contents
+            line->chars[x].attr.attr |= TATTR_EXPAND;
+
+            if (curs->x == term.marg_right || curs->x == term.cols - 1
+             || ((line->lattr & LATTR_MODE) != LATTR_NORM && curs->x >= (term.cols - 1) / 2)
+               )
+            {
+              // skip for now; shall we wrap subsequently in this case?
+              // ... and move over the previous contents to the next line...
+            }
+            else {
+              //printf("%d:%d (:%d %04X) %04X make wide\n", curs->y, curs->x, x, line->chars[x].chr, c),
+              // if we widen the previous position:
+              // in insert mode, shift rest of line by 1 more cell
+              if (term.insert)
+                insert_char(1);
+
+              // seen a single-width char before current position,
+              // so cursor is at the right half of the newly wide position,
+              // so unlike above, put UCSWIDE here, then forward position
+              put_char(UCSWIDE);
+              curs->x++;
+            }
+          }
+        }
+
+       /* Try to precompose with the previous cell's base codepoint;
+          otherwise, add the combining character to the previous cell
+        */
         wchar pc;
         if (termattrs_equal_fg(&line->chars[x].attr, &curs->attr))
           pc = win_combine_chars(line->chars[x].chr, c, curs->attr.attr);
@@ -1175,7 +1282,7 @@ void
   curs->x++;
   if ((line->lattr & LATTR_MODE) != LATTR_NORM) {
     if (curs->x >= term.cols / 2) {
-      curs->x --;
+      curs->x--;
       if (term.autowrap)
         curs->wrapnext = true;
     }
@@ -2493,8 +2600,10 @@ static void
             do_update();
             usleep(1000);  // flush update
           }
-        when 7723 case_or 2027: /* Reflow mode; 2027 is deprecated */
+        when 7723: /* Reflow mode; 2027 is dropped */
           term.curs.rewrap_on_resize = state;
+        when 2027 case_or 7769: /* Emoji 2-cell width mode */
+          term.emoji_width = state;
       }
     }
     else { /* SM/RM: set/reset mode */
@@ -2665,8 +2774,10 @@ static int
         return 2 - !!(term.curs.bidimode & LATTR_BOXMIRROR);
       when 2501: /* bidi direction auto-detection */
         return 2 - !(term.curs.bidimode & LATTR_BIDISEL);
-      when 7723 case_or 2027: /* Reflow mode; 2027 is deprecated */
+      when 7723: /* Reflow mode; 2027 is dropped */
         return 2 - term.curs.rewrap_on_resize;
+      when 2027 case_or 7769: /* Emoji 2-cell width mode */
+        return 2 - term.emoji_width;
       othwise:
         return 0;
     }
@@ -5129,6 +5240,10 @@ static void
             //if (term.curs.width)
             //  width = term.curs.width % 10;
 #endif
+            // EMOJI MODIFIER FITZPATRICKs U+1F3FB..U+1F3FF
+            if (term.emoji_width && term.curs.x && hwc == 0xD83C && wc >= 0xDFFB && wc <= 0xDFFF)
+              width = 0;
+
             write_ucschar(hwc, wc, width);
           }
           else
@@ -5351,8 +5466,10 @@ static void
           term.curs.attr.attr &= ~FONTFAM_MASK;
           term.curs.attr.attr |= (cattrflags)gcode << ATTR_FONTFAM_SHIFT;
         }
+#define draw_powerline_geometric_symbols
 #ifdef draw_powerline_geometric_symbols
-#warning graphical results of this approach are unpleasant; not enabled
+// don't remember why this was not enabled...
+//#warning graphical results of this approach are unpleasant; not enabled
         else if (wc >= 0xE0B0 && wc <= 0xE0BF && wc != 0xE0B5 && wc != 0xE0B7) {
           // draw geometric full-cell Powerline symbols,
           // to avoid artefacts at their borders (#943)

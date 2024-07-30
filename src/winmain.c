@@ -6531,7 +6531,7 @@ main(int argc, char *argv[])
     load_config(rc_file, true);
     std_delete(rc_file);
   }
-  if (!support_wsl) {
+  if (!support_wsl && access(home, X_OK) == 0) {
     // try XDG config base directory default location (#525)
     string rc_file = asform("%s/.config/fatty/config", home);
     load_config(rc_file, true);

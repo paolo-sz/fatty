@@ -3103,7 +3103,7 @@ void
 
   int graph = (attr.attr & GRAPH_MASK) >> ATTR_GRAPH_SHIFT;
   bool graph_vt52 = false;
-  bool powerline = false;
+  bool boxpower = false;  // Box Drawing or Powerline symbols
   int findex = (attr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
   // in order to save attributes bits, special graphic handling is encoded 
   // in a compact form, combined with unused values of the font number;
@@ -3122,7 +3122,7 @@ void
       graph <<= 4;
     else if (findex == 13 && graph == 15) { // Private: geometric Powerline
       graph = 0;
-      powerline = true;
+      boxpower = true;
     }
     else if (findex == 13) { // VT52 scanlines
       graph <<= 4;
@@ -3418,13 +3418,13 @@ void
     for (int i = 0; i < len; i++)
       text[i] = ' ';
   }
-  else if (powerline) {
-    origtext = newn(wchar, len);
-    // clear codes for Powerline geometric symbols
-    for (int i = 0; i < len; i++) {
-      origtext[i] = text[i];
+  else if (boxpower) {
+    // keep orig text in separate ref
+    origtext = text;
+    text = newn(wchar, len);
+    // clear font glyphs under self-drawn geometric symbols
+    for (int i = 0; i < len; i++)
       text[i] = ' ';
-    }
   }
 
  /* Array with offsets between neighbouring characters */
@@ -4127,7 +4127,7 @@ skip_drawing:;
       DeleteObject(oldpen);
     }
   }
-  else if ((graph >= 0x80 && !graph_vt52) || powerline) {  // drawn graphics
+  else if ((graph >= 0x80 && !graph_vt52) || boxpower) {  // drawn graphics
     // Block Elements (U+2580-U+259F)
     // ▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟
     // Private Use geometric Powerline symbols (U+E0B0-U+E0BF, not 5, 7)
@@ -4187,6 +4187,11 @@ skip_drawing:;
     };
     auto trio = [&](char x1, char y1, char x2, char y2, char x3, char y3, bool chord)
     {
+      bool lefthalf = x1;
+      if (chord && lefthalf) {
+        // Powerline left half circle U+E0B4: fix gap to next cell
+        x1++; x2++; x3++;
+      }
       int _x1 = char_width * x1 / 8;
       int _y1 = char_height * y1 / 8;
       int _x2 = char_width * x2 / 8;
@@ -4198,18 +4203,17 @@ skip_drawing:;
       if (x3) _x3--;
       if (y2 == 8) _y2--;
       _y3--;
-      if (chord && !x1) {
-        _x1++; _x2++; _x3++;
-      }
 
       HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
       HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(fg));
       if (chord) {
-        if (x1)
-          Chord(dc, xi, y0 + _y1, xi + 2 * _x1, y0 + _y3,
-                    xi + _x1, y0 + _y1, xi + _x3, y0 + _y3);
+        if (lefthalf)
+          // Powerline left half circle U+E0B6: trichord(8, 0, 0, 4, 8, 8);
+          Chord(dc, xi      , y0 + _y1, xi + 2 * _x1, y0 + _y3,
+                    xi + _x1, y0 + _y1, xi + _x3    , y0 + _y3);
         else
-          Chord(dc, xi - _x2, y0 + _y1, xi + x2, y0 + _y3,
+          // Powerline right half circle U+E0B4: trichord(0, 0, 8, 4, 0, 8);
+          Chord(dc, xi - _x2, y0 + _y1, xi + _x2, y0 + _y3,
                     xi + _x3, y0 + _y3, xi + _x1, y0 + _y1);
       }
       else {
@@ -4302,7 +4306,8 @@ skip_drawing:;
     };
 
     for (int i = 0; i < ulen; i++) {
-      if (powerline && origtext) switch (origtext[i]) {
+      if (boxpower && origtext) switch (origtext[i]) {
+        // Powerline symbols
         when 0xE0B0:
           triangle(0, 0, 8, 4, 0, 8);
         when 0xE0B1:
@@ -4332,6 +4337,7 @@ skip_drawing:;
         when 0xE0BF:
           lines(0, 0, 8, 8, -1, -1);
       } else switch (graph) {
+        // Block Elements (U+2580-U+259F)
         // ▀▁▂▃▄▅▆▇█▉▊▋▌▍▎▏▐░▒▓▔▕▖▗▘▙▚▛▜▝▞▟
         when 0x80: rect(0, 0, 8, 4); // UPPER HALF BLOCK
         when 0x81 ... 0x88: rect(0, 0x88 - graph, 8, 8); // LOWER EIGHTHS
@@ -4448,8 +4454,10 @@ skip_drawing:;
 
   {
   
-  if (origtext)
-    free(origtext);
+  if (origtext) {
+    // we transfered the orig text pointer to origtext, so we free text
+    free(text);
+  }
 
   show_curchar_info('w');
 

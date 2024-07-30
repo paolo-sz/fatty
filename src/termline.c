@@ -1,6 +1,6 @@
 // termline.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe
+// Based on code from mintty by 2008-12 Andy Koppe, -2024 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -1342,8 +1342,9 @@ termchar *
         ushort parabidi = line->lattr & LATTR_BIDIMASK;
         //printf("bidi @%d %04X %.22ls rtl %d auto %d lvl %d\n", scr_y, line->lattr, wcsline(line), rtl, autodir, level);
         termline * paraline = line;
+        bool contd = paraline->lattr & LATTR_WRAPCONTD;
         int paray = scr_y;
-        while ((paraline->lattr & LATTR_WRAPCONTD) && paray > -sblines()) {
+        while (contd && paray > -sblines()) {
           paraline = fetch_line(--paray);
           bool brk = false;
           if (paraline->lattr & LATTR_WRAPPED) {
@@ -1356,6 +1357,7 @@ termchar *
           }
           else
             brk = true;
+          contd = paraline->lattr & LATTR_WRAPCONTD;
           release_line(paraline);
           if (brk)
             break;

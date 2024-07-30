@@ -402,6 +402,7 @@ void
     term.readline_mouse_1 = cfg.clicks_place_cursor;
     term.readline_mouse_2 = cfg.clicks_place_cursor;
     term.readline_mouse_3 = cfg.clicks_place_cursor;
+    term.emoji_width = false;
   }
 
   term.virtuallines = 0;
