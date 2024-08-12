@@ -198,6 +198,8 @@ const config default_cfg = {
   confirm_exit : true,
   confirm_reset : false,
   confirm_multi_line_pasting : false,
+  status_line : false,
+  status_debug : 0,
   // Command line
   classname : W(""),
   hold : HOLD_START,
@@ -224,7 +226,7 @@ const config default_cfg = {
   suppress_osc : "",
   suppress_nrc : "",  // unused
   suppress_wheel : "",
-  filter_paste : "",
+  filter_paste : "STTY",
   guard_path : 7,
   bracketed_paste_split : 0,
   suspbuf_max : 8080,
@@ -262,6 +264,7 @@ const config default_cfg = {
   padding : 1,
   ligatures : 1,
   ligatures_support : 0,
+  box_drawing : 1,
   handle_dpichanged : 2,
   check_version_update : 0,
   word_chars : "",
@@ -316,8 +319,6 @@ const config default_cfg = {
   options_fontsize : 0,
   old_options : "",
   dim_margins : false,
-  status_line : false,
-  status_debug : 0,
   old_xbuttons : false,
   use_system_colours : false,
   old_bold : false
@@ -604,6 +605,7 @@ options[] = {
   {"Padding", OPT_INT, offcfg(padding)},
   {"Ligatures", OPT_INT, offcfg(ligatures)},
   {"LigaturesSupport", OPT_INT, offcfg(ligatures_support)},
+  {"BoxDrawing", OPT_BOOL, offcfg(box_drawing)},
   {"HandleDPI", OPT_INT, offcfg(handle_dpichanged)},
   {"CheckVersionUpdate", OPT_INT, offcfg(check_version_update)},
   {"WordChars", OPT_STRING, offcfg(word_chars)},
