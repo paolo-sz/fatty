@@ -1,3 +1,6 @@
+Unicode and Emoji data
+  * Unicode 16.0 update.
+
 Terminal features
   * Emoji width mode (DECSET 2027) to always render emojis in 2-cell width.
   * Dropped deprecated DECSET mode 2027 for terminal reflow.
@@ -7,6 +10,7 @@ Character encoding
   * Disable GB18030 workaround for cygwin since 3.5 which supports it natively.
 
 Font and character rendering
+  * Fix rendering of combined characters in South East Asian scripts (#1285).
   * Fix and enable rendering for geometric Powerline symbols (#979, #943).
   * Avoid bottom padding artefacts of double-height self-drawn symbols.
   * Box Drawing characters (U+2500..U+257F) are self-drawn (#935, #1119).
@@ -15,12 +19,15 @@ Mouse and menu handling
   * Allow disabling of mouse menus by clearing Menu* (#1279).
 
 Window handling
+  * Avoid interaction problem of tabbed/non-tabbed windows.
   * Tweak initial window display, mitigate bright flash (#1284).
+  * Border style can be set also via config file (#7).
 
 Configuration
   * New option BoxDrawing (#935, #1119).
   * Setting options Menu* to empty value disables the respective menu (#1279).
   * Skip config files in $HOME if $HOME does not exist (mintty/wsltty#351).
+  * New option BorderStyle (#7).
 
 ### 3.7.4 (03 July 2024) ###
 

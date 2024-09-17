@@ -131,7 +131,6 @@ static bool focus_inhibit = false;
 
 // Options
 bool title_settable = true;
-static string border_style = 0;
 static string report_geom = 0;
 static bool report_moni = false;
 bool report_config = false;
@@ -336,6 +335,9 @@ guardpath(string path, int level)
   if (!path)
     return 0;
 
+  if (0 == strncmp(path, "file:", 5))
+    path += 5;
+
   // path transformations
   char * expath;
   if (support_wsl) {
@@ -350,7 +352,10 @@ guardpath(string path, int level)
   else if (*path != '/' && !(*path && path[1] == ':')) {
     char * fgd = foreground_cwd();
     if (fgd) {
-      expath = asform("%s/%s", fgd, path);
+      if (0 == strcmp("/", fgd))
+        expath = asform("/%s", path);
+      else
+        expath = asform("%s/%s", fgd, path);
     }
     else
       return 0;
@@ -362,7 +367,19 @@ guardpath(string path, int level)
     // use case level is not in configured guarding bitmask
     return expath;
 
-  wstring wpath = path_posix_to_win_w(expath);  // implies realpath()
+  wchar * wpath;
+
+  if ((expath[0] == '/' || expath[0] == '\\') && (expath[1] == '/' || expath[1] == '\\')) {
+    wpath = cs__mbstowcs(expath);
+    // transform network path to Windows syntax (\ separators)
+    for (wchar * p = wpath; *p; p++)
+      if (*p == '/')
+        *p = '\\';
+  }
+  else {
+    // transform cygwin path to Windows drive path
+    wpath = path_posix_to_win_w(expath);  // implies realpath()
+  }
   trace_guard(("guardpath <%s>\n       ex <%s>\n        w <%ls>\n", path, expath ?: "(null)", wpath ?: W("(null)")));
   if (!wpath) {
     free(expath);
@@ -777,6 +794,12 @@ win_hide_other_tabs(HWND to_top)
     if (class_atom == curr_wnd_info.atomWindowType) {
       //printf("[%p] hiding %p (unless top %p)\n", wnd, curr_wnd, to_top);
       if (curr_wnd != to_top && !IsIconic(curr_wnd)) {
+#ifdef debug_hiding
+        int len = GetWindowTextLengthW(curr_wnd);
+        wchar t[len + 1];
+        GetWindowTextW(curr_wnd, t, len + 1);
+        printf("hiding <%ls>\n", t);
+#endif
         // do not use either of 
         // ShowWindow(SW_HIDE) or SetWindowPos(SWP_HIDEWINDOW);
         // it is hard to restore from those states and window handling 
@@ -2445,8 +2468,8 @@ static void
 
  /* Reinstate the window furniture. */
   LONG style = GetWindowLong(wnd, GWL_STYLE);
-  if (border_style) {
-    if (strcmp(border_style, "void") != 0) {
+  if (cfg.border_style != BORDER_NORMAL) {
+    if (cfg.border_style == BORDER_VOID) {
       style |= WS_THICKFRAME;
     }
   }
@@ -3099,8 +3122,8 @@ static void
   RECT cr = {0, 0, term_width + 2 * PADDING, term_height + OFFSET + 2 * PADDING};
   RECT wr = cr;
   window_style = WS_OVERLAPPEDWINDOW;
-  if (border_style) {
-    if (strcmp(border_style, "void") == 0)
+  if (cfg.border_style != BORDER_NORMAL) {
+    if (cfg.border_style == BORDER_VOID)
       window_style &= ~(WS_CAPTION | WS_BORDER | WS_THICKFRAME);
     else
       window_style &= ~(WS_CAPTION | WS_BORDER);
@@ -3310,7 +3333,7 @@ void
 static int
 (win_fix_taskbar_max)(struct term* term_p, int show_cmd)
 {
-  if (border_style && show_cmd == SW_SHOWMAXIMIZED) {
+  if (cfg.border_style != BORDER_NORMAL && show_cmd == SW_SHOWMAXIMIZED) {
     // (SW_SHOWMAXIMIZED == SW_MAXIMIZE)
     // workaround for Windows failing to consider the taskbar properly 
     // when maximizing without WS_CAPTION in style (#732)
@@ -3390,8 +3413,8 @@ static uint normal_dpi;
 
      /* Reinstate the window furniture. */
       LONG style = GetWindowLong(wnd, GWL_STYLE);
-      if (border_style) {
-        if (strcmp(border_style, "void") != 0) {
+      if (cfg.border_style != BORDER_NORMAL) {
+        if (cfg.border_style == BORDER_VOID) {
           style |= WS_THICKFRAME;
         }
       }
@@ -6715,7 +6738,7 @@ main(int argc, char *argv[])
 //        set_arg_option("TabBar", strdup("1"));
 //        set_arg_option("SessionGeomSync", optarg ?: strdup("2"));
       when 'B':
-        border_style = strdup(optarg);
+        set_arg_option("Border", strdup(optarg));
       when 'R':
         switch (*optarg) {
           when 's' case_or 'o':
@@ -7243,6 +7266,15 @@ main(int argc, char *argv[])
   wstring wclass = W(APPNAME);
   if (*cfg.classname)
     wclass = group_id(cfg.classname);
+  if (cfg.geom_sync > 1) {
+    char * classname = cs__wcstoutf(wclass);
+    char * syncclass = asform("%s_%d", classname, cfg.geom_sync);
+    free(classname);
+    set_arg_option("Class", syncclass);
+    wclass = cs__utftowcs(syncclass);
+    free(syncclass);
+  }
+
 #ifdef prevent_grouping_hidden_tabs
   // should an explicitly hidden window not be grouped with a "class" of tabs?
   if (!cfg.window)
@@ -7577,7 +7609,7 @@ main(int argc, char *argv[])
           // but window size hopefully adjusted already
 
           /* Note: this used to be guarded by
-             //if (border_style)
+             //if (cfg.border_style)
              but should be done always to avoid maxheight windows to 
              be covered by the taskbar
           */
@@ -7679,9 +7711,9 @@ main(int argc, char *argv[])
   }
 
 
-  if (border_style) {
+  if (cfg.border_style != BORDER_NORMAL) {
     LONG style = GetWindowLong(wnd, GWL_STYLE);
-    if (strcmp(border_style, "void") == 0) {
+    if (cfg.border_style == BORDER_VOID) {
       style &= ~(WS_CAPTION | WS_BORDER | WS_THICKFRAME);
     }
     else {

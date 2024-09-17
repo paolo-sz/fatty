@@ -32,7 +32,7 @@ extern void win_schedule_update();
 extern void (do_update)(struct term* term_p);
 
 #define win_text(...) (win_text)(term_p, ##__VA_ARGS__)
-extern void (win_text)(struct term* term_p, int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, char has_rtl, bool clearpad, uchar phase);
+extern void (win_text)(struct term* term_p, int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, char has_rtl, char has_sea, bool clearpad, uchar phase);
 
 /* input */
 #define win_update_mouse(...) (win_update_mouse)(term_p, ##__VA_ARGS__)
