@@ -1,3 +1,12 @@
+### 3.7.6 (24 September 2024) ###
+
+Font and character rendering
+  * Fix rendering of repeated DEC graphics (#1288).
+
+Window handling
+  * Tabs can be reordered interactively via drag-and-drop (#1283).
+  * Fix command-line options -B and --Border (#7).
+
 ### 3.7.5 (17 September 2024) ###
 
 Unicode and Emoji data
