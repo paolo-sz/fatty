@@ -496,7 +496,7 @@ win_toggle_tabbar(bool show)
 bool
 win_tabbar_visible()
 {
-  return OFFSET > 0;
+  return false;
 //  return TABBAR_HEIGHT > 0;
   // for later versions maybe check IsWindowVisible(bar_wnd)
 }
