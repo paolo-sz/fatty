@@ -5,6 +5,9 @@ list=/usr/share/X11/locale/en_US.UTF-8/Compose
 keysymdefs=/usr/include/X11/keysymdef.h
 #keysyms_url=http://www.cl.cam.ac.uk/~mgk25/ucs/keysyms.txt
 
+LC_ALL=C
+export LC_ALL
+
 # #define XK_space                         0x0020  /* U+0020 SPACE */
 # ->
 # s/<XK_space>/0x0020/g
@@ -20,5 +23,6 @@ sed -e 's,[ 	]*:,:,' |
 sed -e 's/^<Multi_key> \([^:]*\): *"\(.*\)".*/{\1},"\2"/' -e t -e d |
 sed -e 's/ /, /g' -e 's,^,  {,' -e 's/},/}, /' -e 's/$/},/' |
 sed -f keysyms.sed -e 's,<U\([0-9A-Fa-f]*\)>,0x\1,g' -e '/<.*>/ d' |
+grep -v "0x[0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f][0-9A-Fa-f]" |
 sort | uniq
 

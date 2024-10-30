@@ -650,6 +650,7 @@ for entering accented characters, enhanced by self-composed characters
 for dead-key combinations that Windows does not support (e.g. ẃ).
 
 Mintty also provides a Compose key, using X11 compose data.
+(See also wiki page [Versions](https://github.com/mintty/mintty/wiki/Versions).)
 It is configurable to Control, Shift, Alt, Super or Hyper, or CapsLock, 
 or to any key combination with user-definable function `compose` in 
 setting `KeyFunctions`.
@@ -1284,9 +1285,19 @@ without suffix, which is not UTF-8 in most cases and may be unexpected.
 Take care to make sure that the child process has the same idea about the 
 character encoding as the terminal in this scenario.
 
+### Unicode support ###
+
+For character width and character name information, mintty supports 
+Unicode data also internally. Unicode with information is used if 
+option `Charwidth` is set to anthing other than the default `locale`.
+(See also wiki page [Versions](https://github.com/mintty/mintty/wiki/Versions).)
+
 ### GB18030 support ###
 
-Mintty has special support for the GB18030 character encoding which is not 
+Note: This special support is only applied for cygwin versions < 3.5 from 
+which cygwin supports GB18030 natively.
+
+Mintty has special support for the GB18030 character encoding which was not 
 supported by cygwin and therefore not available for interactive configuration 
 of the `Charset` setting in the Options dialog.
 Setting `Charset=GB18030` in a config file or on the command line invokes 
