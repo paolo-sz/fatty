@@ -2,12 +2,16 @@ Character rendering
   * Reenabled distinct blinking for combined characters (broken since 3.5.3).
   * Fix skipping of accent to next position on background colour.
   * Fix drawing of Powerline round symbols (mintty/wsltty#358).
+  * Fix rendering of right-to-left scripts on italic or cursor position.
 
 Window handling
   * Show new tab at its target position right away (#1292).
   * Live changing of reordered tabs while being dragged (#1293).
   * Change mouse pointer while tab dragging (#1293).
   * Adapt dynamic tab drag highlighting (~#1293).
+
+Misc
+  * Avoid potentially blocking retrieval of printers list (#1295).
 
 ### 3.7.6 (24 September 2024) ###
 

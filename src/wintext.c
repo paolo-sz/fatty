@@ -3357,6 +3357,9 @@ void
 #endif
 
   uint eto_options = ETO_CLIPPED;
+#ifdef glyph_output
+  // this mode of output processing with unclear purpose used to corrupt
+  // cursor and italic display of right-to-left scripts; disabled
   if (has_rtl) {
    /* We've already done right-to-left processing in the screen buffer,
     * so stop Windows from doing it again (and hence undoing our work).
@@ -3386,6 +3389,7 @@ void
     trace_line(" >ChrPlc:");
     eto_options |= ETO_GLYPH_INDEX;
   }
+#endif
 
 
   bool combining = attr.attr & TATTR_COMBINING;
@@ -4619,13 +4623,13 @@ skip_drawing:;
     auto cursor_size = [&](int cell_size) -> int
     {
       switch (term.cursor_size) {
-        when 1: return -2;
-        when 2: return line_width - 1;
-        when 3: return cell_size / 3 - 1;
-        when 4: return cell_size / 2;
-        when 5: return cell_size * 2 / 3;
-        when 6: return cell_size - 2;
-        othwise: return 0;
+        when 1: return -2;                // invisible
+        when 2: return line_width - 1;    // underscore
+        when 3: return cell_size / 3 - 1; // ⅓
+        when 4: return cell_size / 2;     // ½
+        when 5: return cell_size * 2 / 3; // ⅔
+        when 6: return cell_size - 2;     // full block
+        othwise: return 0;              // default
       }
     };
 
@@ -4637,18 +4641,18 @@ skip_drawing:;
 #endif
     HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, _cc));
     switch (term_cursor_type()) {
-      when CUR_BLOCK:
+      when CUR_BLOCK:  // solid block cursor
         if (attr.attr & TATTR_PASCURS) {
           HBRUSH oldbrush = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
           Rectangle(dc, x, y, x + char_width, y + cell_height);
           SelectObject(dc, oldbrush);
         }
-      when CUR_BOX: {
+      when CUR_BOX: {  // hollow box cursor
         HBRUSH oldbrush = (HBRUSH)SelectObject(dc, GetStockObject(NULL_BRUSH));
         Rectangle(dc, x, y, x + char_width, y + cell_height);
         SelectObject(dc, oldbrush);
       }
-      when CUR_LINE: {
+      when CUR_LINE: {  // vertical line cursor
         int caret_width = cursor_size(cell_width);
         if (caret_width <= 0) {
           caret_width = (3 + (lattr >= LATTR_WIDE ? 2 : 0)) * cell_width / 40;
@@ -4692,7 +4696,7 @@ skip_drawing:;
           }
         }
       }
-      when CUR_UNDERSCORE: {
+      when CUR_UNDERSCORE: {  // horizontal line cursor
         int yy = yt + min(ff->descent, cell_height - 2);
         yy += ff->row_spacing * 3 / 8;
         if (lattr >= LATTR_TOP) {
