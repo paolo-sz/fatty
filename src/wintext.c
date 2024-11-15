@@ -4234,6 +4234,7 @@ skip_drawing:;
 #ifdef use_extpen
     LOGBRUSH brush = (LOGBRUSH){BS_SOLID, fg, 0};
     DWORD style = PS_GEOMETRIC | PS_SOLID;
+    HPEN roundpen = ExtCreatePen(style, penwidth, &brush, 0, 0);
     if (boxpower)
       style |= PS_ENDCAP_SQUARE;  // skipped for DEC Technical sum segments
     HPEN pen = ExtCreatePen(style, penwidth, &brush, 0, 0);
@@ -4325,6 +4326,8 @@ skip_drawing:;
             // penwidth / 3 on the right/bottom side is a compromise
             y2 -= max(penwidth / 3, 1);
             x2 -= max(penwidth / 3, 1);
+            // also the square pen appears wrong with the diagonals
+            SelectObject(dc, roundpen);
           }
 
           // draw the line back again to compensate for the missing endpoint
@@ -4335,7 +4338,7 @@ skip_drawing:;
           if (y3 > -3)  // skip for dashed line segments
             LineTo(dc, x1, y1);
 
-          if (heavy)
+          if (heavy || y3 == -2)
             SelectObject(dc, pen);
           }
       };
@@ -4508,6 +4511,7 @@ skip_drawing:;
     // remove Box Drawing resources
     SelectObject(dc, oldpen);
     DeleteObject(pen);
+    DeleteObject(roundpen);
     DeleteObject(heavypen);
     DeleteObject(br);
   }
