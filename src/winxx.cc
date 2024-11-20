@@ -44,8 +44,8 @@ static std::mutex term_mutex;
 
 static float g_xscale, g_yscale;
 
-#define TAB_X_PADDING 7
-#define TAB_Y_PADDING 5
+#define TAB_X_PADDING(scale) ((int)(7 * ((4 * (int)scale) - 300) / 100))
+#define TAB_Y_PADDING(scale) ((int)((5 * (int)scale) / 100))
 #define TAB_FONT_SIZE 14
 
 static HRESULT (WINAPI * pGetDpiForMonitor)(HMONITOR mon, int type, uint * x, uint * y) = 0;
@@ -68,9 +68,9 @@ static void init_scale_factors() {
       g_xscale = (float)xdpi / 96.0f;
       g_yscale = (float)ydpi / 96.0f;
       GetWindowRect(fatty_tab_wnd, &wr);
-      OFFSET = (int)(scale / 100 * (TAB_Y_PADDING + TAB_Y_PADDING + TAB_FONT_SIZE)) + PADDING;
+      OFFSET = (int)((scale * (TAB_Y_PADDING(scale) + TAB_Y_PADDING(scale) + TAB_FONT_SIZE)) / 100) + PADDING;
       TabCtrl_SetItemSize(fatty_tab_wnd, wr.right - wr.left, OFFSET);
-      TabCtrl_SetPadding(fatty_tab_wnd, g_xscale * TAB_X_PADDING * (float)scale / 100 * (scale != 100 ? 4 : 1), g_yscale * TAB_Y_PADDING * (float)scale / 100);
+      TabCtrl_SetPadding(fatty_tab_wnd, (int)((g_xscale * TAB_X_PADDING(scale) * (int)scale) / 100), (int)((g_yscale * TAB_Y_PADDING(scale) * (int)scale) / 100));
     }
 }
 
