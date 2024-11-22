@@ -36,6 +36,7 @@ const char * fatty_debug;
 #include "child.h"
 #include "charset.h"
 #include "tek.h"
+#include "print.h"  // list_printers
 
 #include <CommCtrl.h>
 #include <Windows.h>
@@ -6844,6 +6845,10 @@ main(int argc, char *argv[])
             report_moni = true;
           when 'f':
             list_fonts(true);
+            exit_fatty(0);
+            exit(0);
+          when 'R':
+            list_printers();
             exit_fatty(0);
 #if CYGWIN_VERSION_API_MINOR >= 74
           when 'W': {

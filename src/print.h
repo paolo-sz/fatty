@@ -17,4 +17,7 @@ extern void printer_wwrite(wchar *, uint len);
 #define printer_finish_job(...) (printer_finish_job)(term_p, ##__VA_ARGS__)
 extern void (printer_finish_job)(struct term* term_p);
 
+// reports printers list
+extern void list_printers(void);
+
 #endif
