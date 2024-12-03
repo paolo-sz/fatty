@@ -19,6 +19,8 @@ typedef struct _PROCESSOR_NUMBER {
 
 //#undef WINVER
 //#define WINVER 0x0601
+// kill mysterious compilation bug since gcc 14
+#define TpSetCallbackPriority(cbe, prio)	
 #include <shlobj.h>
 #include <propkey.h>  // PKEY_Title
 
