@@ -131,8 +131,12 @@ static void
 
   if (x < 0)
     x = 0;
-  if (x >= term.cols)
-    x = term.cols - 1;
+  if (x >= term.cols) {
+    if (term.vt52_mode)  // && if implementing VT52 emulation of VT100 (#1299)
+      x = curs->x;
+    else
+      x = term.cols - 1;
+  }
 
   if (term.st_active) {
     if (curs->y < term.rows)
@@ -143,8 +147,12 @@ static void
   else {
     if (y < 0)
       y = 0;
-    if (y >= term.rows)
-      y = term.rows - 1;
+    if (y >= term.rows) {
+      if (term.vt52_mode)
+        y = curs->y;  // #1299
+      else
+        y = term.rows - 1;
+    }
   }
 
   curs->x = x;
@@ -1218,7 +1226,8 @@ void
             check for a previous Fitzpatrick high surrogate 
             before we add its low surrogate (add_cc below)
          */
-          if (c == 0x200D)
+          bool emoji_joiner = c == 0x200D && could_be_emoji_base(&line->chars[x]);
+          if (emoji_joiner)
             //printf("%d:%d (%04X) %04X mark joiner\n", curs->y, curs->x, line->chars[x].chr, c),
             line->chars[x].attr.attr |= TATTR_EMOJI;
           else
@@ -1255,7 +1264,7 @@ void
               // U+FE0F VARIATION SELECTOR-16
               // U+200D ZERO WIDTH JOINER
               (c == 0xFE0F
-            || (c == 0x200D && could_be_emoji_base(&line->chars[x]))
+            || emoji_joiner
               // U+1F3FB..U+1F3FF EMOJI MODIFIER FITZPATRICKs
               // UTF-16: D83C DFFB .. D83C DFFF
             || is_fitzpatrick
