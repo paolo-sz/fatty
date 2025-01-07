@@ -3657,6 +3657,16 @@ void
   win_update_glass(opaque);
 }
 
+static void
+win_adjust_background(void)
+{
+  if (*cfg.background) {
+    //term_invalidate(0, 0, term.cols - 1, term.rows - 1);
+    // rather, more smoothly:
+    win_invalidate_all(true);
+  }
+}
+
 void
 (win_update_scrollbar)(struct term* term_p, bool inner)
 {
@@ -4839,6 +4849,9 @@ static struct {
       }
 
     when WM_THEMECHANGED case_or WM_WININICHANGE case_or WM_SYSCOLORCHANGE:
+      // keep image background updated while moving/resizing
+      win_adjust_background();
+
       // Size of window border (border, title bar, scrollbar) changed by:
       //   Personalization of window geometry (e.g. Title Bar Size)
       //     -> Windows sends WM_SYSCOLORCHANGE
@@ -5268,8 +5281,11 @@ static int olddelta;
     when WM_WINDOWPOSCHANGED: {
       poschanging = false;
       if (disable_poschange)
-        // avoid premature Window size adaptation (#649?)
+        // avoid premature Window size adaptation (#649?) during startup
         break;
+
+      // keep image background updated while moving/resizing
+      win_adjust_background();
 
       trace_resize(("# WM_WINDOWPOSCHANGED %3X (resizing %d) %d %d @ %d %d\n", WP->flags, resizing, WP->cy, WP->cx, WP->y, WP->x));
       if (per_monitor_dpi_aware == DPI_AWAREV1) {
@@ -5940,6 +5956,10 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
         wcscat(icon, W("\\WindowsApps\\"));
         wcscat(icon, pfn);
         wcscat(icon, W("\\images\\icon.ico"));
+        // alternatively, icons can also be in Assets/*.png but those
+        // are not in .ico file format, or in *.exe;
+        // however, as the whole directory is not readable for non-admin,
+        // mintty cannot check that here
       }
     }
     else {  // legacy

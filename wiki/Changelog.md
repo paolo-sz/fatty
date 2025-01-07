@@ -1,3 +1,8 @@
+Character rendering
+  * Fix overhang rendering for some characters, clipped in 3.7.7 (#1304).
+
+### 3.7.7 (21 December 2024) ###
+
 Terminal features
   * VT52 emulation absolute position keeps row/column if out-of-bounds (#1299).
 
@@ -14,9 +19,12 @@ Window handling
   * Live changing of reordered tabs while being dragged (#1293).
   * Change mouse pointer while tab dragging (#1293).
   * Adapt dynamic tab drag highlighting (~#1293).
+  * Swipe visualisation of tab reorder dragging (~#1293).
   * New windows/Alt+F2 launches terminal on same monitor (broken since 2.9.5).
   * Maximise/Restore keeps window on same monitor (broken since 3.6.5, ~#1226).
-  * Virtual transparency: fix desktop background offset (#1296).
+  * Virtual transparency: fix background offset on multiple monitors (#1296).
+  * Virtual transparency: fix background offset with options Scrollbar=left or BorderStyle=frame/void (#1296).
+  * Image background: keep updated while moving/resizing.
 
 Misc
   * Avoid potentially blocking retrieval of printers list (#1295).
