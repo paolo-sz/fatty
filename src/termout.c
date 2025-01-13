@@ -1,6 +1,6 @@
 // termout.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-23 Andy Koppe, 2017-24 Thomas Wolff
+// Based on code from mintty by 2008-23 Andy Koppe, 2017-25 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -5169,6 +5169,14 @@ static void
   while (pos < len) {
     uchar c = buf[pos++];
 
+    if (!tek_mode && (c == 0x1A || c == 0x18)) { // SUB or CAN
+      term.state = NORMAL;
+      // display one of ␦ / ⸮ / ▒
+      write_char(0x2426, 1);
+      //write_char(0x2592, 1);
+      continue;
+    }
+
    /*
     * If we're printing, add the character to the printer buffer.
     */
@@ -5375,8 +5383,13 @@ static void
                 term.curs.attr.attr &= ~FONTFAM_MASK;
                 term.curs.attr.attr |= (cattrflags)12 << ATTR_FONTFAM_SHIFT;
               }
-              else
+              else {
                 wc = win_linedraw_char(c - 0x60);
+                if (wc >= 0x2500 && wc <= 0x259F) {
+                  term.curs.attr.attr &= ~FONTFAM_MASK;
+                  term.curs.attr.attr |= (cattrflags)11 << ATTR_FONTFAM_SHIFT;
+                }
+              }
             }
           when CSET_TECH:  // DEC Technical Character Set
             if (c > ' ' && c < 0x7F) {
