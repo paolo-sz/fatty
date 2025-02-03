@@ -1438,6 +1438,14 @@ toggle_bidi(struct term *term_p)
 }
 
 void
+toggle_lam_alef(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+    
+  term.join_lam_alef = !term.join_lam_alef;
+}
+
+void
 toggle_dim_margins(struct term* term_p)
 {
   TERM_VAR_REF(true)
@@ -1830,6 +1838,14 @@ mflags_bidi(struct term *term_p)
            : term.disable_bidi ? MF_UNCHECKED : MF_CHECKED;
 }
 
+static uint
+mflags_lam_alef(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.join_lam_alef ? MF_CHECKED : MF_UNCHECKED;
+}
+
 #define mflags_dim_margins(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
 static uint
 (mflags_dim_margins)(struct term *term_p)
@@ -1997,6 +2013,7 @@ static struct function_def cmd_defs[] = {
   {"toggle-vt220", {.fct = (toggle_vt220)}, mflags_vt220},
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
+  {"toggle-lam-alef", {.fct = toggle_lam_alef}, mflags_lam_alef},
   {"refresh", {.fct = refresh}, 0},
   {"toggle-dim-margins", {.fct = toggle_dim_margins}, mflags_dim_margins},
   {"toggle-status-line", {.fct = toggle_status_line}, mflags_status_line},
@@ -2830,6 +2847,13 @@ C	M	+C	+A	"	"
 
   bool altgr = ralt | ctrl_lalt_altgr;
   //altgr |= is_altgr;  // doesn't appear to be necessary
+  if (!(cfg.old_altgr_detection & 4)) {
+    // enforce Control modifier as detected by VK_ state
+    // unless it could be involved to determine AltGr
+    //printf("-- lctrl %d lctrl0 %d altgr %d altgr0 %d is_ralt %d is_altgr %d\n", lctrl, lctrl0, altgr, altgr0, is_ralt, is_altgr);
+    if (lctrl0 && !altgr)
+      ctrl = true;
+  }
 
   // While this should more properly reflect the AltGr modifier state, 
   // with the current implementation it has the opposite effect;

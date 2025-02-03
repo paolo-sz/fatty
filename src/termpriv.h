@@ -52,6 +52,10 @@ extern ushort getparabidi(termline * line);
 #define wcsline(...) (wcsline)(term_p, ##__VA_ARGS__)
 extern wchar * (wcsline)(struct term* term_p, termline * line);  // for debug output
 
+/* Advanced Arabic support */
+extern bool isLAM(xchar c);
+extern bool isALEF(xchar c);
+
 #define term_selecting(...) (term_selecting)(term_p, ##__VA_ARGS__)
 static inline bool
 (term_selecting)(struct term* term_p)

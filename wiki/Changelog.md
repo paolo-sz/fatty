@@ -1,8 +1,16 @@
 Terminal features
   * SUB and CAN controls terminate ESC sequences and are displayed (DEC, xterm 397).
+  * LAM/ALEF single-cell joining mode (DECSET 2521).
 
 Character rendering
   * Fix overhang rendering for some characters, clipped in 3.7.7 (#1304).
+  * Optional single-cell rendering of Arabic LAM/ALEF ligatures.
+
+Keyboard handling
+  * Enforce Ctrl as held down (except with AltGr) (~#1266, ~#1273).
+
+Font configuration:
+  * Handle font metrics errors (#1309).
 
 ### 3.7.7 (21 December 2024) ###
 
