@@ -5,12 +5,19 @@ Terminal features
 Character rendering
   * Fix overhang rendering for some characters, clipped in 3.7.7 (#1304).
   * Optional single-cell rendering of Arabic LAM/ALEF ligatures.
+  * Revise background clearing to catch border cases (#1310).
+  * Option to center position of smaller glyphs in CJK ranges (#1313).
 
 Keyboard handling
   * Enforce Ctrl as held down (except with AltGr) (~#1266, ~#1273).
 
 Font configuration:
   * Handle font metrics errors (#1309).
+
+Configuration:
+  * New option ThemeDark to be used if Windows Darkmode is set (#1305, ~#1303).
+  * New glyph centering prefix ">" for option FontChoice (#1313).
+  * Propagate TERM config setting to WSL HOSTTERM variable (mintty/wsltty#290, ~mintty/wsltty#278).
 
 ### 3.7.7 (21 December 2024) ###
 

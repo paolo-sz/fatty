@@ -1,6 +1,6 @@
 // term.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-23 Andy Koppe, 2016-2024 Thomas Wolff
+// Based on code from mintty by 2008-2023 Andy Koppe, 2016-2025 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -3203,7 +3203,7 @@ emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
 
 #define dont_debug_win_text_invocation
 #if defined(debug_win_text_modified) && !defined(debug_win_text_invocation)
-#define debug_win_text_invocation
+# define debug_win_text_invocation
 #endif
 
 #ifdef debug_win_text_invocation
@@ -4365,7 +4365,7 @@ void
 
 #ifdef phase1_output_after_phase2_copy
         // phase 1 output for the background
-        // - it used to cause overhang clipping (#1304)
+        // - it used to cause overhang clipping (#1304, #1311)
         // when this was done after phase 2 output copy above
         win_text(x, y, text, len, attr, textattr, lattr, has_rtl, has_sea, false, 1);
         flush_text();

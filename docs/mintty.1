@@ -32,6 +32,7 @@
 .ad b
 .ft 1
 ..
+.char ^ \(ha
 .TH mintty 1 mintty
 
 .ad l
@@ -1281,8 +1282,8 @@ the system ANSI encoding.
 (This does not apply to the same configuration settings when given on the 
 command-line.)
 .br
-Unicode-enabled settings: BellFile, BellFile2..7, ThemeFile, Background, 
-Title, ExitTitle, Icon, Log, SaveFilename, 
+Unicode-enabled settings: BellFile, BellFile2..7, ThemeFile, ThemeDark, 
+Background, Title, ExitTitle, Icon, Log, SaveFilename, 
 Language, Font, Font1..10, FontRTL, FontSample, FontChoice, 
 TekFont, CopyAsRTFFont, 
 SearchBar, Printer, Answerback, SixelClipChars, 
@@ -1297,8 +1298,9 @@ options can obviously be overwritten; if older mintty versions are run
 may even get dropped from the configuration file; mintty versions since 
 261 preserve unknown options and comment lines.
 
-Additional resource files are used for colour schemes (option \fBThemeFile\fP, 
-subdirectory \fIthemes\fP), wave files (option \fBBellFile\fP, subdirectory \fIsounds\fP), 
+Additional resource files are used for colour schemes (options 
+\fBThemeFile\fP and \fBThemeDark\fP, subdirectory \fIthemes\fP), 
+wave files (option \fBBellFile\fP, subdirectory \fIsounds\fP), 
 and localization translation files (option \fBLanguage\fP, subdirectory \fIlang\fP) 
 within the mintty resource directories \fI/usr/share/mintty\fP, 
 \fI$APPDATA/mintty\fP, \fI\(ti/.config/mintty\fP, \fI\(ti/.mintty\fP, 
@@ -1354,6 +1356,10 @@ about this mechanism.
 Note: Mintty also provides the command-line script \fBmintheme\fP which can 
 display the themes available in the mintty configuration directories or 
 activate one of them in the current mintty window.
+
+.en
+\fBDarkmode Theme\fP (ThemeDark=): 
+If this setting is not empty, it is used when the system is configured for darkmode. 
 
 .TQ
 \fBTransparency\fP (Transparency=off)
@@ -1515,6 +1521,11 @@ will override an earlier one (see CJK example below).
 Finally, special name \fBPrivate\fP covers the Private Use ranges, which are 
 often used for additional icon symbols (e.g. by "Nerd Fonts" or "Powerline" fonts).
 .br
+With a prefix of ">", characters mapped from a script range to a font 
+will be shifted horizontally as derived from the font metrics 
+to adjust CJK characters of a smaller font to appear centered in the 
+double-cell space. (If used, this prefix must precede a "|" prefix.)
+.br
 In addition to Unicode scripts, also Unicode blocks can be used 
 to specify a secondary font, by a "|" prefix to the block name, with block 
 specifications preceding over the more general script specifications.
@@ -1525,7 +1536,7 @@ respective alternative font specification can be preceded with "+".
 Examples:
 .ex
 .br
-  FontChoice=Hebrew:6;Arabic:7;CJK:5;Han:8;Hangul:9
+  FontChoice=Hebrew:6;Arabic:7;CJK:5;Han:8;>Hangul:9
 .br
   Font6=David
 .br
@@ -3507,7 +3518,7 @@ a new tab in same directory as current process on Control+F2, or as a
 new window on Alt+Control+F2
 .en
 .ex
-KeyFunctions=Alt:\(ha[
+KeyFunctions=Alt:^[
 .ee
 will make Alt send the Esc keycode when it is
 pressed and released on its own, for when the Esc key seems too far away from
@@ -4346,6 +4357,12 @@ MINTTY_MONITOR, MINTTY_ROWS, MINTTY_COLS, MINTTY_MAXIMIZE,
 MINTTY_X, MINTTY_Y, MINTTY_DX, MINTTY_DY, 
 MINTTY_ICON, MINTTY_TABBAR, MINTTY_CLASS, MINTTY_PWD
 
+.TQ
+.B Terminal type information
+In WSL mode, since 3.7.8, mintty does not propagate its TERM setting 
+to WSL anymore, in order to allow WSL local preferences 
+(often xterm-256color). Instead it sets environment variable HOSTTERM.
+
 .SH SCOPE AND LIMITATIONS
 
 .SS Console issue
@@ -4410,7 +4427,7 @@ Additional information can be found on the wiki on the mintty project page
 
 .SH LICENSE
 
-Copyright (C) 2024 Thomas Wolff, Andy Koppe
+Copyright (C) 2025 Thomas Wolff, Andy Koppe
 
 Mintty is released under the terms of the the \fIGNU General Public License\fP
 version 3.

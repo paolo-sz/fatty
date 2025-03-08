@@ -25,6 +25,9 @@ extern HIMC imc;        // the input method context
 extern HWND config_wnd; // the options window
 extern ATOM class_atom;
 
+extern wchar * getregstr(HKEY key, wstring subkey, wstring attribute);
+extern uint getregval(HKEY key, wstring subkey, wstring attribute, uint def);
+
 extern void clear_tabs(void);
 extern void add_tab(uint tabi, HWND wndi);
 //extern void win_tab_left(void);
@@ -210,6 +213,7 @@ extern void (win_set_ime_open)(struct term* term_p, bool);
 extern void (win_set_ime)(struct term* term_p, bool open);
 extern bool win_get_ime(void);
 
+extern bool is_win_dark_mode(void);
 extern void win_dark_mode(HWND w);
 
 extern void show_message(char * msg, UINT type);

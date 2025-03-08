@@ -1,6 +1,6 @@
 ﻿// winmain.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-13 Andy Koppe, 2015-2024 Thomas Wolff
+// Based on code from mintty by 2008-13 Andy Koppe, 2015-2025 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -251,6 +251,79 @@ static BOOL (WINAPI * pGetLayeredWindowAttributes)(HWND, COLORREF *, BYTE *, DWO
 #else
 #define trace_guard(p)	
 #endif
+
+
+wchar *
+getregstr(HKEY key, wstring subkey, wstring attribute)
+{
+#if CYGWIN_VERSION_API_MINOR < 74
+  (void)key;
+  (void)subkey;
+  (void)attribute;
+  return 0;
+#else
+  // RegGetValueW is easier but not supported on Windows XP
+  HKEY sk = 0;
+  RegOpenKeyW(key, subkey, &sk);
+  if (!sk)
+    return 0;
+  DWORD type;
+  DWORD len;
+  int res = RegQueryValueExW(sk, attribute, 0, &type, 0, &len);
+  if (res)
+    return 0;
+  if (!(type == REG_SZ || type == REG_EXPAND_SZ || type == REG_MULTI_SZ))
+    return 0;
+  wchar * val = (wchar *)malloc (len);
+  res = RegQueryValueExW(sk, attribute, 0, &type, (LPBYTE)val, &len);
+  RegCloseKey(sk);
+  if (res) {
+    free(val);
+    return 0;
+  }
+  return val;
+#endif
+}
+
+uint
+getregval(HKEY key, wstring subkey, wstring attribute, uint def)
+{
+#if CYGWIN_VERSION_API_MINOR < 74
+  (void)key;
+  (void)subkey;
+  (void)attribute;
+  return def;
+#else
+  // RegGetValueW is easier but not supported on Windows XP
+  HKEY sk = 0;
+  RegOpenKeyW(key, subkey, &sk);
+  if (!sk)
+    return def;
+  DWORD type;
+  DWORD len;
+  int res = RegQueryValueExW(sk, attribute, 0, &type, 0, &len);
+  if (res)
+    return def;
+  if (type == REG_DWORD) {
+    DWORD val;
+    len = sizeof(DWORD);
+    res = RegQueryValueExW(sk, attribute, 0, &type, (LPBYTE)&val, &len);
+    RegCloseKey(sk);
+    if (!res)
+      return (uint)val;
+  }
+  return def;
+#endif
+}
+
+bool
+is_win_dark_mode(void)
+{
+  // or return pShouldAppsUseDarkMode && pShouldAppsUseDarkMode()
+  return 0 == getregval(HKEY_CURRENT_USER, 
+              W("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize"),
+              W("AppsUseLightTheme"), -1);
+}
 
 
 // WSL path conversion, using wsl.exe
@@ -2464,21 +2537,16 @@ static void
 void
 win_dark_mode(HWND w)
 {
-  if (pShouldAppsUseDarkMode) {
-    HIGHCONTRASTW hc;
-    hc.cbSize = sizeof hc;
-    pSystemParametersInfo(SPI_GETHIGHCONTRAST, sizeof hc, &hc, 0);
-    //printf("High Contrast scheme <%ls>\n", hc.lpszDefaultScheme);
+  if (pDwmSetWindowAttribute) {
+    BOOL dark = is_win_dark_mode();
 
-    if (!(hc.dwFlags & HCF_HIGHCONTRASTON) && pShouldAppsUseDarkMode()) {
-      pSetWindowTheme(w, W("DarkMode_Explorer"), NULL);
+    // do not use SetWindowTheme anymore (previously on WM_WININICHANGE);
+    // it would cause an asynchronous WM_THEMECHANGED message...
 
-      // set DWMWA_USE_IMMERSIVE_DARK_MODE; needed for titlebar
-      BOOL dark = 1;
-      if (S_OK != pDwmSetWindowAttribute(w, 20, &dark, sizeof dark)) {
-        // this would be the call before Windows build 18362
-        pDwmSetWindowAttribute(w, 19, &dark, sizeof dark);
-      }
+    // set DWMWA_USE_IMMERSIVE_DARK_MODE (20)
+    if (S_OK != pDwmSetWindowAttribute(w, 20, &dark, sizeof dark)) {
+      // this would be the call before Windows build 18362
+      pDwmSetWindowAttribute(w, 19, &dark, sizeof dark);
     }
   }
 }
@@ -4868,10 +4936,16 @@ static struct {
       win_update_tabbar();
       // update dark mode
       if (message == WM_WININICHANGE) {
-        // SetWindowTheme will cause an asynchronous WM_THEMECHANGED message,
-        // so guard it by WM_WININICHANGE;
-        // this will switch from Light to Dark mode immediately but not back!
-        //win_dark_mode(wnd);
+        // adapt window frame colours
+        win_dark_mode(wnd);
+
+        // adapt mintty theme (do not apply_config(false); it would crash)
+        if (*cfg.dark_theme && is_win_dark_mode())
+          load_theme(cfg.dark_theme);
+        else if (*cfg.theme_file)
+          load_theme(cfg.theme_file);
+        win_reset_colours();
+        win_invalidate_all(false);
       }
 
     when WM_DISPLAYCHANGE:
@@ -6001,7 +6075,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
     if (list) {
       printf("WSL distribution name [7m%ls[m\n", name);
       printf("-- guid %ls\n", guid);
-      printf("-- flag %u\n", getregval(lxss, guid, W("Flags")));
+      printf("-- flag %u\n", getregval(lxss, guid, W("Flags"), -1));
       printf("-- root %ls\n", rootfs);
       if (pn)
         printf("-- pack %ls\n", pn);
@@ -6011,7 +6085,7 @@ getlxssinfo(bool list, wstring wslname, uint * wsl_ver,
     }
 
     *wsl_icon = icon;
-    *wsl_ver = 1 + ((getregval(lxss, guid, W("Flags")) >> 3) & 1);
+    *wsl_ver = 1 + ((getregval(lxss, guid, W("Flags"), 0) >> 3) & 1);
     *wsl_guid = cs__wcstoutf(guid);
     char * rootdir = path_win_w_to_posix(rootfs);
     struct stat fstat_buf;
@@ -7019,6 +7093,8 @@ main(int argc, char *argv[])
   copy_config(const_cast<char *>("main after -o"), &file_cfg, &cfg);
   if (*cfg.colour_scheme)
     load_scheme(cfg.colour_scheme);
+  else if (*cfg.dark_theme && is_win_dark_mode())
+    load_theme(cfg.dark_theme);
   else if (*cfg.theme_file)
     load_theme(cfg.theme_file);
 
@@ -7179,8 +7255,14 @@ main(int argc, char *argv[])
 #ifdef wslbridge_t
     *pargv++ = "-t";
 #endif
+#ifdef propagate_TERM_to_WSL
     *pargv++ = const_cast<char *>("-e");
     *pargv++ = const_cast<char *>("TERM");
+#else
+    setenv("HOSTTERM", cfg.term, true);
+    *pargv++ = const_cast<char *>("-e");
+    *pargv++ = const_cast<char *>("HOSTTERM");
+#endif
     *pargv++ = const_cast<char *>("-e");
     *pargv++ = const_cast<char *>("APPDATA");
     if (!cfg.old_locale) {

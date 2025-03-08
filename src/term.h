@@ -172,13 +172,21 @@ enum char_attr_t {
   TATTR_CLEAR     = 0x4000000000000000u, /* erased / unwritten */
   TATTR_OVERHANG  = 0x0080000000000000u, /* visual double-width overhang */
 
-  TATTR_JOINED    = 0x0000040000000000u, /* LAM/ALEF joined as combining */
+  TATTR_JOINED    = 0x0000080000000000u, /* LAM/ALEF joined as combining */
 
   DATTR_STARTRUN  = 0x8000000000000000u, /* start of redraw run */
   DATTR_MASK      = TATTR_RIGHTCURS | TATTR_PASCURS | TATTR_ACTCURS
-                    | DATTR_STARTRUN
+                    | DATTR_STARTRUN,
+
+#ifdef configured_glyph_shift
+  GLYPHSHIFT_MASK = 0x0000070000000000u,
+  ATTR_GLYPHSHIFT_SHIFT = 40,
+#define GLYPHSHIFT_MAX (GLYPHSHIFT_MASK >> ATTR_GLYPHSHIFT_SHIFT)
+#else
+  ATTR_GLYPHSHIFT = 0x0000040000000000u, /* alternative font glyph shift */
+#endif
+
   // unassigned bits:
-  //              = 0x0000080000000000u,
   //              = 0x0000020000000000u,
   //              = 0x0000010000000000u,
 };
