@@ -577,6 +577,8 @@ static void
     int height = img->pixelheight;
     left += PADDING;
     top += OFFSET + PADDING;
+    // adjust horizontal scrolling
+    left -= horclip();
 
     int coord_transformed = 0;
     XFORM old_xform;
@@ -720,6 +722,8 @@ void
 #endif
     } else {
       int left = img->left;
+      // do not adjust horizontal scrolling here
+
       int top = img->top - term.virtuallines - term.disptop;
       if (top + img->height < 0 || top > term.rows) {
         // if the image is scrolled out, serialize it into a temp file
@@ -800,6 +804,11 @@ void
         int ybot = min(top + img->height, term.rows) * cell_height + OFFSET + PADDING;
         int xlft = left * cell_width + PADDING;
         int xrgt = min(left + img->width, term.cols) * cell_width + PADDING;
+
+        // adjust horizontal scrolling
+        xlft -= horclip();
+        xrgt -= horclip();
+
         if (img->len) {
           // better background handling implemented below; this version 
           // would expose artefacts if a transparent image is scrolled
@@ -877,6 +886,9 @@ void
             ExcludeClipRect(dc, xlft, ytop, xrgt, ybot);
           }
           else {
+            // adjust horizontal scrolling
+            left -= horclip() / cell_width;
+
             StretchBlt(dc,
                        left * cell_width + PADDING, top * cell_height + OFFSET + PADDING,
                        img->width * cell_width, img->height * cell_height,
@@ -936,8 +948,10 @@ void
 #include "charset.h"  // path_win_w_to_posix
 
 void
-win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr, bool italic)
+(win_emoji_show)(struct term* term_p, int x0, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr, bool italic)
 {
+  TERM_VAR_REF(true)
+    
   gdiplus_init();
 
   GpStatus s;
@@ -988,7 +1002,7 @@ win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int ele
     gpcheck("load file", s);
   }
 
-  int col = PADDING + x * cell_width;
+  int col = PADDING + x0 * cell_width - horclip();
   int row = OFFSET + PADDING + y * cell_height;
   if ((lattr & LATTR_MODE) >= LATTR_BOT)
     row -= cell_height;
@@ -996,7 +1010,7 @@ win_emoji_show(int x, int y, wchar * efn, void * * bufpoi, int * buflen, int ele
   if ((lattr & LATTR_MODE) != LATTR_NORM) {
     w *= 2;
     // fix position in double-width line
-    col += x * cell_width;
+    col += x0 * cell_width;
   }
   int h = cell_height;
   if ((lattr & LATTR_MODE) >= LATTR_TOP)

@@ -3168,9 +3168,12 @@ match_emoji(termchar * d, int maxlen)
   return emoji;
 }
 
+#define emoji_show(...) (emoji_show)(term_p, ##__VA_ARGS__)
 static void
-emoji_show(int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
+(emoji_show)(struct term* term_p, int x, int y, struct emoji e, int elen, cattr eattr, ushort lattr)
 {
+  TERM_VAR_REF(true)
+
   wchar * efn;
   void * * bufpoi;
   int * buflen;

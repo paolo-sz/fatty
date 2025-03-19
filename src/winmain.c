@@ -234,7 +234,7 @@ static BOOL (WINAPI * pSystemParametersInfo)(UINT, UINT, PVOID, UINT) = 0;
 
 static BOOLEAN (WINAPI * pShouldAppsUseDarkMode)(void) = 0; /* undocumented */
 static DWORD (WINAPI * pSetPreferredAppMode)(DWORD) = 0; /* undocumented */
-static HRESULT (WINAPI * pSetWindowTheme)(HWND, const wchar_t *, const wchar_t *) = 0;
+static HRESULT (WINAPI * pSetWindowTheme)(HWND, const wchar *, const wchar *) = 0;
 
 #define HTHEME HANDLE
 static COLORREF (WINAPI * pGetThemeSysColor)(HTHEME hth, int colid) = 0;
@@ -2540,13 +2540,20 @@ win_dark_mode(HWND w)
   if (pDwmSetWindowAttribute) {
     BOOL dark = is_win_dark_mode();
 
-    // do not use SetWindowTheme anymore (previously on WM_WININICHANGE);
-    // it would cause an asynchronous WM_THEMECHANGED message...
-
+    // DwmSetWindowAttribute needs to be called to adjust the title bar
     // set DWMWA_USE_IMMERSIVE_DARK_MODE (20)
     if (S_OK != pDwmSetWindowAttribute(w, 20, &dark, sizeof dark)) {
       // this would be the call before Windows build 18362
       pDwmSetWindowAttribute(w, 19, &dark, sizeof dark);
+    }
+
+    // SetWindowTheme needs to be called to adjust the scrollbar
+    // it causes WM_THEMECHANGED sent
+    if (pSetWindowTheme) {
+      if (dark)
+        pSetWindowTheme(w, W("DarkMode_Explorer"), NULL);
+      else
+        pSetWindowTheme(w, 0, NULL);
     }
   }
 }
@@ -4002,17 +4009,34 @@ static struct {
   {IDC_WAIT, const_cast<wchar *>(W("wait"))},
 };
 
-static HCURSOR cursors[2] = {0, 0};
+static HCURSOR cursors[3] = {0, 0, 0};
+
+bool
+(is_mouse_mode_by_pixels)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+
+  return (term.mouse_mode && term.mouse_enc == ME_PIXEL_CSI)
+         || (term.locator_by_pixels && 
+             (term.mouse_mode == MM_LOCATOR || term.locator_1_enabled));
+}
 
 HCURSOR
-win_get_cursor(bool appmouse)
+(win_get_cursor)(struct term* term_p, bool appmouse)
 {
-  return cursors[appmouse];
+  TERM_VAR_REF(true)
+
+  int cursidx = appmouse;
+  if (cursidx && is_mouse_mode_by_pixels())
+    cursidx = 2;
+  return cursors[cursidx];
 }
 
 void
-set_cursor_style(bool appmouse, wchar * style)
+(set_cursor_style)(struct term* term_p, int appmouse, wstring style)
 {
+  TERM_VAR_REF(true)
+
   HCURSOR c = 0;
   if (wcschr(style, '.')) {
     char * pf = get_resource_file(W("pointers"), style, false);
@@ -4036,20 +4060,40 @@ set_cursor_style(bool appmouse, wchar * style)
         break;
       }
   if (!c)
-    c = LoadCursor(null, appmouse ? IDC_ARROW : IDC_IBEAM);
+    c = LoadCursor(null, appmouse 
+                         ? (is_mouse_mode_by_pixels() ? IDC_CROSS : IDC_ARROW)
+                         : IDC_IBEAM);
 
-  if (!IS_INTRESOURCE(cursors[appmouse]))
-    DestroyCursor(cursors[appmouse]);
-  cursors[appmouse] = c;
+  int cursidx = appmouse;
+  if (cursidx && is_mouse_mode_by_pixels())
+    cursidx = 2;
+
+  if (!IS_INTRESOURCE(cursors[cursidx]))
+    DestroyCursor(cursors[cursidx]);
+  cursors[cursidx] = c;
   SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR)c);
   SetCursor(c);
 }
 
+#define win_init_cursors(...) (win_init_cursors)(term_p, ##__VA_ARGS__)
 static void
-win_init_cursors()
+(win_init_cursors)(struct term* term_p)
 {
-  set_cursor_style(true, const_cast<wchar *>(W("arrow")));
-  set_cursor_style(false, const_cast<wchar *>(W("ibeam")));
+  TERM_VAR_REF(true)
+
+  if (*cfg.appmouse_pointer)
+    set_cursor_style(1, cfg.appmouse_pointer);
+  else
+    set_cursor_style(1, const_cast<wchar *>(W("arrow")));
+  if (*cfg.pixmouse_pointer)
+    set_cursor_style(2, cfg.pixmouse_pointer);
+  else
+    set_cursor_style(2, const_cast<wchar *>(W("cross")));
+  // this must be last:
+  if (*cfg.mouse_pointer)
+    set_cursor_style(0, cfg.mouse_pointer);
+  else
+    set_cursor_style(0, const_cast<wchar *>(W("ibeam")));
 }
 
 
@@ -4937,7 +4981,7 @@ static struct {
       // update dark mode
       if (message == WM_WININICHANGE) {
         // adapt window frame colours
-        win_dark_mode(wnd);
+        win_dark_mode(wnd);  // causes WM_THEMECHANGED sent
 
         // adapt mintty theme (do not apply_config(false); it would crash)
         if (*cfg.dark_theme && is_win_dark_mode())

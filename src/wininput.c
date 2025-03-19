@@ -1,7 +1,7 @@
 // wininput.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
-// Copyright 2008-23 Andy Koppe, 2015-2024 Thomas Wolff
+// Copyright 2008-23 Andy Koppe, 2015-2025 Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include <algorithm>
@@ -971,6 +971,7 @@ static void
   TERM_VAR_REF(true)
     
   static bool last_app_mouse = false;
+  static bool last_pix_mouse = false;
 
   // unhover (end hovering) if hover modifiers are withdrawn
   if (term.hovering && (char)(mods & ~cfg.click_target_mod) != cfg.opening_mod) {
@@ -979,19 +980,20 @@ static void
   }
 
   bool new_app_mouse =
-    ((term.mouse_mode || term.locator_1_enabled)
+    (term.mouse_mode || term.locator_1_enabled)
     // disable app mouse pointer while showing "other" screen (flipped)
     && !term.show_other_screen
     // disable app mouse pointer while not targetting app
-    && (cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0)))
-    || is_tab_bar_area(-1);
+    && (cfg.clicks_target_app ^ ((mods & cfg.click_target_mod) != 0));
+  bool new_pix_mouse = is_mouse_mode_by_pixels();
 
-  if (new_app_mouse != last_app_mouse) {
+  if (new_app_mouse != last_app_mouse || new_pix_mouse != last_pix_mouse) {
     //HCURSOR cursor = LoadCursor(null, new_app_mouse ? IDC_ARROW : IDC_IBEAM);
     HCURSOR cursor = win_get_cursor(new_app_mouse);
     SetClassLongPtr(wnd, GCLP_HCURSOR, (LONG_PTR)cursor);
     SetCursor(cursor);
     last_app_mouse = new_app_mouse;
+    last_pix_mouse = new_pix_mouse;
   }
 }
 
@@ -1041,9 +1043,9 @@ static pos
   }
   return (pos){
     y : (int)floorf((y - PADDING - OFFSET) / (float)cell_height),
-    x : (int)floorf((x - PADDING) / (float)cell_width),
+    x : (int)floorf((x - PADDING + horclip()) / (float)cell_width),
     piy : (int)min(max(0, y - PADDING - OFFSET), rows * cell_height - 1),
-    pix : (int)min(max(0, x - PADDING), term.cols * cell_width - 1),
+    pix : (int)min(max(0, x - PADDING), term.cols * cell_width - 1) + horclip(),
     r : (cfg.elastic_mouse && !term.mouse_mode)
          ? (((x - PADDING) % cell_width > cell_width / 2) ? true : false)
          : false

@@ -1,6 +1,9 @@
 Terminal features
   * SUB and CAN controls terminate ESC sequences and are displayed (DEC, xterm 397).
   * LAM/ALEF single-cell joining mode (DECSET 2521).
+  * Arabic joining considers ZWJ and ZWNJ formatters.
+  * Fix graphics (image/sixel) and emoji display to adapt to horizontal scrolling.
+  * Fix mouse position click coordinates to adapt to horizontal scrolling.
 
 Character rendering
   * Fix overhang rendering for some characters, clipped in 3.7.7 (#1304).
@@ -11,6 +14,10 @@ Character rendering
 Keyboard handling
   * Enforce Ctrl as held down (except with AltGr) (~#1266, ~#1273).
 
+Window handling
+  * Fix frame adjustment when disabling darkmode.
+  * Display hair cross mouse pointer in pixel-grained mouse reporting modes.
+
 Font configuration:
   * Handle font metrics errors (#1309).
 
@@ -18,6 +25,7 @@ Configuration:
   * New option ThemeDark to be used if Windows Darkmode is set (#1305, ~#1303).
   * New glyph centering prefix ">" for option FontChoice (#1313).
   * Propagate TERM config setting to WSL HOSTTERM variable (mintty/wsltty#290, ~mintty/wsltty#278).
+  * New option PixMousePointer.
 
 ### 3.7.7 (21 December 2024) ###
 

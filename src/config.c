@@ -155,6 +155,7 @@ const config default_cfg = {
   lines_per_notch : 0,
   mouse_pointer : W("ibeam"),
   appmouse_pointer : W("arrow"),
+  pixmouse_pointer : W("cross"),
   // Selection
   input_clears_selection : true,
   copy_on_select : true,
@@ -487,6 +488,7 @@ options[] = {
   {"LinesPerMouseWheelNotch", OPT_INT, offcfg(lines_per_notch)},
   {"MousePointer", OPT_WSTRING, offcfg(mouse_pointer)},
   {"AppMousePointer", OPT_WSTRING, offcfg(appmouse_pointer)},
+  {"PixMousePointer", OPT_WSTRING, offcfg(pixmouse_pointer)},
 
   // Selection
   {"ClearSelectionOnInput", OPT_BOOL, offcfg(input_clears_selection)},

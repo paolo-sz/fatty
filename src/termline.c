@@ -1,6 +1,6 @@
 // termline.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-12 Andy Koppe, -2024 Thomas Wolff
+// Based on code from mintty by 2008-12 Andy Koppe, -2025 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -1193,6 +1193,9 @@ termchar *
 #ifdef apply_HL3
     uint emojirest = 0;
 #endif
+    // control Arabic joining formatters
+    int ibase = 0;
+    uchar joiners = 0;
 
     for (int it = 0; it < term.cols; it++) {
       ucschar c = line->chars[it].chr;
@@ -1263,6 +1266,13 @@ termchar *
           line->chars[it].attr.attr & TATTR_EMOJI
           ? (line->chars[it].attr.attr & ATTR_FGMASK ?: 1)
           : 0;
+
+        // control Arabic joining formatters
+        // flag previous joiners, i.e. ZWJ/ZWNJ before this character
+        term.wcFrom[ib].joiners = joiners << 4;
+        joiners = 0;
+        ibase = ib;
+
         ib++;
       }
       else if (ib) {
@@ -1307,11 +1317,20 @@ termchar *
       // (and would thus stay hidden from minibidi), and need to be 
       // exposed as separate characters for the minibidi algorithm.
       // Also unfold ALEF if handled like combining character for joining.
+      // Also check for shaping formatters ZWJ and ZWNJ and flag them.
       while (bp->cc_next) {
         bp += bp->cc_next;
         // check if ALEF was output in single-cell LAM/ALEF joining mode, 
         // thus handled like a combining character
         bool is_ALEF = isALEF(bp->chr);
+
+        // Arabic joining formatters
+        if (bp->chr == 0x200C)
+          joiners |= ZWNJ;
+        else if (bp->chr == 0x200D)
+          joiners |= ZWJ;
+        else
+        // shaping preparation
         if (bp->chr == 0x200E || bp->chr == 0x200F
             || is_ALEF
             || (bp->chr >= 0x202A && bp->chr <= 0x202E)
@@ -1334,6 +1353,9 @@ termchar *
             bp->attr.attr |= TATTR_JOINED;
         }
       }
+      // Arabic joining formatters: flag joiners on base character
+      term.wcFrom[ibase].joiners |= joiners;
+      // keep joiners to flag as previous on next character
     }
 
     trace_bidi("=", term.wcFrom, ib);

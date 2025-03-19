@@ -35,6 +35,7 @@ extern "C" {
  * - fixed X9 to mask formatters with NSM rather than BN
  * - fixed W7 to fallback to sor
  * - fixed L1 to skip directional markers
+ * - Arabic joining considers ZWJ and ZWNJ formatters
  *
  ************************************************************************/
 
@@ -282,45 +283,44 @@ is_NI(uchar bc)
 int
 do_shape(bidi_char * line, bidi_char * to, int count)
 {
-  int i, tempShape, ligFlag;
-
-  for (ligFlag = i = 0; i < count; i++) {
+  for (int i = 0; i < count; i++) {
     to[i] = line[i];
-    tempShape = STYPE(line[i].wc);
+    int tempShape = STYPE(line[i].wc);
     switch (tempShape) {
-      when SR:
+      when SR:  // Right-Joining, i.e. has Isolated, Final
         tempShape = (i + 1 < count ? STYPE(line[i + 1].wc) : SU);
-        if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC))
-          to[i].wc = SFINAL((SISOLATED(line[i].wc)));
+        if (tempShape == SL || tempShape == SD || tempShape == SC)
+          to[i].wc = SFINAL(SISOLATED(line[i].wc));
         else
           to[i].wc = SISOLATED(line[i].wc);
-      when SD: {
+      when SD: {  // Dual-Joining, i.e. has Isolated, Final, Initial, Medial
        /* Make Ligatures */
         tempShape = (i + 1 < count ? STYPE(line[i + 1].wc) : SU);
         if (line[i].wc == 0x644) {
+          int ligFlag = 0;
           if (i > 0)
             switch (line[i - 1].wc) {
               when 0x622:
                 ligFlag = 1;
-                if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC))
+                if (tempShape == SL || tempShape == SD || tempShape == SC)
                   to[i].wc = 0xFEF6;
                 else
                   to[i].wc = 0xFEF5;
               when 0x623:
                 ligFlag = 1;
-                if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC))
+                if (tempShape == SL || tempShape == SD || tempShape == SC)
                   to[i].wc = 0xFEF8;
                 else
                   to[i].wc = 0xFEF7;
               when 0x625:
                 ligFlag = 1;
-                if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC))
+                if (tempShape == SL || tempShape == SD || tempShape == SC)
                   to[i].wc = 0xFEFA;
                 else
                   to[i].wc = 0xFEF9;
               when 0x627:
                 ligFlag = 1;
-                if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC))
+                if (tempShape == SL || tempShape == SD || tempShape == SC)
                   to[i].wc = 0xFEFC;
                 else
                   to[i].wc = 0xFEFB;
@@ -332,20 +332,37 @@ do_shape(bidi_char * line, bidi_char * to, int count)
           }
         }
 
-        if ((tempShape == SL) || (tempShape == SD) || (tempShape == SC)) {
-          tempShape = (i > 0 ? STYPE(line[i - 1].wc) : SU);
-          if ((tempShape == SR) || (tempShape == SD) || (tempShape == SC))
-            to[i].wc = SMEDIAL((SISOLATED(line[i].wc)));
-          else
-            to[i].wc = SFINAL((SISOLATED(line[i].wc)));
-          break;
+        // Arabic joining formatters: adapt forms
+        uchar joiners = line[i].joiners & 0xF;
+        uchar prevjoiners = line[i].joiners >> 4;
+        if (prevjoiners == ZWNJ) {
+          to[i].wc = SINITIAL(SISOLATED(line[i].wc));
         }
-
-        tempShape = (i > 0 ? STYPE(line[i - 1].wc) : SU);
-        if ((tempShape == SR) || (tempShape == SD) || (tempShape == SC))
-          to[i].wc = SINITIAL((SISOLATED(line[i].wc)));
-        else
+        else if (prevjoiners == (ZWJ | ZWNJ)) {
+          to[i].wc = SMEDIAL(SISOLATED(line[i].wc));
+        }
+        else if (prevjoiners == ZWJ) {
+          to[i].wc = SFINAL(SISOLATED(line[i].wc));
+        }
+        else if (joiners & ZWNJ) {
           to[i].wc = SISOLATED(line[i].wc);
+        }
+        else
+
+        if (tempShape == SL || tempShape == SD || tempShape == SC) {
+          tempShape = (i > 0 ? STYPE(line[i - 1].wc) : SU);
+          if (tempShape == SR || tempShape == SD || tempShape == SC)
+            to[i].wc = SMEDIAL(SISOLATED(line[i].wc));
+          else
+            to[i].wc = SFINAL(SISOLATED(line[i].wc));
+        }
+        else {
+          tempShape = (i > 0 ? STYPE(line[i - 1].wc) : SU);
+          if (tempShape == SR || tempShape == SD || tempShape == SC)
+            to[i].wc = SINITIAL(SISOLATED(line[i].wc));
+          else
+            to[i].wc = SISOLATED(line[i].wc);
+        }
       }
     }
   }
@@ -527,6 +544,7 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
 
 #ifdef check_emoji
     if (c == 0x200D
+     || c == 0x200C
      || (c >= 0x2600 && c < 0x2800)
      || (c >= 0x1F300 && c < 0x20000)
        )
@@ -1211,13 +1229,13 @@ do_bidi(bool autodir, int paragraphLevel, bool explicitRTL, bool box_mirror,
         }
 
       }
-      else if ((types[i - 1] == R) || (types[i - 1] == EN) ||
-               (types[i - 1] == AN)) {
+      else if (types[i - 1] == R || types[i - 1] == EN ||
+               types[i - 1] == AN) {
         j = i;
         while (j < count - 1 && is_NI(types[j])) {
           j++;
         }
-        if ((types[j] == R) || (types[j] == EN) || (types[j] == AN)) {
+        if (types[j] == R || types[j] == EN || types[j] == AN) {
           while (i < j) {
             types[i] = R;
             i++;
