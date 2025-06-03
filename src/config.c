@@ -64,7 +64,7 @@ const config default_cfg = {
   disp_space : 0,
   disp_clear : 0,
   disp_tab : 0,
-  underl_manual : false,
+  underl_manual : true,
   sel_fg_colour : (colour)-1,
   sel_bg_colour : (colour)-1,
   search_fg_colour : 0x000000,

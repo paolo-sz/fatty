@@ -2,6 +2,10 @@ Terminal features
   * Fix darkmode/wakeup refresh to not override dynamic OSC colour settings.
   * Fix emoji invisible and blinking attributes.
   * Accept (but ignore) XTMODKEYS subparameters (xterm 398).
+  * Fix doubled underline (since 3.7.8).
+
+Configuration
+  * Changing default setting UnderlineManual=true for consistent line placement.
 
 ### 3.7.8 (22 March 2025) ###
 
