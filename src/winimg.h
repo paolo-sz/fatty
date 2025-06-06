@@ -17,6 +17,9 @@ extern void (winimgs_paint)(struct term* term_p);
 #define winimgs_clear(...) (winimgs_clear)(term_p, ##__VA_ARGS__)
 extern void (winimgs_clear)(struct term* term_p);
 
+// override suppression of repetitive image painting
+extern bool force_imgs;
+
 #define win_emoji_show(...) (win_emoji_show)(term_p, ##__VA_ARGS__)
 extern void (win_emoji_show)(struct term* term_p, int x, int y, wchar * efn, void * * bufpoi, int * buflen, int elen, ushort lattr, bool italic);
 

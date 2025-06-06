@@ -2033,6 +2033,8 @@ static void
 {
   TERM_VAR_REF(true)
 
+  force_imgs = true;  // override suppression of repetitive image painting
+
   // could limit this to newly visible columns
   term_invalidate(0, 0, term.cols - 1, term.rows - 1);
   win_schedule_update();
@@ -2070,6 +2072,8 @@ static void
 (horflush)(struct term* term_p)
 {
   TERM_VAR_REF(true)
+
+  force_imgs = true;  // override suppression of repetitive image painting
 
   // could limit this to newly visible columns
   term_invalidate(0, 0, term.cols - 1, term.rows - 1);
@@ -5001,6 +5005,7 @@ static struct {
 
     when WM_PAINT:
       //printsb("WS_PAINT");
+      force_imgs = true;  // override suppression of repetitive image painting
       win_paint();
 
 #ifdef handle_default_size_asynchronously

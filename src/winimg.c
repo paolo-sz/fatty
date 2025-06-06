@@ -32,6 +32,8 @@ static size_t const TEMPFILE_MAX_NUM = 16;
 // if we'd create ~10000 "CompatibleDCs", handle handling will fail...
 static int cdc = 999;
 
+// override suppression of repetitive image painting
+bool force_imgs = true;
 
 
 #if CYGWIN_VERSION_API_MINOR >= 74
@@ -251,6 +253,8 @@ winimg_len(imglist *img)
   return img->len ?: img->pixelwidth * img->pixelheight * 4;
 }
 
+#define maxval(type)	((unsigned type)-1 >> 1)
+
 bool
 (winimg_new)(struct term* term_p, imglist **ppimg, char * id, unsigned char * pixels, uint len,
            int left, int scrtop, int width, int height,
@@ -287,6 +291,8 @@ bool
   img->prev = NULL;
   img->strage = NULL;
   img->attr = attr;
+  img->x = maxval(short);
+  img->y = maxval(short);
 
   img->len = len;
   if (len) {  // image format, not sixel
@@ -725,6 +731,14 @@ void
       // do not adjust horizontal scrolling here
 
       int top = img->top - term.virtuallines - term.disptop;
+
+      // suppress repetitive image painting
+      if (left == img->x && top == img->y && !force_imgs)
+        continue;
+      img->x = left;
+      img->y = top;
+      //printf("disp @%d/%d\n", left, top);
+
       if (top + img->height < 0 || top > term.rows) {
         // if the image is scrolled out, serialize it into a temp file
 #ifdef debug_img_list
@@ -939,6 +953,9 @@ void
   }
 
   ReleaseDC(wnd, dc);
+
+  // suppress repetitive image painting
+  force_imgs = false;
 }
 
 
