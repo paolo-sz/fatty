@@ -273,6 +273,7 @@ typedef struct {
   string old_options;
   bool dim_margins;
   bool old_xbuttons;
+  int wslbridge;
   // Legacy
   bool use_system_colours;
   bool old_bold;

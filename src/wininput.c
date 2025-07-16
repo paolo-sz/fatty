@@ -3114,12 +3114,16 @@ C	M	+C	+A	"	"
           vki = i;
           break;
         }
-      bool keypad = vktab[vki].vkey == VK_RETURN
+      bool keypad;
+	  bool editpad;
+	  if (vki >= 0) {
+	    keypad = vktab[vki].vkey == VK_RETURN
                     ? extended
                     : vktab[vki].unmod == 2
                       ? !extended
                       : vktab[vki].unmod == 3;
-      bool editpad = !keypad && vktab[vki].unmod >= 2;
+        editpad = !keypad && vktab[vki].unmod >= 2;
+	  }
       //printf("found %d ext %d kp %d ep %d\n", vki, extended, keypad, editpad);
       if (vki >= 0 && !altgr
           && (mods || vktab[vki].unmod || extended)

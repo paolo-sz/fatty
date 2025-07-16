@@ -4293,7 +4293,8 @@ static struct {
 # ifdef debug_only_input_messages
     if (strstr(wm_name, "MOUSE") || strstr(wm_name, "BUTTON") || strstr(wm_name, "CURSOR") || strstr(wm_name, "KEY"))
 # endif
-    printf("[%d]->%8p %04X %s (%08X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
+    if (strchr(mintty_debug, 'M'))
+      printf("[%d]->%8p %04X %s (%08X %08X)\n", (int)time(0), wnd, message, wm_name, (unsigned)wp, (unsigned)lp);
 #endif
 
   struct term *term_p = win_active_terminal();
@@ -4466,7 +4467,8 @@ static struct {
           idm_name = idm_names[i].idm_name;
           break;
         }
-      printf("                           %04X %s\n", (int)wp, idm_name);
+      if (strchr(mintty_debug, 'M'))
+        printf("                           %04X %s\n", (int)wp, idm_name);
 # endif
       if ((wp & ~0xF) >= 0xF000)
         ; // skip WM_SYSCOMMAND from Windows here (but process own ones)
@@ -5556,7 +5558,8 @@ static int olddelta;
       DWORD new = ((STYLESTRUCT *)lp)->styleNew;
       DWORD off = old & ~new;
       DWORD on = new & ~old;
-      printf("%sSTYLE%s %08X -> %08X, off %08X on %08X\n", which, what, old, new, off, on);
+      if (strchr(mintty_debug, 'M'))
+        printf("%sSTYLE%s %08X -> %08X, off %08X on %08X\n", which, what, old, new, off, on);
 
 typedef struct {
   DWORD st;
@@ -7240,49 +7243,63 @@ main(int argc, char *argv[])
 
 #define dont_debug_wsl
 
-  bool wslbridge2 = access("/bin/wslbridge2", X_OK) == 0
-                 || access("/bin/wslbridge", X_OK) < 0;
+  int wslbridge = cfg.wslbridge;
+  if (wslbridge == 2 && access("/bin/wslbridge2", X_OK) < 0)
+    wslbridge = 1;
+  if (wslbridge == 1 && access("/bin/wslbridge", X_OK) < 0)
+    wslbridge = 0;
 
   // Work out what to execute.
   argv += optind;
   if (wsl_guid && wsl_launch) {
     argc -= optind;
     char * cmd0;
-    if (wslbridge2) {
+    if (wslbridge == 2) {
 # ifndef __x86_64__
       argc += 2;  // -V 1/2
 # endif
       cmd = const_cast<char *>("/bin/wslbridge2");
       cmd0 = const_cast<char *>("-wslbridge2");
     }
-    else {
+    else if (wslbridge == 1) {
       cmd = const_cast<char *>("/bin/wslbridge");
       cmd0 = const_cast<char *>("-wslbridge");
     }
-    bool login_dash = false;
+    else {
+      cmd = const_cast<char *>("wsl");
+      cmd0 = const_cast<char *>("-wsl");
+    }
+    bool login_shell = false;
     if (*argv && !strcmp(*argv, "-") && !argv[1]) {
-      login_dash = true;
+      login_shell = true;
       argv++;
       //argc--;
       //argc++; // for "-l"
+      if (!wslbridge)
+        argc++;
     }
-    if (wslbridge2)
+    if (wslbridge != 1)
       argc += start_home;
-    argc += 10;  // -e parameters
+    if (wslbridge)
+      argc += 10;  // -e parameters
 
     char ** new_argv = newn(char *, argc + 8 + start_home + (wsltty_appx ? 2 : 0));
     char ** pargv = new_argv;
-    if (login_dash) {
+    if (login_shell) {
       *pargv++ = cmd0;
 #ifdef wslbridge_supports_l
 #warning redundant option wslbridge -l not needed
       *pargv++ = "-l";
 #endif
+      if (!wslbridge) {
+        *pargv++ = const_cast<char *>("--shell-type");
+        *pargv++ = const_cast<char *>("login");
+      }
     }
     else
       *pargv++ = cmd;
 # ifndef __x86_64__
-    if (wslbridge2) {
+    if (wslbridge == 2) {
       *pargv++ = "-V";
       if (wsl_ver > 1)
         *pargv++ = "2";
@@ -7291,7 +7308,7 @@ main(int argc, char *argv[])
     }
 # endif
     if (*wsl_guid) {
-      if (wslbridge2) {
+      if (wslbridge != 1) {
         if (*wslname) {
           *pargv++ = const_cast<char *>("-d");
           *pargv++ = cs__wcstombs(wslname);
@@ -7305,31 +7322,40 @@ main(int argc, char *argv[])
 #ifdef wslbridge_t
     *pargv++ = "-t";
 #endif
+
+    // propagate environment variables
+    if (wslbridge) {
 #ifdef propagate_TERM_to_WSL
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("TERM");
+      *pargv++ = const_cast<char *>("-e");
+      *pargv++ = const_cast<char *>("TERM");
 #else
-    setenv("HOSTTERM", cfg.term, true);
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("HOSTTERM");
+      setenv("HOSTTERM", cfg.term, true);
+      *pargv++ = const_cast<char *>("-e");
+      *pargv++ = const_cast<char *>("HOSTTERM");
 #endif
-    *pargv++ = const_cast<char *>("-e");
-    *pargv++ = const_cast<char *>("APPDATA");
-    if (!cfg.old_locale) {
       *pargv++ = const_cast<char *>("-e");
-      *pargv++ = const_cast<char *>("LANG");
-      *pargv++ = const_cast<char *>("-e");
-      *pargv++ = const_cast<char *>("LC_CTYPE");
-      *pargv++ = const_cast<char *>("-e");
-      *pargv++ = const_cast<char *>("LC_ALL");
+      *pargv++ = const_cast<char *>("APPDATA");
+      if (!cfg.old_locale) {
+        *pargv++ = const_cast<char *>("-e");
+        *pargv++ = const_cast<char *>("LANG");
+        *pargv++ = const_cast<char *>("-e");
+        *pargv++ = const_cast<char *>("LC_CTYPE");
+        *pargv++ = const_cast<char *>("-e");
+        *pargv++ = const_cast<char *>("LC_ALL");
+      }
     }
+
     if (start_home) {
-      if (wslbridge2) {
+      if (wslbridge == 2) {
         *pargv++ = const_cast<char *>("--wsldir");
         *pargv++ = const_cast<char *>("~");
       }
-      else
+      else if (wslbridge == 1)
         *pargv++ = const_cast<char *>("-C~");
+      else {
+        *pargv++ = const_cast<char *>("--cd");
+        *pargv++ = const_cast<char *>("~");
+      }
     }
 
 #if CYGWIN_VERSION_API_MINOR >= 74
@@ -7370,7 +7396,7 @@ main(int argc, char *argv[])
 
     if (wsltty_appx && lappdata && *lappdata) {
       char * wslbridge_backend;
-      if (wslbridge2) {
+      if (wslbridge == 2) {
         wslbridge_backend = asform("%s/wslbridge2-backend", lappdata);
         copyfile(const_cast<char *>("/bin/wslbridge2-backend"), wslbridge_backend, true);
       }
@@ -7390,6 +7416,7 @@ main(int argc, char *argv[])
     *pargv = 0;
     argv = new_argv;
 #ifdef debug_wsl
+    printf("argc %d\n", argc);
     while (*new_argv)
       printf("<%s>\n", *new_argv++);
 #endif
