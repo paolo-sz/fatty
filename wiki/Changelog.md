@@ -5,14 +5,26 @@ Terminal features
   * Fix doubled underline (since 3.7.8).
   * Avoid repetitive painting of images.
   * Fix selection highlighting in configured colours on emojis.
+  * Full or dimmed selection highlighting depending on clipboard contents (#1322).
+  * Fix GR-mapped character sets in locking shift mode (vttest 3.10.).
+  * Indicate enabled OSC 52 in primary DA response (#1324).
+  * Fix OSC 52 response clipboard indication (#1327).
+  * Fix emoji background in reverse mode.
+
+Keyboard handling
+  * Avoid sticky Ctrl state also after closing menu (~#1273, ~#1266).
 
 WSL support
   * New mode to run WSL directly with Windows default access gateway wsl.exe.
   * Drop wslbridge gateways by default.
+  * Derive default icon from WSL launcher shortcut (mintty/wsltty#110).
+  * Fix WSL icons in session launcher menu entries, also extracted from WSL launchers.
 
 Configuration
   * Changing default setting UnderlineManual=true for consistent line placement.
   * New option WSLbridge, default 0 to use wsl.exe to launch WSL.
+  * New option SelectionMode.
+  * New user-definable function toggle-reverse-video.
 
 ### 3.7.8 (22 March 2025) ###
 

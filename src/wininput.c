@@ -171,17 +171,24 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
       MENUITEMINFOW mi;
       mi.cbSize = sizeof(MENUITEMINFOW);
       mi.fMask = MIIM_BITMAP;
+
       wchar * params = cs__utftowcs(paramp);
       wstring iconfile = wslicon(params);  // default: 0 (no icon)
       free(params);
       HICON icon;
-      if (iconfile)
-        icon = (HICON) LoadImageW(0, iconfile,
-                                  IMAGE_ICON, 0, 0,
-                                  LR_DEFAULTSIZE | LR_LOADFROMFILE
-                                  | LR_LOADTRANSPARENT);
+      if (iconfile) {
+#include <shellapi.h>
+        if (wcsstr(iconfile, W(".exe")))
+          ExtractIconExW(iconfile, 0, &icon, 0, 1);
+        else
+          icon = (HICON) LoadImageW(0, iconfile,
+                                    IMAGE_ICON, 0, 0,
+                                    LR_DEFAULTSIZE | LR_LOADFROMFILE
+                                    | LR_LOADTRANSPARENT);
+      }
       else
         icon = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
+
       HBITMAP bitmap = icon_bitmap(icon);
       mi.hbmpItem = bitmap;
       SetMenuItemInfoW(menu, idm_cmd + n, 0, &mi);
@@ -1896,6 +1903,25 @@ mflags_tek_mode(__attribute__((unused))struct term *term_p)
 //    win_close_tabbar();
 //}
 
+#define toggle_reverse_video(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
+static void
+(toggle_reverse_video)(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  term.rvideo = !term.rvideo;
+  win_invalidate_all(false);
+}
+
+#define mflags_reverse_video(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_reverse_video)(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.rvideo ? MF_CHECKED : MF_UNCHECKED;
+}
+
 #define hor_left_1(...) (hor_left_1)(term_p, ##__VA_ARGS__)
 static void (hor_left_1)(struct term* term_p) { TERM_VAR_REF(true) horscroll(-1); }
 #define hor_right_1(...) (hor_right_1)(term_p, ##__VA_ARGS__)
@@ -2019,6 +2045,7 @@ static struct function_def cmd_defs[] = {
   {"refresh", {.fct = refresh}, 0},
   {"toggle-dim-margins", {.fct = toggle_dim_margins}, mflags_dim_margins},
   {"toggle-status-line", {.fct = toggle_status_line}, mflags_status_line},
+  {"toggle-reverse-video", {.fct = toggle_reverse_video}, mflags_reverse_video},
 
   {"super", {.fct_key = super_down}, 0},
   {"hyper", {.fct_key = hyper_down}, 0},
@@ -3065,6 +3092,7 @@ C	M	+C	+A	"	"
       }
       //printf("->sel %d:%d .. %d:%d\n", term.sel_start.y, term.sel_start.x, term.sel_end.y, term.sel_end.x);
       term.selected = true;
+      term.selection_eq_clipboard = false;
       win_update(true);
     }
     if (selection_pending)

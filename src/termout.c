@@ -941,6 +941,7 @@ static void
 {
   string primary_da = primary_da4;
   char * vt = strstr(cfg.term, "vt");
+  bool extend_da = true;
   if (vt) {
     unsigned int ver;
     if (sscanf(vt + 2, "%u", &ver) == 1) {
@@ -952,11 +953,20 @@ static void
         primary_da = primary_da3;
       else if (ver >= 200)
         primary_da = primary_da2;
-      else
+      else {
         primary_da = primary_da1;
+        extend_da = false;
+      }
     }
   }
-  child_write(primary_da, strlen(primary_da));
+  if (extend_da) {
+    child_write(primary_da, strlen(primary_da) - 1);  // strip final 'c'
+    if (cfg.allow_set_selection)
+      child_write(";52", 3);
+    child_write("c", 1);
+  }
+  else
+    child_write(primary_da, strlen(primary_da));
 }
 
 
@@ -4645,7 +4655,7 @@ static void
     if (!b64)
       return;
 
-    child_printf("\e]52;;%s%s", b64, osc_fini());
+    child_printf("\e]52;c;%s%s", b64, osc_fini());
 
     free(b64);
     return;
@@ -5324,6 +5334,8 @@ static void
           continue;
         }
 
+        bool lockingshift = false;
+
         // handle NRC single shift and NRC GR invocation;
         // maybe we should handle control characters first?
         short cset = term.curs.csets[term.curs.gl];
@@ -5334,8 +5346,12 @@ static void
         else if (term.curs.gr
               //&& (term.decnrc_enabled || !term.decnrc_enabled)
               && term.curs.csets[term.curs.gr] != CSET_ASCII
-              && !term.curs.oem_acs && !term.curs.utf
-              && c >= 0x80 && c < 0xFF
+              && !term.curs.oem_acs
+              // dropped previous && !term.curs.utf because
+              // ESC%G UTF-8 mode does not override locking shift in xterm,
+              // and it would spoil vttest 3.10.
+              && c >= 0x80
+              // dropped previous && c < 0xFF which spoiled locking shift ÿ
                 )
         {
           // tune C1 behaviour to mimic xterm
@@ -5344,6 +5360,9 @@ static void
 
           c &= 0x7F;
           cset = term.curs.csets[term.curs.gr];
+
+          // suppress GR-mapped character code conversion
+          lockingshift = true;
         }
 
         if (term.vt52_mode) {
@@ -5355,6 +5374,10 @@ static void
         else if (cset == CSET_DECSUPP)
           cset = term.curs.decsupp;
 
+        if (lockingshift)
+          // suppress GR-mapped character code conversion
+          wc = c;
+        else
         switch (cs_mb1towc(&wc, c)) {
           when 0: // NUL or low surrogate
             if (wc)

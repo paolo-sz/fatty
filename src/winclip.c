@@ -1,6 +1,6 @@
 // winclip.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by Andy Koppe and Thomas Wolff
+// Based on code from mintty by 2008-23 Andy Koppe, 2018-2025 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -675,6 +675,8 @@ void
 void
 (win_copy_as)(struct term *term_p, const wchar *data, cattr *cattrs, int len, char what)
 {
+  TERM_VAR_REF(true)
+    
   //printf("win_copy %d '%c'\n", len, what);
   HGLOBAL clipdata, clipdata2, clipdata3 = 0;
   int len2;
@@ -1073,6 +1075,9 @@ void
 #endif
 
     CloseClipboard();
+
+    // trigger full selection highlighting
+    term.selection_eq_clipboard = true;
   }
   else {
     GlobalFree(clipdata);
