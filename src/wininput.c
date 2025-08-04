@@ -178,7 +178,8 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
       HICON icon;
       if (iconfile) {
 #include <shellapi.h>
-        if (wcsstr(iconfile, W(".exe")))
+        int iflen = wcslen(iconfile);
+        if (iflen > 4 && wcscmp(iconfile + iflen - 4, W(".exe")))
           ExtractIconExW(iconfile, 0, &icon, 0, 1);
         else
           icon = (HICON) LoadImageW(0, iconfile,
@@ -3474,6 +3475,13 @@ C	M	+C	+A	"	"
     len = sprintf(buf, mods ? "\e[%i;%u~" : "\e[%i~", code, mods + 1);
   };
   auto other_code = [&](wchar c) {
+#if CYGWIN_VERSION_API_MINOR >= 74
+    bool iscap = shift ^ (GetKeyState(VK_CAPITAL) & 1);
+    if (iscap)
+      c = towupper(c);
+    else
+      c = towlower(c);
+#endif
     trace_key("other");
     if (cfg.format_other_keys)
       // xterm "formatOtherKeys: 1": CSI 64 ; 2 u
@@ -3714,11 +3722,39 @@ C	M	+C	+A	"	"
       if (mods & MDK_SHIFT) {
         kbd[VK_SHIFT] = 0;
         wc = undead_keycode();
+#ifdef debug_key
+        printf("modf - SHFT -> %04X\n", wc);
+#endif
       }
     }
 #ifdef debug_key
     printf("modf wc %04X (ctrl %d key %02X)\n", wc, ctrl, key);
 #endif
+
+    if (!wc && (
+                   (key >= 'A' && key <= 'Z')
+                || (key >= VK_OEM_1 && key <= VK_OEM_102)
+               )
+       )
+    {
+      // support right-Alt if AltGr unmapped (#1108)
+      // like without modifyOtherKeys mode
+      if (mods & MDK_CTRL) {
+        // determine non-ASCII letters
+        kbd[VK_CONTROL] = 0;
+        wc = undead_keycode();
+#ifdef debug_key
+        printf("modf - CTRL -> %04X\n", wc);
+#endif
+      }
+
+      if (altgr) {
+        // turn AltGr into Alt
+        mods |= MDK_ALT;
+        altgr = false;
+      }
+    }
+
     if (wc) {
       if (altgr && !is_key_down(VK_LMENU))
         mods &= ~ MDK_ALT;
@@ -4135,6 +4171,7 @@ C	M	+C	+A	"	"
       if (!layout())
         return false;
     othwise:
+      trace_key("other");
       if (!layout())
         return false;
   }

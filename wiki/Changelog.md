@@ -11,8 +11,13 @@ Terminal features
   * Fix OSC 52 response clipboard indication (#1327).
   * Fix emoji background in reverse mode.
 
+Character handling
+  * Workaround (for cygwin 3.6.4) for non-BMP characters in UTF-8 mode (#1325, #1326).
+
 Keyboard handling
   * Avoid sticky Ctrl state also after closing menu (~#1273, ~#1266).
+  * Support modifier combinations with right-Alt in modifyOtherKeys mode (#1108).
+  * Adapt character code to Shift state in modifyOtherKeys mode (xterm).
 
 WSL support
   * New mode to run WSL directly with Windows default access gateway wsl.exe.
