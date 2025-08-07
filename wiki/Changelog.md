@@ -13,6 +13,7 @@ Terminal features
 
 Character handling
   * Workaround (for cygwin 3.6.4) for non-BMP characters in UTF-8 mode (#1325, #1326).
+  * Emoji icons are also looked up in /usr/share/emojis, to support common package deployment.
 
 Keyboard handling
   * Avoid sticky Ctrl state also after closing menu (~#1273, ~#1266).
@@ -30,6 +31,8 @@ Configuration
   * New option WSLbridge, default 0 to use wsl.exe to launch WSL.
   * New option SelectionMode.
   * New user-definable function toggle-reverse-video.
+  * Logfile placeholders $h or $p are replaced with hostname or process ID.
+  * Enable logging toggling by default: Log=mintty.$h.%Y-%m-%d_%H-%M-%S.$p.log Logging=no (~#1167).
 
 ### 3.7.8 (22 March 2025) ###
 

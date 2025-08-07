@@ -998,12 +998,11 @@ Character width can be modified by a number of configuration or dynamic settings
 * `Font`: may affect CJK ambiguous-width handling if locale support fails
 * `PrintableControls`: makes C1 or C0 control characters visible (width 1)
 * [DECSET 2521](https://github.com/mintty/mintty/wiki/CtrlSeqs#lamalef-joining): renders Arabic LAM/ALEF ligatures in single-cell width
-* [DECSET 2027](https://github.com/mintty/mintty/wiki/CtrlSeqs#emoji-width-mode): 2-cell “emoji width” mode
+* [DECSET 2027](https://github.com/mintty/mintty/wiki/CtrlSeqs#emoji-width-mode): “emoji width” mode, enforcing 2-cell wide emojis
 * [OSC 701](https://github.com/mintty/mintty/wiki/CtrlSeqs#locale): changes locale/charset, may affect ambiguous width handling
 * OSC 50: changes font, may affect ambiguous width handling (with `Locale`)
 * [OSC 77119](https://github.com/mintty/mintty/wiki/CtrlSeqs#wide-characters): turns some character ranges to wide characters
 * [PEC](https://github.com/mintty/mintty/wiki/CtrlSeqs#explicit-character-width): explicit character width attribute
-* [Emoji width mode](https://github.com/mintty/mintty/wiki/CtrlSeqs#emoji-width-mode): forces emojis to double-cell width
 
 See the [mintty manual](http://mintty.github.io/mintty.1.html) and
 [Control Sequences](https://github.com/mintty/mintty/wiki/CtrlSeqs)
@@ -1236,6 +1235,8 @@ enforce 2-cell display width of emojis.
 
 Mintty does not bundle actual emoji graphics with its package.
 You will have to download and deploy them yourself.
+Mintty would however use emojis as installed by a distinct package 
+in a subdirectory of /usr/share/emojis.
 Expert options are described here, see also the next section 
 for a Quick Guide to emoji installation.
 
@@ -1271,11 +1272,16 @@ Emoji flags graphics (extending Unicode) can be found at the following sources:
   and extract emoji data (call it without parameters for instructions).
   * Deploy common/*.png into `common`
 
-To “Clone” with limited download volume, use the command `git clone --depth 1`.
-To download only the desired subdirectory from `github.com`, use `subversion`, 
-for example:
+To limit the download size and download the desired subtree only,
+either use subversion, for example:
   * `svn export https://github.com/googlefonts/noto-emoji/trunk/png/128 noto`
   * `svn export https://github.com/iamcal/emoji-data/trunk/img-apple-160 apple`
+or a more complex command combination of git, for example:
+  * `git clone --depth 1 -n --filter=blob:none https://github.com/googlefonts/noto-emoji`
+  * `cd noto-emoji`
+  * `git sparse-checkout set --no-cone png/128`
+  * `git checkout`
+  * `mv png/128 ../noto`
 
 “Deploy” above means move, link, copy or hard-link the respective subdirectory 
 into mintty configuration resource subdirectory `emojis`, e.g.
@@ -1286,6 +1292,14 @@ into mintty configuration resource subdirectory `emojis`, e.g.
 Use your preferred configuration directory, e.g.
 * `cp -rl noto-emoji/png/128 "$APPDATA"/mintty/emojis/noto`
 * `cp -rl noto-emoji/png/128 /usr/share/mintty/emojis/noto`
+
+Note: If the configuration directory is on a network drive 
+(e.g. your home directory may be on a network in enterprise or lab environments),
+loading emoji icons may be noticeably slow. Better deploy them to one 
+of the other options in that case, e.g. $APPDATA/mintty or /usr/share/mintty.
+Deploying into $APPDATA further has the advantage of a common deployment 
+for multiple installations of cygwin, MSYS2, Git-for-Windows, or embedded 
+cygwin-based packages.
 
 ### Quick Guide to emoji installation ###
 

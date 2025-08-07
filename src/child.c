@@ -1,6 +1,6 @@
 // child.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on mintty code by Andy Koppe, Thomas Wolff
+// Based on mintty code by 2008-11 Andy Koppe, 2015-2025 Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 extern "C" {
@@ -136,6 +136,22 @@ open_logfile(bool toggling)
         gettimeofday(& now, 0);
         char * logf = newn(char, MAX_PATH + 1);
         strftime(logf, MAX_PATH, log, localtime (& now.tv_sec));
+        free(log);
+        log = logf;
+      }
+      // also expand placeholders $h or $p with hostname or pid
+      if ((format = strstr(log, "$h"))) {
+        char hostname[HOST_NAME_MAX + 1];
+        if (0 == gethostname(hostname, HOST_NAME_MAX)) {
+          *format = '%'; *++format = 's';
+          char * logf = asform(log, hostname);
+          free(log);
+          log = logf;
+        }
+      }
+      if ((format = strstr(log, "$p"))) {
+        *format = '%'; *++format = 'd';
+        char * logf = asform(log, getpid());
         free(log);
         log = logf;
       }
