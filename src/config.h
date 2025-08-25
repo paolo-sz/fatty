@@ -78,6 +78,7 @@ typedef struct {
   bool opaque_when_focused;
   char cursor_type;
   bool cursor_blinks;
+  int config_themes;
   // Text
   font_spec font;
   font_spec fontfams[12];
@@ -302,5 +303,6 @@ extern void apply_config(bool save);
 extern char * save_filename(char * suf);
 // In a configuration parameter list, map tag to value
 extern char * matchconf(char * conf, char * item);
+extern wchar * config_log;
 
 #endif

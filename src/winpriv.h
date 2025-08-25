@@ -79,6 +79,8 @@ extern void toggle_charinfo(void);
 #define toggle_vt220(...) (toggle_vt220)(term_p, ##__VA_ARGS__)
 extern void (toggle_vt220)(struct term* term_p);
 extern char * fontpropinfo(void);
+#define show_config_log(...) (show_config_log)(term_p, ##__VA_ARGS__)
+extern void (show_config_log)(struct term* term_p);
 
 extern bool title_settable;
 extern bool support_wsl;

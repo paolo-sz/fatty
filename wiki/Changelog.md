@@ -1,3 +1,33 @@
+Configuration
+  * User-definable function config-log to show all effective log files (mintty/wsltty#333).
+
+### 3.8.0 (22 August 2025) ###
+
+Terminal features
+  * OSC 7 accepts an explicit localhost path //$HOSTNAME/path (#1330).
+
+WSL support
+  * Set up HOSTTERM, HOSTLANG only if launching WSL.
+  * Fix WSL session launcher from terminal started from desktop shortcut.
+
+Desktop integration
+  * Reestablish small icon support (dropped in 3.7.9) (#1329).
+  * Restore default/configured icon on invalid icon change sequence.
+  * Support many dynamic icon changes by handle resource management (#1329).
+  * Stabilise dynamic icon changes in border cases (~#1329).
+  * Session launcher: support icons for cmd and powershell.
+
+Window handling
+  * Avoid tab colour to stick to "moving" indication (~#1293).
+
+Configuration
+  * Fix reporting if config file to save to is actually read-only (#1331).
+  * Revised handling of downloaded colour schemes and storing themes (~#1303).
+  * New option ConfigThemes.
+  * New config file template, deploy with cygwin package.
+
+### 3.7.9 (10 August 2025) ###
+
 Terminal features
   * Fix darkmode/wakeup refresh to not override dynamic OSC colour settings.
   * Fix emoji invisible and blinking attributes.
@@ -25,6 +55,14 @@ WSL support
   * Drop wslbridge gateways by default.
   * Derive default icon from WSL launcher shortcut (mintty/wsltty#110).
   * Fix WSL icons in session launcher menu entries, also extracted from WSL launchers.
+
+Window handling
+  * Integrate sessions launched from session launcher into tab set.
+
+Documentation
+  * Manual and wiki Tips: sections on tab session management (~#1284, ~#1201).
+  * Manual and wiki Tips: enhanced description of WSL support.
+  * Manual and wiki: enhanced description of text layout (reflow and bidi).
 
 Configuration
   * Changing default setting UnderlineManual=true for consistent line placement.

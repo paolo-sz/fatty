@@ -87,6 +87,8 @@ HINSTANCE inst;
 HWND wnd, fatty_tab_wnd;
 HIMC imc;
 ATOM class_atom;
+HICON large_icon = 0;
+HICON small_icon = 0;
 
 char *home;
 
@@ -1281,21 +1283,60 @@ void
 void
 win_set_icon(char * s, int icon_index)
 {
-  HICON large_icon = 0;
+  if (!*s) {
+deficon:
+    // if OSC icon name is empty (!*s)
+    // or icon loading fails (e.g. file not found, from below)
+    // restore default (or configured) icon
+    SetClassLongPtr(wnd, GCLP_HICONSM, (LONG_PTR)small_icon);
+    SetClassLongPtr(wnd, GCLP_HICON, (LONG_PTR)large_icon);
+    return;
+  }
 
   char * iconpath = guardpath(s, 1);
   if (iconpath) {
-    // TODO: should we resolve a symbolic link here?
     wstring icon_file = path_posix_to_win_w(iconpath);
     //printf("win_set_icon <%ls>,%d\n", icon_file, icon_index);
     if (icon_file) {
-      ExtractIconExW(icon_file, icon_index, &large_icon, 0, 1);
+static HICON large_icon = 0, small_icon = 0;
+      // icon handle management
+      if (large_icon) {
+        DestroyIcon(large_icon);
+        large_icon = 0;
+      }
+      if (small_icon) {
+        DestroyIcon(small_icon);
+        small_icon = 0;
+      }
+
+      ExtractIconExW(icon_file, icon_index, &large_icon, &small_icon, 1);
       std_delete(icon_file);
-      //SetClassLongPtr(wnd, GCLP_HICONSM, (LONG_PTR)small_icon);
+
+      if (!large_icon && !small_icon) {
+        // if icon loading fails (e.g. file not found)
+        // restore default (or configured) icon
+        goto deficon;
+      }
+
+      // set the icon
+      SetClassLongPtr(wnd, GCLP_HICONSM, (LONG_PTR)small_icon);
       SetClassLongPtr(wnd, GCLP_HICON, (LONG_PTR)large_icon);
+      // or
       //SendMessage(wnd, WM_SETICON, ICON_SMALL, (LPARAM)small_icon);
       //SendMessage(wnd, WM_SETICON, ICON_BIG, (LPARAM)large_icon);
-      DestroyIcon(large_icon);
+
+      // the description of DestroyIcon
+      // https://learn.microsoft.com/en-gb/windows/win32/api/winuser/nf-winuser-destroyicon
+      // does not mention ExtractIcon, but the description of ExtractIcon
+      // https://learn.microsoft.com/en-gb/windows/win32/api/shellapi/nf-shellapi-extracticonexw
+      // clarifies that DestroyIcon must be called for extracted icons;
+      // also, testing shows that icon handles acquired with 
+      // ExtractIcon do exhaust (#1329) otherwise -
+      // on the other hand, destroying them here may prevent their usage,
+      // so they should be destroyed on next call of win_set_icon (#1329),
+      // see "icon handle management" above
+      // do not yet DestroyIcon(large_icon);
+      // do not yet DestroyIcon(small_icon);
     }
     free(iconpath);
   }
@@ -4107,6 +4148,17 @@ static void
  */
 
 void
+(show_config_log)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+
+  //__ Config log: message box heading
+  message_box_w(wnd, config_log, _W("Config log"),
+                MB_ICONINFORMATION, null
+               );
+}
+
+void
 show_message(char * msg, UINT type)
 {
   FILE * out = (type & (MB_ICONWARNING | MB_ICONSTOP)) ? stderr : stdout;
@@ -6382,7 +6434,20 @@ wstring
 wslicon(wchar * params)
 {
   wstring icon = 0;  // default: no icon
+
 #if CYGWIN_VERSION_API_MINOR >= 74
+  char * iconfile = 0;
+  char * systemroot = getenv("SYSTEMROOT");
+  if (systemroot && wcsstr(params, W("-e cmd")))
+    iconfile = asform("%s\\System32\\cmd.exe", systemroot);
+  else if (systemroot && wcsstr(params, W("-e powershell")))
+    iconfile = asform("%s\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", systemroot);
+  if (iconfile) {
+    icon = cs__mbstowcs(iconfile);
+    free(iconfile);
+    return icon;
+  }
+
   wchar * wsl = wcsstr(params, W("--WSL"));
   if (wsl) {
     wsl += 5;
@@ -7274,6 +7339,14 @@ main(int argc, char *argv[])
     run_max = atoi(getenv("FATTY_MAXIMIZE"));
     unsetenv("FATTY_MAXIMIZE");
   }
+  if (getenv("FATTY_TABBAR")) {
+    cfg.tabbar = max((int)(cfg.tabbar), atoi(getenv("FATTY_TABBAR")));
+    unsetenv("FATTY_TABBAR");
+  }
+  if (getenv("FATTY_SYNC")) {
+    cfg.geom_sync = max(cfg.geom_sync, atoi(getenv("FATTY_SYNC")));
+    unsetenv("FATTY_SYNC");
+  }
 #ifndef support_horizontal_scrollbar_with_tabbar
   if (cfg.tabbar)
     horbar = false;
@@ -7317,7 +7390,7 @@ main(int argc, char *argv[])
   if (wslbridge == 1 && access("/bin/wslbridge", X_OK) < 0)
     wslbridge = 0;
 
-  if (wslbridge == 0) {
+  if (support_wsl && !wslbridge) {
     setenv("HOSTTERM", cfg.term, true);
     setenv("HOSTLANG", getlocenvcat("LC_CTYPE"), true);
     char * envs_to_wsl_exe = getenv("WSLENV");
@@ -7543,7 +7616,8 @@ main(int argc, char *argv[])
   }
 
   // Load icon if specified.
-  HICON large_icon = 0, small_icon = 0;
+  // icon variables are now global for use as fallback in win_set_icon
+  //HICON large_icon = 0, small_icon = 0;
   if (*cfg.icon) {
     //string icon_file = strdup(cfg.icon);
     // could use path_win_w_to_posix(cfg.icon) to avoid the locale trick below
@@ -7681,6 +7755,10 @@ main(int argc, char *argv[])
     }
   }
 
+  // Load icon from resource if none configured
+  if (!large_icon)
+    large_icon = LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON));
+
   // The window class.
   WNDCLASSEXW tmp_wndc = {
     cbSize : sizeof(WNDCLASSEXW),
@@ -7689,7 +7767,7 @@ main(int argc, char *argv[])
     cbClsExtra : 0,
     cbWndExtra : 0,
     hInstance : inst,
-    hIcon : large_icon ?: LoadIcon(inst, MAKEINTRESOURCE(IDI_MAINICON)),
+    hIcon : large_icon,
     hCursor : LoadCursor(null, IDC_IBEAM),
     hbrBackground : null,
     lpszMenuName : null,

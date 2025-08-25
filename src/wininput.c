@@ -179,7 +179,7 @@ append_commands(HMENU menu, wstring commands, UINT_PTR idm_cmd, bool add_icons, 
       if (iconfile) {
 #include <shellapi.h>
         int iflen = wcslen(iconfile);
-        if (iflen > 4 && wcscmp(iconfile + iflen - 4, W(".exe")))
+        if (iflen > 4 && 0 == wcscmp(iconfile + iflen - 4, W(".exe")))
           ExtractIconExW(iconfile, 0, &icon, 0, 1);
         else
           icon = (HICON) LoadImageW(0, iconfile,
@@ -2070,6 +2070,8 @@ static struct function_def cmd_defs[] = {
   {"switch-next", {.fct = switch_NEXT}, 0},
   {"switch-visible-prev", {.fct = switch_visible_PREV}, 0},
   {"switch-visible-next", {.fct = switch_visible_NEXT}, 0},
+
+  {"config-log", {.fct = show_config_log}, 0},
 
   {"void", {.fct = nop}, 0}
 };

@@ -141,6 +141,9 @@ open_logfile(bool toggling)
       }
       // also expand placeholders $h or $p with hostname or pid
       if ((format = strstr(log, "$h"))) {
+#ifndef HOST_NAME_MAX
+#define HOST_NAME_MAX 255
+#endif
         char hostname[HOST_NAME_MAX + 1];
         if (0 == gethostname(hostname, HOST_NAME_MAX)) {
           *format = '%'; *++format = 's';
@@ -832,7 +835,31 @@ static char *
   if (fg_pid > 0) {
     char proc_cwd[32];
     sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
-    return realpath(proc_cwd, 0);
+    char * rp = realpath(proc_cwd, 0);
+    //printf("/proc/%u/cwd: %s\n", fg_pid, rp);
+
+    // we have kind of a race condition here as the foreground process 
+    // just determined may already have terminated when we try to 
+    // retrieve its working directory - 
+    // this may particularly happen if dynamic setting of window icon 
+    // or window background is done by a service tool;
+    // so we do a single retry in this case, likely getting the 
+    // working directory of the shell or other parent process
+    if (!rp) {
+      // ... however, even though the failed realpath() above 
+      // would suggest the (previous) foreground process to be terminated, 
+      // occasionally the subsequent foreground_pid returned the same 
+      // process id again (mysterious);
+      // so we add a tiny delay here which seems to mitigate the glitch
+      usleep(2000);
+      fg_pid = foreground_pid();
+
+      if (fg_pid > 0) {
+        sprintf(proc_cwd, "/proc/%u/cwd", fg_pid);
+        rp = realpath(proc_cwd, 0);
+      }
+    }
+    return rp;
   }
 #endif
   return 0;
@@ -1066,6 +1093,7 @@ setup_sync(bool in_tabs)
     }
     if (cfg.tabbar) {
       setenvi(const_cast<char *>("FATTY_TABBAR"), cfg.tabbar);
+      setenvi(const_cast<char *>("FATTY_SYNC"), cfg.geom_sync);
       // enforce proper grouping, i.e. either new tab or window, as requested
       if (in_tabs && *cfg.classname) {
         char * classname = cs__wcstoutf(cfg.classname);
@@ -1083,7 +1111,7 @@ setup_sync(bool in_tabs)
   Called from Alt+F2 (or session launcher via child_launch).
  */
 static void
-(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch, bool config_size, bool in_cwd)
+(do_child_fork)(struct child* child_p, int argc, char *argv[], int moni, bool launch, bool config_size, bool in_cwd, bool cloning)
 {
   CHILD_VAR_REF(true)
 
@@ -1238,7 +1266,7 @@ extern int horsqueeze(void);  // should become horsqueeze_cols in win.h
     //setenv(const_cast<char *>("FATTY_CHILD"), "1", true);
 
 #if CYGWIN_VERSION_DLL_MAJOR >= 1005
-    if (shortcut) {
+    if (cloning && shortcut) {
       trace_dir(asform("Starting <%s>", cs__wcstoutf(shortcut)));
       shell_exec(shortcut);
       //show_info("Started");
@@ -1249,6 +1277,7 @@ extern int horsqueeze(void);  // should become horsqueeze_cols in win.h
     trace_dir(asform("Starting exe <%s %s>", argv[0], argv[1]));
     execv("/proc/self/exe", argv);
 #else
+    (void)cloning;
     // /proc/self/exe isn't available before Cygwin 1.5, so use argv[0] instead.
     // Strip enclosing quotes if present.
     char *path = argv[0];
@@ -1271,7 +1300,7 @@ void
 child_fork(struct child* child_p, int argc, char *argv[], int moni, bool config_size, bool in_cwd, bool in_tabs)
 {
   setup_sync(in_tabs);
-  do_child_fork(argc, argv, moni, false, config_size, in_cwd);
+  do_child_fork(argc, argv, moni, false, config_size, in_cwd, true);
   // prevent wrong control of subsequent child_fork
   unsetenv(const_cast<char *>("FATTY_CLASS"));
 }
@@ -1282,6 +1311,8 @@ child_fork(struct child* child_p, int argc, char *argv[], int moni, bool config_
 void
 (child_launch)(struct child* child_p, int n, int argc, char * argv[], int moni)
 {
+  setup_sync(true);
+
   if (*cfg.session_commands) {
     char * cmds = cs__wcstombs(cfg.session_commands);
     char * cmdp = cmds;
@@ -1316,7 +1347,7 @@ void
           }
         }
         new_argv[argc] = 0;
-        do_child_fork(argc, new_argv, moni, true, true, false);
+        do_child_fork(argc, new_argv, moni, true, true, false, false);
         free(new_argv);
         break;
       }
