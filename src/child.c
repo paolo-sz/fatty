@@ -11,6 +11,7 @@ extern "C" {
 #include "charset.h"
 
 #include "winpriv.h"  /* win_prefix_title, win_update_now */
+#include "tek.h"      /* tek_mode for log filtering */
 #include "appinfo.h"  /* APPNAME, VERSION */
 
 #include <pwd.h>
@@ -77,7 +78,8 @@ void
 
   char s[33];
   bool colour_code = code && !errno_code;
-  sprintf(s, "\r\n\033[30;%dm\033[K", from_fork ? 41 : colour_code ? code : 43);
+  bool new_line = code || errno_code;
+  sprintf(s, "%s\033[30;%dm\033[K", new_line ? "\r\n" : "", from_fork ? 41 : colour_code ? code : 43);
   term_write(s, strlen(s));
   term_write(action, strlen(action));
   if (errno_code) {
@@ -203,6 +205,160 @@ toggle_logging()
   else
     open_logfile(true);
 }
+
+void
+(term_log)(struct term* term_p, char * s, uint len)
+{
+static char buf[999];
+static uint bufi = 0;
+static char state = 0;
+
+  TERM_VAR_REF(true)
+
+  auto term_log_flush = [&]()
+  {
+    write(log_fd, buf, bufi);
+    bufi = 0;
+  };
+
+  auto term_log_char = [&](struct term* term_p, char c)
+  {
+    TERM_VAR_REF(true)
+
+    if (bufi >= sizeof(buf)) {
+      term_log_flush();
+      state = 0;
+    }
+    else if (c == '\e' && !state)
+      term_log_flush();
+
+    buf[bufi++] = c;
+
+    if (term.vt52_mode || tek_mode)
+      return;
+
+    if (!state) {
+      if (c == '') {
+        bufi--;
+        state = 0;
+      }
+      else if (c == '\e')
+        state = 'e';
+    }
+    else if (state == 'e') {
+      if (c == '[')
+        state = 'c';
+      else if (c == ']')
+        state = 'o';
+      else if (c == 'P')
+        state = 'd';
+      else if (c == 'Z') {
+        bufi = 0;
+        state = 0;
+      }
+    }
+    else if (state == 'c') { // CSI
+      if (c >= '@') { // CSI terminator
+        state = 0;
+        char * csi = &buf[2];
+        char c0 = *csi, c1 = buf[bufi - 2], c2 = buf[bufi - 1];
+        if (c0 >= '0' && c0 <= ';')
+          c0 = 0;
+        else
+          csi ++;
+        int num = 0, num2 = 0;
+        sscanf(csi, "%u;%u", &num, &num2);
+        sscanf(csi, "%u", &num);
+        if ((c2 == 'n' && (!c0 || c0 == '?'))
+            || (c2 == 'c' && !num && (!c0 || c0 == '>' || c0 == '='))
+            || (c2 == 'q' && c0 == '>' && !num)
+            || (c2 == 't' && !c0 && num >= 11 && num <= 21)
+            || (c2 == 'p' && c1 == '$' && (!c0 || c0 == '?'))
+            || (c2 == 'y' && c1 == '*' && !c0)
+            || (c2 == 'v' && c1 == '"' && !c0)
+            || (c2 == 'R' && c1 == '#' && !c0)
+            || (c2 == 'x' && !c0 && num <= 1)
+            || (c2 == 'w' && c1 == '$' && !c0)
+            || (c2 == 'm' && c0 == '?')
+            || (c2 == 'h' && c0 == '?' &&
+                (num == 9 || (num >= 1000 && num <= 1004) || num == 1007
+                 || num == 7786 || num == 7787
+                )
+               )
+            || (c2 == 'w' && c1 == '\'' && !c0)
+            || (c2 == 'z' && c1 == '\'' && !c0)
+            || (c2 == '|' && c1 == '\'' && !c0)
+            || (c2 == 'S' && c1 == '#' && !c0)
+            || (c2 == '|' && c1 == '#' && !c0)
+            || (c2 == 'S' && c0 == '?' && (num2 == 1 || num2 == 4))
+           )
+          bufi = 0;
+#ifdef debug_log_filter
+        if (!bufi)
+          printf("log filter CSI %c %d %d %c %c\n", c0 ?: '-', num, num2, c1, c2);
+#endif
+      }
+    }
+    else if (state == 'o') { // OSC
+      if (c == '' || (c == '\\' && buf[bufi - 1] == '\e')) { // ST or BEL
+        state = 0;
+        int num = -1, numq1 = -1, numq2 = -1;
+        if (2 == sscanf(&buf[2], "%u;%u;%n", &num, &numq2, &len)) {
+          if (buf[2 + len] != '?')
+            numq2 = -1;
+        }
+        else {
+          sscanf(&buf[2], "%u;%n", &num, &len);
+          if (buf[2 + len] == '?')
+            numq1 = num;
+        }
+#ifdef debug_log_filter
+        int bufend = bufi;
+#endif
+        if (numq2 == 4 || numq2 == 7704 || numq2 == 5)
+          bufi = 0;
+        else if ((numq1 >= 10 && numq1 <= 19) || numq1 == 50 || numq1 == 52
+                 || numq1 == 701 || numq1 == 7770 || numq1 == 7771 || numq1 == 7777
+                )
+          bufi = 0;
+        else if (num == 60 || num == 61 || num == 62)
+          bufi = 0;
+#ifdef debug_log_filter
+        if (!bufi) {
+          buf[bufend] = 0;
+          printf("log filter OSC %d %d %d (\\e%s)\n", num, numq1, numq2, &buf[1]);
+        }
+#endif
+      }
+    }
+    else if (state == 'd') { // DCS
+      if (c == '\\' && buf[bufi - 1] == '\e') { // ST
+        state = 0;
+        if (!strncmp(&buf[2], "$q", 2) || !strncasecmp(&buf[2], "+q", 2))
+          bufi = 0;
+      }
+    }
+  };
+
+  if (log_fd >= 0 && logging) {
+    if (!cfg.log_filter) {
+      write(log_fd, s, len);
+      return;
+    }
+    for (uint i = 0; i < len; i++)
+      term_log_char(term_p, s[i]);
+  }
+}
+
+void
+(child_close_log)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+
+  char buf = '\e';
+  term_log(&buf, 1);  // trigger term_log_flush();
+}
+
 
 void
 (child_update_charset)(struct child * child_p)
@@ -1162,7 +1318,7 @@ static void
     if (pty_fd >= 0)
       close(pty_fd);
     if (log_fd >= 0)
-      close(log_fd);
+      close(log_fd);  // close file handle in forked child, no need to flush
     close(win_fd);
 
     if ((child_dir && *child_dir) || set_dir) {

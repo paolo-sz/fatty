@@ -474,6 +474,7 @@ void
   term.suspend_update = 0;
   term.no_scroll = 0;
   term.scroll_mode = 0;
+  term.baud = cfg.baud;
 
   term_schedule_search_update();
 

@@ -40,6 +40,10 @@ extern void (child_update_charset)(struct child * child_p);
 extern void (child_create)(struct child* child_p, struct term* term, char *argv[], struct winsize *winp, const char* path);
 extern void open_logfile(bool toggling);
 extern void toggle_logging(void);
+#define term_log(...) (term_log)(term_p, ##__VA_ARGS__)
+extern void (term_log)(struct term* term_p, char * s, uint len);
+#define child_close_log(...) (child_close_log)(term_p, ##__VA_ARGS__)
+extern void (child_close_log)(struct term* term_p);
 extern void child_free(struct child* child_p);
 extern void child_proc(void);
 extern void child_terminate(struct child* child_p);

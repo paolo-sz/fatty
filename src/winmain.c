@@ -5844,6 +5844,8 @@ exit_fatty(int exit_val)
   struct term *term_p = win_active_terminal();
   TERM_VAR_REF(false)
 
+  child_close_log();
+
   if (!term_p)
     exit(exit_val);
 	

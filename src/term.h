@@ -689,6 +689,7 @@ struct term {
 
   int detect_progress;
   int progress_scan;
+  int baud;
 
   state_t state;
 
