@@ -1358,7 +1358,7 @@ the system ANSI encoding.
 command-line.)
 .br
 Unicode-enabled settings: BellFile, BellFile2..7, ThemeFile, ThemeDark, 
-Background, Title, ExitTitle, Icon, Log, SaveFilename, 
+KeyClick, Background, Title, ExitTitle, Icon, Log, SaveFilename, 
 Language, Font, Font1..10, FontRTL, FontSample, FontChoice, 
 TekFont, CopyAsRTFFont, 
 SearchBar, Printer, Answerback, SixelClipChars, 
@@ -1466,9 +1466,7 @@ using the same dialog box, switchable by a checkbox
 \fB2\fP enables configuration of both regular and darkmode themes with 
 two distinct dialog boxes.
 ./ul
-Note that actual interactive configuration of a distinct darkmode theme 
-in the Options dialog is not yet implemented, use config file option 
-ThemeDark to this aim.
+
 ./ul
 
 .TQ
@@ -2211,6 +2209,11 @@ will enter a composition of them, according to X11 compose key data.
 .en
 \fBOff\fP \fI\(en disables the Compose key\fP
 ./ul
+
+.TQ
+\fBKeyboard click sound\fP (KeyClick=)
+This setting can select a sound file from a resource subdirectory 
+\fIsounds\fP as a key click sound for every key pressed.
 
 .SS Mouse
 Settings controlling mouse support.
@@ -3123,7 +3126,7 @@ option \fB\-\-WSL\fP:
 .en
 \fB2\fP Use \fI/bin/wslbridge2\fP.
 .en
-\fB1\fP Use \fI/bin/wslbridge\fP (the original WSL bridge gateway, still needed on older Windows versions.
+\fB1\fP Use \fI/bin/wslbridge\fP (the original WSL bridge gateway, still needed on older Windows versions).
 .en
 \fB0\fP Use Windows \fIwsl.exe\fP.
 ./ul

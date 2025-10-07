@@ -4345,8 +4345,8 @@ void
                           : win_get_colour(SEL_COLOUR_I);
               if (bg == (colour)-1)
                 bg = eattr.attr & ATTR_REVERSE
-                          ? win_get_colour(BG_COLOUR_I)
-                          : win_get_colour(FG_COLOUR_I);
+                          ? win_get_colour(FG_COLOUR_I)
+                          : win_get_colour(BG_COLOUR_I);
 
               if (cfg.selection_mode > 1) {
                 if (!term.selection_eq_clipboard)

@@ -65,7 +65,7 @@ extern void (child_resize)(struct child* child_p, struct winsize * winp);
 extern bool child_is_alive(struct child* child_p);
 extern bool child_is_parent(struct child* child_p);
 extern char * procres(int pid, char * res);
-//extern wchar * grandchild_process_list(void);
+extern wchar * grandchild_process_list(void);
 #define child_tty(...) (child_tty)(child_p, ##__VA_ARGS__)
 extern char * (child_tty)(struct child* child_p);
 #define child_termios_chars(...) (child_termios_chars)(child_p, ##__VA_ARGS__)

@@ -1,13 +1,31 @@
+### 3.8.1 (18 September 2025) ###
+
+Unicode and Emoji data
+  * Unicode 17.0 update.
+  * Enable emoji support by default.
+
 Terminal features
+  * Fix emoji selection highlighted background.
   * Support DECSCS to select virtual communication speed or reset to option Baud.
   * ST control terminator accepts multiple ESC (xterm).
+
+Keyboard handling
+  * Optional click feedback for key press.
 
 WSL support
   * Workaround for display corruption in wsl/conpty/cygwin chain after entering ^O (#1332).
 
+Window handling
+  * Revise close button handling for WSL, esp. in Windows 10 (mintty/wsltty#368).
+
 Configuration
+  * Interactive configuration of normal and darkmode themes in switchable dialog box (~#1303).
+  * Optional configuration of normal and darkmode themes in two distinct dialog boxes (#1303).
+  * New option ConfigThemes to select themes configuration mode (~#1303).
   * User-definable function config-log to show all effective log files (mintty/wsltty#333).
   * New option LogFilter to avoid terminal reports on viewing log files.
+  * Change emoji default style from none to Emojis=noto.
+  * New option KeyClick.
 
 ### 3.8.0 (22 August 2025) ###
 

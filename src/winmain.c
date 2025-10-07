@@ -2948,6 +2948,18 @@ static struct {
 }
 
 /*
+ * Play pre-loaded keyclick sound.
+ */
+void
+win_keyclick(void)
+{
+  if (keyclick && 0 == fork()) {
+    PlaySound(keyclick, inst, SND_MEMORY);
+    exit(0);
+  }
+}
+
+/*
  * Beep with audio output library libao, for DECPS.
  */
 static void * libao = 0;
