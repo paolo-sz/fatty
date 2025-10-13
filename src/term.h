@@ -837,6 +837,6 @@ extern char * get_emoji_description(termchar *);
 
 
 #define term_export_html(...) (term_export_html)(term_p, ##__VA_ARGS__)
-extern void (term_export_html)(struct term *term_p, bool do_open);
+extern void (term_export_html)(struct term *term_p, bool all, bool do_open);
 
 #endif
