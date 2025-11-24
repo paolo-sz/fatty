@@ -2,6 +2,10 @@ Terminal features
   * Change HTML print/export to write unwrapped lines by default (#1336).
   * New escape sequence variation CSI 10 ; 8 i to print scrollback and screen (#1336).
   * Revise HTML blinking and invisible attributes; enable copying (#1336).
+  * OSC 52 response mirrors requested clipboard/buffer (#1337).
+  * OSC 1337 Capabilities Feature Reporting (#1341, iTerm2).
+  * Primary Device Attributes report leaves out disabled features.
+  * Framework for embedding of ReGIS graphics.
 
 Configuration
   * New option ExportHTMLUnwrapped (#1336).
@@ -160,7 +164,7 @@ Window handling
   * Change mouse pointer while tab dragging (#1293).
   * Adapt dynamic tab drag highlighting (~#1293).
   * Swipe visualisation of tab reorder dragging (~#1293).
-  * New windows/Alt+F2 launches terminal on same monitor (broken since 2.9.5).
+  * New window/Alt+F2 launches terminal on same monitor (broken since 2.9.5).
   * Maximise/Restore keeps window on same monitor (broken since 3.6.5, ~#1226).
   * Virtual transparency: fix background offset on multiple monitors (#1296).
   * Virtual transparency: fix background offset with options Scrollbar=left or BorderStyle=frame/void (#1296).
