@@ -180,7 +180,7 @@ const config default_cfg = {
   // Window
   cols : 80,
   rows : 24,
-  rewrap_on_resize : false,
+  rewrap_on_resize : true,
   scrollback_lines : 10000,
   max_scrollback_lines : 250000,
   scrollbar : 1,

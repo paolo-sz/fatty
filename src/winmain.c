@@ -5042,6 +5042,9 @@ static struct {
         return 1;
       }
 
+    when WM_IME_ENDCOMPOSITION:
+      win_key_reset();
+
     when WM_THEMECHANGED case_or WM_WININICHANGE case_or WM_SYSCOLORCHANGE:
       // keep image background updated while moving/resizing
       win_adjust_background();
