@@ -1,6 +1,6 @@
 // termout.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-23 Andy Koppe, 2017-25 Thomas Wolff
+// Based on code from mintty by 2008-23 Andy Koppe, 2017-2026 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -31,7 +31,9 @@ extern "C" {
 #include <termios.h>
 #include <sys/time.h>
 #include <strings.h>
+//#if CYGWIN_VERSION_API_MINOR >= 74
 #include <langinfo.h>  // nl_langinfo, CODESET
+//#endif
 
 
 #define TERM_CMD_BUF_INC_STEP 128
@@ -46,10 +48,10 @@ extern "C" {
 #define CPAIR(x, y) ((x) << 8 | (y))
 
 static string primary_da1 = "\e[?1;2c";
-static string primary_da2 = "\e[?62;2;4;6;9;15;29c";
-static string primary_da3 = "\e[?63;2;4;6;9;11;15;29c";
-static string primary_da4 = "\e[?64;2;4;6;9;11;15;21;28;29c";
-static string primary_da5 = "\e[?65;2;4;6;9;11;15;21;28;29c";
+static string primary_da2 = "\e[?62;2;3;4;6;9;15;29c";
+static string primary_da3 = "\e[?63;2;3;4;6;9;11;15;29c";
+static string primary_da4 = "\e[?64;2;3;4;6;9;11;15;21;28;29c";
+static string primary_da5 = "\e[?65;2;3;4;6;9;11;15;21;28;29c";
 /* Registered Extensions to the Character Cell Display Service Class
 	1	132 Column Display
 	2	Printer Port
@@ -4793,10 +4795,12 @@ static void
      )
     p += sprintf(p, "M");  // MOUSE
   p += sprintf(p, "Sc7");  // DECSCUSR
+#if CYGWIN_VERSION_API_MINOR >= 74
   if (0 == strcmp(nl_langinfo(CODESET), "UTF-8")) {
     p += sprintf(p, "U");  // UNICODE_BASIC
     p += sprintf(p, "Uw%d", UNICODE_VERSION / 100);  // UNICODE_WIDTHS
   }
+#endif
   if (cs_ambig_wide)
     p += sprintf(p, "Aw");  // AMBIGUOUS_WIDE
   if (contains(cfg.suppress_osc, 0) || contains(cfg.suppress_osc, 1) || contains(cfg.suppress_osc, 2))
