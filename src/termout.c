@@ -31,9 +31,9 @@ extern "C" {
 #include <termios.h>
 #include <sys/time.h>
 #include <strings.h>
-//#if CYGWIN_VERSION_API_MINOR >= 74
+#if CYGWIN_VERSION_API_MINOR >= 74
 #include <langinfo.h>  // nl_langinfo, CODESET
-//#endif
+#endif
 
 
 #define TERM_CMD_BUF_INC_STEP 128

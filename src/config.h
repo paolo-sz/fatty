@@ -96,6 +96,7 @@ typedef struct {
   char charwidth;
   bool old_locale;
   int fontmenu;
+  wstring regis_font;
   wstring tek_font;
   wstring tab_font;
   // Keys
@@ -266,6 +267,8 @@ typedef struct {
   colour_pair ansi_colours[16];
   int max_image_size;
   wstring sixel_clip_char;
+  int regis_grid;
+  string regis_tension;
   bool short_long_opts;
   bool bold_as_special;
   bool hover_title;

@@ -17,9 +17,9 @@ extern "C" {
 #include <math.h>
 #include <windows.h>
 
-//#if CYGWIN_VERSION_API_MINOR >= 74
+#if CYGWIN_VERSION_API_MINOR >= 74
 #define use_gdiplus
-//#endif
+#endif
 
 #undef __cplusplus
 
@@ -630,7 +630,7 @@ regis_text(HDC dc, float scale, struct write_controls * controls, wchar * s)
       font_quality[(int)cfg.font_smoothing];
   };
 
-  wstring fn = cfg.font.name;
+  wstring fn = *cfg.regis_font ? cfg.regis_font : cfg.font.name;
   HFONT f = CreateFontW(
                   h * scale, w * scale,
                   tilt,  // string angle
@@ -770,95 +770,6 @@ regis_init(void)
 
   // persistent write controls
   store_write_controls = write_controls;
-}
-
-
-static char *
-skip_space(char * s)
-{
-  while (*s <= ' ')
-    s ++;
-  return s;
-}
-
-static int
-scannum1(char * * s)
-{
-  float num = -1.0;
-  int len;
-  int ret = sscanf(*s, "%f%n", &num, &len);
-  if (ret)
-    *s += len;
-  return roundf(num);
-}
-
-static int
-scannum(char * * s)
-{
-  float num = 0.0;
-  int len;
-  int ret = sscanf(*s, "%f%n", &num, &len);
-  if (ret)
-    *s += len;
-  return roundf(num);
-}
-
-static void
-scanxy(char * * s)
-{
-  auto scannat = [&](char * * s) -> int
-  {
-    switch (**s) {
-      when '0' ... '9' case_or '.':
-        return scannum(s);
-      when '-' or '+':
-        // swallow wrong syntax like T[+50,-50]
-        (void)scannum(s);
-    }
-    return 0;
-  };
-
-  (*s) ++;
-  *s = skip_space(*s);
-  scan_rx = scannat(s);
-  *s = skip_space(*s);
-  if (**s == ',') {
-    (*s) ++;
-    *s = skip_space(*s);
-    scan_ry = scannat(s);
-    *s = skip_space(*s);
-  }
-}
-
-static void
-scancoord(char * * s)
-{
-  auto scanord = [&](int ord, char * * s) -> int
-  {
-    switch (**s) {
-      when '0' ... '9' case_or '.':
-        return scannum(s);
-      when '-':
-        return ord + scannum(s);
-      when '+':
-        (*s) ++;
-        return ord + scannum(s);
-    }
-    return ord;
-  };
-
-  (*s) ++;
-  *s = skip_space(*s);
-  new_rx = scanord(curr_rx, s);
-  *s = skip_space(*s);
-  if (**s == ',') {
-    (*s) ++;
-    *s = skip_space(*s);
-    new_ry = scanord(curr_ry, s);
-    *s = skip_space(*s);
-  }
-  else
-    new_ry = curr_ry;
 }
 
 
@@ -1002,8 +913,6 @@ setblue(COLORREF * colr, int val)
 
 #define subcmd(cmd, sub)	((cmd << 8) | sub)
 
-typedef std::function<char*(bool, short, struct write_controls *, char *, char)> regis_chunk_t;
-
 /*
    Draw a ReGIS program.
    A mixed parsing strategy of the ReGIS string evolved during development:
@@ -1018,13 +927,16 @@ typedef std::function<char*(bool, short, struct write_controls *, char *, char)>
    ReGIS graphics rendering is invoked on-the-fly as being parsed, 
    so it's an interpreter, no storage of parsing structure is involved. 
    The only additional storage is the list of defined "macrographs".
-   Recursive invocation of regis_chunk is also applied to handle macrographs.
  */
 void
 regis_draw(HDC dc, float scale, int rwidth, int rheight, int rmode, uchar * regis, flush_fn flush)
 {
 
 static bool regis_init_done = false;
+
+  float tension = 0.6;
+  if (*cfg.regis_tension)
+    sscanf(cfg.regis_tension, "%f", &tension);
 
   if ((rmode & 1) || !regis_init_done) {
     // reset ReGIS drawing parameters
@@ -1052,12 +964,15 @@ static bool regis_init_done = false;
   printf("[43;30mregis_draw scale %f[K[m\n", scale);
   signal(SIGSEGV, sigsegv);
 
-#ifdef use_gdiplus
-#define grid_size 100
-  void screen_grid(int d) {
-    ARGB fg = GpARGB(33, 33, 33);
+  if (!cfg.regis_grid)
+    cfg.regis_grid = 100;
+#endif
+
+  auto screen_grid = [&](int d) {
     float w = rwidth / scale;
     float h = rheight / scale;
+#ifdef grid_use_gdiplus
+    ARGB fg = GpARGB(33, 33, 33);
     GpPen * gridpen;
     GdipCreatePen1(fg, 1.0, UnitPixel, &gridpen);
 
@@ -1066,10 +981,25 @@ static bool regis_init_done = false;
     for (int i = d; i < h; i += d)
       GdipDrawLine(gr, gridpen, 0, i * scale, (w - 1) * scale, i * scale);
     GdipDeletePen(gridpen);
-  }
-  screen_grid(grid_size);
+#else
+    COLORREF c = RGB(33, 33, 33);
+    HPEN pen = CreatePen(PS_SOLID , 1, c);
+    SelectObject(dc, pen);
+
+    for (int i = d; i < w; i += d) {
+      MoveToEx(dc, i * scale, 0, 0);
+      LineTo(dc, i * scale, rheight);
+    }
+    for (int i = d; i < h; i += d) {
+      MoveToEx(dc, 0, i * scale, 0);
+      LineTo(dc, rwidth, i * scale);
+    }
+    DeleteObject(pen);
 #endif
-#endif
+  };
+
+  if (cfg.regis_grid)
+    screen_grid(cfg.regis_grid);
 
 
 // Position stack for (S) (B) (E) commands.
@@ -1081,6 +1011,7 @@ static struct {
   int ry;
   } posstack[stacklen];
 static int posi = 0;
+
 
 // Macrographs
 static struct macro {
@@ -1127,6 +1058,12 @@ static struct macro {
     for (uint mi = 0; mi < lengthof(macro); mi++)
       clear_macro(mi);
   }
+
+  struct macro_stack {
+    int mi;
+    char * ret;
+  } macro_stack[26];
+  int macro_stacki = 0;
 
 
   auto  regis_string= [&](char * r, wchar * * text) -> char* {
@@ -1256,7 +1193,7 @@ static struct macro {
   bool temporary = false;
 
 
-  regis_chunk_t regis_chunk = [&](bool fill, short cmd, struct write_controls * controls, char * r, char fini) -> char * {
+  std::function<char*(bool, short, struct write_controls *, char *, char)> regis_chunk = [&](bool fill, short cmd, struct write_controls * controls, char * r, char fini) -> char * {
     // since always controls == &write_controls, we could save this parameter
     //printf("[43;30;2mregis_chunk fill %d %04X[m\n", fill, cmd);
 
@@ -1291,6 +1228,7 @@ static struct macro {
     auto save_text_controls = [&](void) { sav_txt_ctrl = controls->text; };
     auto restore_text_controls = [&](void) { controls->text = sav_txt_ctrl; };
 
+
     auto regis_define_macro = [&](char let, char * begin, char * end)
     {
       int mi = toupper(let) - 'A';
@@ -1304,17 +1242,172 @@ static struct macro {
       (void)begin; (void)end;
 #endif
     };
-    auto regis_invoke_macro = [&](char let)
+    auto regis_invoke_macro = [&](char * r) -> char *
     {
-      int mi = toupper(let) - 'A';
+      char let = toupper(*r);
+      int mi = let - 'A';
       if (macro[mi].macro && !macro[mi].invoked) {
         macro[mi].invoked = true;  // prevent macro recursion
+#ifdef invoke_macros_recursively
+        // this way of recursive macro invocation is more elegant
+        // but it supports only putting complete commands into macros
         regis_chunk(fill, 0, controls, macro[mi].macro, 0);
         macro[mi].invoked = false;
+#else
+        // macro invocation by string position push/pop
+        // shall support macros anywhere, e.g.
+        // @:P [200,400] @; @P
+        // and even
+        // @:X 200 @; P[@X]
+        // as suggested in several ReGIS descriptions:
+        // FUNDAMENTALS OF THE REMOTE GRAPHICS INSTRUCTION SET, DEC/TR-95 1979:
+        //	"a macrograph string reference causes the characters 
+        //	previously defined for that macrograph to be substituted 
+        //	for the string reference characters. ... a macrograph string 
+        //	may be just an argument of an instruction ..."
+        //	"This sequence [@<letter>] may appear anyplace in a 
+        //	sequence of REGIS istructions."
+        // GIGI/ReGIS Handbook, DEC AA-K336A-TK 1981:
+        //	macrograph defines a string that "is a part of 
+        //	or a whole ReGIS command string"
+        //	and "you can invoke it anywhere in a ReGIS command stream"
+        // VT125 GRAPHICS TERMINAL USER GUIDE, DEC EK-VT125-UG-002 1982:
+        //	"... command strings or any other string of characters ...
+        //	substituted in another command string."
+        //	"ReGIS inserts the contents of the macrograph in the command 
+        //	string at the position where the macrograph is invoked."
+        macro_stack[macro_stacki].mi = mi;
+        r++;
+#ifdef debug_macros
+        printf("invoke %c: ", let);
+        println (macro[mi].macro);
+        printf("push [%d]: %p ", macro_stacki, r);
+        println (r);
+#endif
+        macro_stack[macro_stacki].ret = r;
+        macro_stacki ++;
+        return macro[mi].macro;
+#endif
       }
+      return r;
+    };
+    auto return_from_macro = [&](char * r) -> char *
+    {
+      // check if this is a macro invocation
+      if (macro_stacki) {
+        macro_stacki --;
+#ifdef debug_macros
+        printf("pop  [%d]: %p ", macro_stacki, macro_stack[macro_stacki].ret);
+        println (macro_stack[macro_stacki].ret);
+#endif
+        macro[macro_stack[macro_stacki].mi].invoked = false;
+        return macro_stack[macro_stacki].ret;
+      }
+      return r;
     };
     auto regis_clear_macro = [&](char let) {
       clear_macro(toupper(let) - 'A');
+    };
+
+
+    
+    std::function<char *(char * s)> skip_space = [&](char * s) -> char *
+    {
+      while (*s && *s <= ' ')
+        s ++;
+      if (*s == '@') {
+        char * t = s;
+        t++;
+        switch (*t) {
+          when 'A' ... 'Z' case_or 'a' ... 'z':
+            s = regis_invoke_macro(t);
+            s = skip_space(s);
+            return s;
+        }
+      }
+      if (!*s) {
+        // check if we should return from a macro
+        return return_from_macro(s);
+      }
+      return s;
+    };
+
+    auto scannum1 = [&](char * * s) -> int
+    {
+      *s = skip_space(*s);
+      float num = -1.0;
+      int len;
+      int ret = sscanf(*s, "%f%n", &num, &len);
+      if (ret)
+        *s += len;
+      return roundf(num);
+    };
+
+    auto scannum = [&](char * * s) -> int
+    {
+      *s = skip_space(*s);
+      float num = 0.0;
+      int len;
+      int ret = sscanf(*s, "%f%n", &num, &len);
+      if (ret)
+        *s += len;
+      return roundf(num);
+    };
+
+    auto scanxy = [&](char * * s)
+    {
+      auto scannat = [&](char * * s) -> int
+      {
+        switch (**s) {
+          when '0' ... '9' case_or '.':
+            return scannum(s);
+          when '-' or '+':
+            // swallow wrong syntax like T[+50,-50]
+            (void)scannum(s);
+        }
+        return 0;
+      };
+
+      (*s) ++;
+      *s = skip_space(*s);
+      scan_rx = scannat(s);
+      *s = skip_space(*s);
+      if (**s == ',') {
+        (*s) ++;
+        *s = skip_space(*s);
+        scan_ry = scannat(s);
+        *s = skip_space(*s);
+      }
+    };
+
+    auto scancoord = [&](char * * s)
+    {
+      auto scanord = [&](int ord, char * * s) -> int
+      {
+        switch (**s) {
+          when '0' ... '9' case_or '.':
+            return scannum(s);
+          when '-':
+            return ord + scannum(s);
+          when '+':
+            (*s) ++;
+            return ord + scannum(s);
+        }
+        return ord;
+      };
+
+      (*s) ++;
+      *s = skip_space(*s);
+      new_rx = scanord(curr_rx, s);
+      *s = skip_space(*s);
+      if (**s == ',') {
+        (*s) ++;
+        *s = skip_space(*s);
+        new_ry = scanord(curr_ry, s);
+        *s = skip_space(*s);
+      }
+      else
+        new_ry = curr_ry;
     };
 
 
@@ -1327,11 +1420,10 @@ static struct macro {
       gp(GdipCreateSolidFill(gbg, &gbr));
       gp(GdipFillRectangle(gr, gbr, 0, 0, rwidth, rheight));
       gp(GdipDeleteBrush(gbr));
-#ifdef debug_regis
-      screen_grid(grid_size);
-#endif
       //gp(GdipFlush(gr, FlushIntentionFlush));
 #endif
+      if (cfg.regis_grid)
+        screen_grid(cfg.regis_grid);
     };
 
 
@@ -1561,7 +1653,6 @@ static struct macro {
 
 #ifdef use_gdiplus
           // finish/close curve only if this is a C(E)
-#define tension 0.6
           if (closed) {
             if (filling) {
               init_gpath();
@@ -1610,6 +1701,7 @@ static struct macro {
       // skip comment lines
       if (*r == '\n') {
         r++;
+#if 0
         if (*r == '#') {
 #ifdef debug_regis
           println(r);
@@ -1618,6 +1710,7 @@ static struct macro {
             r++;
           continue;
         }
+#endif
       }
       // remember current position for proper loop termination
       char * last_r = r;
@@ -1732,18 +1825,21 @@ static struct macro {
             controls->foreground = RGB(0, 0, 0);
           when 'R':  // red
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setred(&controls->foreground, scannum(&r));
             else
               controls->foreground = RGB(255, 0, 0);
           when 'G':  // green
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setgreen(&controls->foreground, scannum(&r));
             else
               controls->foreground = RGB(0, 255, 0);
           when 'B':  // blue
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setblue(&controls->foreground, scannum(&r));
             else
@@ -1835,18 +1931,21 @@ static struct macro {
             controls->background = RGB(0, 0, 0);
           when 'R':  // red
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setred(&controls->background, scannum(&r));
             else
               controls->background = RGB(255, 0, 0);
           when 'G':  // green
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setgreen(&controls->background, scannum(&r));
             else
               controls->background = RGB(0, 255, 0);
           when 'B':  // blue
             r++;
+            r = skip_space(r);
             if (*r >= '0' && *r <= '9')
               setblue(&controls->background, scannum(&r));
             else
@@ -1979,7 +2078,7 @@ static struct macro {
                   regis_clear_macro(c);
                 r++;
               when 'A' ... 'Z' case_or 'a' ... 'z':
-                regis_invoke_macro(toupper(*r));
+                r = regis_invoke_macro(r);
             }
           when '"' case_or '\'':
             if (rstate == 'T') {
@@ -1993,7 +2092,7 @@ static struct macro {
               }
             }
             else
-              // skip stray text
+              // skip stray text string (for example used as comment after ;)
               r = regis_string(r, 0);
             //continue;
           when '(':
@@ -2124,12 +2223,23 @@ static struct macro {
 #endif
             reset_temporary_write_controls();
             rstate = let;
+          when '#':  // comment with log output
+#ifdef debug_regis
+            println(r);
+#endif
+            while (*r && *r != '\n')
+              r++;
         }
       }
 
       // advance pointer in ReGIS program if needed
       if (r == last_r && *r && *r != fini && *r != '\n')
         r ++;
+
+      if (!*r) {
+        // check if we should return from a macro
+        r = return_from_macro(r);
+      }
     }
 
     return r;

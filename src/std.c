@@ -44,7 +44,7 @@ tmpdir()
 }
 
 
-//#if CYGWIN_VERSION_API_MINOR < 70
+#if CYGWIN_VERSION_API_MINOR < 70
 
 int
 vasprintf(char **buf, const char *fmt, va_list va)
@@ -73,7 +73,7 @@ asprintf(char **buf, const char *fmt, ...)
   return len;
 }
 
-//#endif
+#endif
 
 char *
 asform(const char *fmt, ...)

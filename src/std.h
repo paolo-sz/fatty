@@ -64,10 +64,10 @@ extern int iswspace(wint_t);
 #endif
 
 
-//#if CYGWIN_VERSION_API_MINOR < 70
+#if ((CYGWIN_VERSION_API_MINOR < 70) || defined(__MSYS__))
 extern int asprintf(char **, const char *, ...);
 extern int vasprintf(char **, const char *, va_list);
-//#endif
+#endif
 
 extern char *asform(const char *fmt, ...);
 
@@ -76,8 +76,12 @@ extern char *asform(const char *fmt, ...);
 //#define WINVER 0x0501	// Windows XP
 //#define WINVER 0x0601	// Windows 7
 //#define WINVER 0x0A00	// Windows 10
+//#if CYGWIN_VERSION_API_MINOR >= 74
+//#define WINVER 0x0A00
+//#else
+//#define WINVER 0x0501
+//#endif
 //#define _WIN32_WINNT WINVER
-//#define _WIN32_IE WINVER
 
 #include <windef.h>
 
