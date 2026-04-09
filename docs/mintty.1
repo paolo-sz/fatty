@@ -33,6 +33,7 @@
 .ft 1
 ..
 .char ^ \(ha
+.char ~ \(ti
 .TH mintty 1 mintty
 
 .ad l
@@ -392,8 +393,10 @@ Provide the root filesystem folder to adjust path conversion properly
 for the respective WSL installation.
 
 .TQ
-\fB\-\(ti\fP
-Start in the user's home directory. Affects also WSL sessions.
+\fB\-~\fP
+Start in the user's home directory.
+Also sets reference for relative pathnames in option \fBSaveFilename\fP.
+Affects also WSL sessions.
 
 .TQ
 \fB\-H\fP, \fB\-\-help\fP
@@ -468,6 +471,13 @@ of characters; the TextOut API is automatically used instead if suitable.
 Fonts in the resource subdirectory \fIfonts\fP of the config directory 
 are installed dynamically and can be used for configured or interactively 
 changed font selection. This is especially useful for a portable installation.
+
+.SS Font selection
+
+Different fonts can be selected by different criteria. Mintty supports 
+explicit alternative font selection (using SGR character attributes), 
+script-dependent alternative font selection (option FontChoice), 
+glyph-support-dependent font substitution (option FontSubst), and more.
 
 .SS Bidirectional rendering
 
@@ -683,6 +693,12 @@ Sometimes a faulty application or printing a binary file will leave the
 terminal in an unusable state. In that case, resetting the terminal's state
 via the \fBReset\fP command in the menu or the \fBAlt+F8\fP keyboard shortcut
 may help.
+
+.SS Touch screen support
+
+Mintty supports touch screen gestures for scrolling vertically or horizontally, 
+also in application mouse modes. Setting \fBTouchScroll\fP can configure details.
+Speed of touch scrolling is affected by finger distance.
 
 .SS Scrolling and the scrollback buffer
 
@@ -1201,7 +1217,6 @@ shortcut override mode.
 
 .TQ
 .B Embedding Sixel pixel graphics
-
 The Sixel graphics support feature facilitates a range of applications 
 that integrate graphic images in the terminal, animated graphics, and even 
 video and interactive gaming applications.
@@ -1216,7 +1231,6 @@ in order to prevent Windows handle resource exhaustion.
 
 .TQ
 .B Displaying ReGIS vector graphics
-
 The ReGIS vector graphics support feature completes feature compatibility 
 with DEC VT340 and xterm.
 Details on ReGIS features (limitations, modifications, extensions) are 
@@ -1352,13 +1366,13 @@ So using \fBApply\fP then \fBCancel\fP, local changes can be applied
 In configuration files, settings are stored as \fINAME\fP=\fIVALUE\fP pairs,
 with one per line.  By default, they are read from any file of 
 \fI/etc/minttyrc\fP, \fI$APPDATA/mintty/config\fP, 
-\fI\(ti/.config/mintty/config\fP, \fI\(ti/.minttyrc\fP, in this order.
+\fI~/.config/mintty/config\fP, \fI~/.minttyrc\fP, in this order.
 Additional configuration files can be specified using the
 \fB\-c\fP/\fB\-\-config\fP or \fB\-C\fP/\fB\-\-loadconfig\fP command line options.
 These are read in order after the default config files, 
 with settings in later files overriding those in earlier ones.
 Configuration changes are saved to the last writable file 
-read by default or \fI\(ti/.minttyrc\fP if none is given, 
+read by default or \fI~/.minttyrc\fP if none is given, 
 or (with precedence) to a configuration file specified with 
 \fB\-c\fP/\fB\-\-config\fP or \fB\-\-configdir\fP.
 Individual settings can also be specified on the command line using the 
@@ -1394,7 +1408,7 @@ Additional resource files are used for colour schemes (options
 wave files (option \fBBellFile\fP, subdirectory \fIsounds\fP), 
 and localization translation files (option \fBLanguage\fP, subdirectory \fIlang\fP) 
 within the mintty resource directories \fI/usr/share/mintty\fP, 
-\fI$APPDATA/mintty\fP, \fI\(ti/.config/mintty\fP, \fI\(ti/.mintty\fP, 
+\fI$APPDATA/mintty\fP, \fI~/.config/mintty\fP, \fI~/.mintty\fP, 
 or as specified with command line option \fB\-\-configdir\fP.
 Emoji icons are additionally looked up in \fI/usr/share/emojis\fP 
 to support common emoji data installed by distinct packages.
@@ -1654,6 +1668,7 @@ double-cell space. (If used, this prefix must precede a "|" prefix.)
 In addition to Unicode scripts, also Unicode blocks can be used 
 to specify a secondary font, by a "|" prefix to the block name, with block 
 specifications preceding over the more general script specifications.
+Block names are listed in \fIhttps://en.wikipedia.org/wiki/Unicode_block\fP.
 .br
 To align secondary font size with the main font size visually, the 
 respective alternative font specification can be preceded with "+".
@@ -1680,6 +1695,27 @@ Examples:
   Font3=MesloLGS NF
 .br
   FontChoice=Greek:3;|Greek Extended:4
+.ee
+.en
+\fBFont substitution sequence checked by glyph support\fP (FontSubst=):
+With this setting, a sequence of alternative fonts can be specified for 
+substitution whenever a character is not contained in the current font.
+The value is a list of comma-separated alternative font numbers.
+
+With the following setting, CJK characters not supported in the current font 
+will be taken from the Jigmo fonts instead, which provide CJK glyphs 
+for Unicode planes 1, 2, 3.
+
+Example:
+.ex
+.br
+  FontSubst=1,2,3
+.br
+  Font1=Jigmo1
+.br
+  Font2=Jigmo2
+.br
+  Font3=Jigmo3
 .ee
 .en
 \fBFont sample text\fP (FontSample=):
@@ -1930,6 +1966,18 @@ no mechanism to affect ligature transformation in more detail.
 This option enables self-drawn graphics for the Box Drawing range U+2500..U+257F, 
 in order to achieve unbroken box drawing, as most fonts do not include 
 proper box drawing glyphs.
+
+Self-drawn graphics may render a bit slower, particularly on slower machines.
+If you disable them to render graphic characters from font, it is a 
+good idea to configure a suitable secondary font for them:
+.ex
+  BoxDrawing=0
+  FontChoice=|Box Drawing:2
+  Font2=DejaVu Sans Mono
+.ee
+.br
+See option \fBFontChoice\fP, also for how to use a secondary font to 
+provide "Powerline" symbols.
 
 .TQ
 \fBLocale\fP (Locale=)
@@ -2892,7 +2940,7 @@ or the process ID respectively.
 Example, using only a timestamp and placing the logs in the home directory:
 .ul
 .ex
-Log=\(ti/mintty.%Y\-%m\-%d_%H\-%M\-%S.log
+Log=~/mintty.%Y\-%m\-%d_%H\-%M\-%S.log
 ./ul
 
 If the log file name is a relative path name, it is relative from the 
@@ -2930,11 +2978,14 @@ This setting selects the location and filename pattern (which is expanded
 with the strftime(3) function) for .html and .png screen dumps.
 An initial home prefix or environment variable prefix is expanded (POSIX 
 path and variable syntax needs to be used in this case).
+WSL paths are supported, both for an explicit ~ prefix and for relative 
+filenames with home option \fB\-~\fP referring to the respective user home.
+
 Examples:
 .ul
 .dd
 .ex
-SaveFilename=\(ti/mintty.%Y\-%m\-%d_%H\-%M\-%S
+SaveFilename=~/mintty.%Y\-%m\-%d_%H\-%M\-%S
 .dd
 .ex
 SaveFilename=$USERPROFILE/Pictures/mintty/%Y\-%m\-%d_%H\-%M\-%S
@@ -3463,6 +3514,8 @@ to be matched.
 modifyOtherKeys mode (ESC sequence). Shortcut override mode however 
 disables key redefinitions.
 
+\fINote:\fP Since 3.8.3, key functions also persist against shortcut override mode.
+
 \fINote:\fP For the "any character, with Ctrl and Shift" option, 
 the definition is ignored if the Ctrl+Shift+key combination would 
 generate a valid input character already. This is particularly the case 
@@ -3480,7 +3533,7 @@ Supported actions are described as follows:
 .en
 \fB\`\fP\fIcommand\fP\fB\`\fP (**): enters the output of the command
 .en
-\fInumber\fP (***): enters the escape sequence CSI\fInumber\fP[;\fImod\fP]\(ti
+\fInumber\fP (***): enters the escape sequence CSI\fInumber\fP[;\fImod\fP]~
 .en
 \fBfullscreen\fP (*): switches to fullscreen mode
 .en
@@ -3580,7 +3633,7 @@ Supported actions are described as follows:
 .en
 \fBtek\-reset\fP: Tek mode RESET
 .en
-\fBtek\-page\fP: Tek mode PAGE key (\(tisoft reset)
+\fBtek\-page\fP: Tek mode PAGE key (~soft reset)
 .en
 \fBtek\-copy\fP: Tek mode COPY key (image "hard" copy to file)
 .en
@@ -3992,7 +4045,7 @@ The highlighting colours of search matches can be configured.
 .TQ
 \fBBackground image or texture\fP (Background=)
 With this option, an image can be chosen as background.
-With an image file name, absolute (with an optional \fB\(ti\fP prefix) 
+With an image file name, absolute (with an optional \fB~\fP prefix) 
 or relative to the current terminal foreground process, 
 the option uses the image as a background picture, with variations 
 as indicated by a prefix character to the filename:
@@ -4086,6 +4139,35 @@ can be set to a maximum of the terminal height \- 1. This applies to
 scrollback scrolling as well as to mousewheel reporting but not to 
 mouse tracking reports.
 The default is to take the value from a system setting, typically 3.
+
+.TQ
+\fBTouch scrolling support\fP (TouchScroll=1) [EXPERIMENTAL]
+This setting may disable interpretation of the Windows PAN gesture 
+for touch screens (0). It may also enable additional features of it 
+by setting a bitmask, adding the following values:
+.ul
+.en
+\fB2\fP single finger vertical panning
+.en
+\fB4\fP single finger horizontal panning
+.en
+\fB8\fP perpendicular gutter for pan detection
+.en
+\fB16\fP apply inertia to slow down panning gracefully
+./ul
+The effect of these feature aspects on interactive behaviour is not 
+thoroughly tested, feedback is appreciated.
+.br
+Note that inertia seems to be applied already by default. The effect 
+of the additional inertia flag is unclear.
+.br
+Note that horizontal panning is only effective in connection with the 
+\fBhorbar\fP command-line option.
+
+.TQ
+\fBDrag-and-drop focusses window\fP (DropFocus=3)
+With value 1, drag-and-drop onto the terminal window will raise and focus it,
+with value 2 likewise for the Options dialog (esp. Theme setting), 3 for both.
 
 .TQ
 \fBDisable Shift-coupled implicit font zooming\fP (ZoomFontWithWindow=yes)
@@ -4409,7 +4491,7 @@ Examples:
 SessionCommands=big:\-w max;Ubuntu:\-\-WSL=Ubuntu;mybox:ssh mybox
 .en
 .ex
-SessionCommands=mycolours:\-C \(ti/.minttyrc.mycolours
+SessionCommands=mycolours:\-C ~/.minttyrc.mycolours
 ./ul
 
 \fINote:\fP Control characters need to be embedded verbatim; there is no escape notation.
@@ -4460,7 +4542,7 @@ Examples:
 TaskCommands=big:\-w max;Ubuntu:\-\-WSL=Ubuntu;mybox:ssh mybox
 .en
 .ex
-TaskCommands=mycolours:\-C \(ti/.minttyrc.mycolours
+TaskCommands=mycolours:\-C ~/.minttyrc.mycolours
 ./ul
 
 \fINote:\fP Control characters need to be embedded verbatim; there is no escape notation.

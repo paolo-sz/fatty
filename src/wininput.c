@@ -1,7 +1,7 @@
 // wininput.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
 // Based on code from mintty by Andy Koppe
-// Copyright 2008-23 Andy Koppe, 2015-2025 Thomas Wolff
+// Copyright 2008-23 Andy Koppe, 2015-2026 Thomas Wolff
 // Licensed under the terms of the GNU General Public License v3 or later.
 
 #include <algorithm>
@@ -935,7 +935,6 @@ static alt_state_t old_alt_state;
 static int alt_code;
 static bool alt_uni;
 
-static bool lctrl;  // Is left Ctrl pressed?
 static int lctrl_time = 0;
 static int ralt_time = 0;
 static int is_lctrl = 0;
@@ -947,7 +946,7 @@ get_mods(void)
 {
   auto is_key_down = [&](uchar vk) -> bool { return GetKeyState(vk) & 0x80; };
   lctrl_time = 0;
-  lctrl = is_key_down(VK_LCONTROL) && (lctrl || !is_key_down(VK_RMENU));
+  bool lctrl = is_key_down(VK_LCONTROL) && (is_lctrl || !is_key_down(VK_RMENU));
   bool k_super = super_key && is_key_down(super_key);
   bool k_hyper = hyper_key && is_key_down(hyper_key);
   return (mod_keys)(
@@ -2748,10 +2747,19 @@ static LONG last_key_time = 0;
     last_key_time = message_time;
 
   if (key == VK_PROCESSKEY) {
+#ifdef debug_virtual_key_codes
+    printf("  - PROCESSKEY (%02X)\n", ImmGetVirtualKey(wnd));
+#endif
     MSG tmp_msg = {.hwnd = wnd, .message = WM_KEYDOWN, .wParam = wp, .lParam = lp, .time = 0, .pt = {0, 0}};
     TranslateMessage(
       &tmp_msg
     );
+    // if IME options are switched (#1353), 
+    // the Control key state managed by mintty may get confused 
+    // (as some key release events are not passed to mintty) 
+    // and subsequent letters could be interpreted as if Control-modified,
+    // so we reset the modifier state here (and on key release below)
+    win_key_reset();
     return true;
   }
 
@@ -2786,6 +2794,7 @@ static LONG last_key_time = 0;
     }
   }
 
+  bool lctrl = false;
   // Distinguish real LCONTROL keypresses from fake messages sent for AltGr.
   // It's a fake if the next message is an RMENU with the same timestamp.
   // Or, as of buggy TeamViewer, if the RMENU comes soon after (#783).
@@ -3129,10 +3138,13 @@ C	M	+C	+A	"	"
       return true;
   }
 
-  bool allow_shortcut = true;
+  // check whether to skip shortcut handling (DECSET 7783)
+  // but do not skip user-defined functions (#1351)
+  bool allow_shortcut = !term.shortcut_override;
 
-  if (!term.shortcut_override && old_alt_state <= ALT_ALONE) {
+  if (old_alt_state <= ALT_ALONE) {
     // user-defined shortcuts
+    // do not disable them in shortcut override mode (DECSET 7783) (#1351)
     //test: W("-:'foo';A+F3:;A+F5:flipscreen;A+F9:\"f9\";C+F10:\"f10\";p:paste;d:`date`;o:\"oo\";ö:\"öö\";€:\"euro\";~:'tilde';[:'[[';µ:'µµ'")
     if (*cfg.key_commands) {
       /* Look up a function tag for either of
@@ -3243,7 +3255,7 @@ C	M	+C	+A	"	"
           }
         }
 #ifdef debug_def_keys
-        printf("key %04X <%s>\n", *wbuf, tag);
+        printf("key %04X <%s>\n", *wbuf, tag ?: "null");
 #endif
 
         if (wlen < 0) {
@@ -4235,6 +4247,14 @@ bool
 
   TERM_VAR_REF(true)
   
+  if (key == VK_PROCESSKEY) {
+#ifdef debug_virtual_key_codes
+    printf("  - PROCESSKEY (%02X)\n", ImmGetVirtualKey(wnd));
+#endif
+    // reset modifier state after potential IME switch (#1353, see above)
+    win_key_reset();
+  }
+
 #ifdef debug_altgr
   if (send_test_vks(false, key))
     return false;

@@ -1,6 +1,6 @@
 // term.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-2023 Andy Koppe, 2016-2025 Thomas Wolff
+// Based on code from mintty by 2008-2023 Andy Koppe, 2016-2026 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -139,6 +139,11 @@ tblink_cb(void* data)
   
   term.tblinker = !term.tblinker;
   term_schedule_tblink();
+
+  // ensure blinking graphics are redisplayed;
+  // this could be controlled more fine-grained but seems to be sufficient
+  force_imgs = true;
+
   win_update_term(false);
 }
 
@@ -164,6 +169,11 @@ tblink2_cb(void* data)
   
   term.tblinker2 = !term.tblinker2;
   term_schedule_tblink2();
+
+  // ensure blinking graphics are redisplayed;
+  // this could be controlled more fine-grained but seems to be sufficient
+  force_imgs = true;
+
   win_update_term(false);
 }
 
@@ -3293,7 +3303,9 @@ void trace_line(char * tag, termchar * chars)
 #define at_cursor_pos(i, j)	((i == term.curs.y) && !((term.curs.x - j) >> 1))
 
 #define IGNWIDTH TATTR_EXPAND | TATTR_NARROW | TATTR_SINGLE | TATTR_CLEAR
-#define IGNEMOJATTR (TATTR_WIDE | ATTR_FGMASK | TATTR_COMBINING | IGNWIDTH)
+#define IGNEMOJTATTR TATTR_WIDE | TATTR_COMBINING
+#define IGNEMOJCATTR ATTR_BOLD | FONTFAM_MASK
+#define IGNEMOJATTR (IGNWIDTH | IGNEMOJTATTR | ATTR_FGMASK | IGNEMOJCATTR)
 
 static bool
 is_comcom(wchar ch)
@@ -3739,6 +3751,9 @@ void
               d[i].attr.attr &= ~ATTR_FGMASK;
               d[i].attr.attr |= TATTR_EMOJI;
               d[i].attr.truefg = em;
+              // clear font attributes of subsequent emoji components
+              // which would otherwise spoil emoji rendering
+              d[i].attr.attr &= ~FONTFAM_MASK;
             }
           }
         }

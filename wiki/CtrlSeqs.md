@@ -116,6 +116,8 @@ applications like text editors to adapt it to the current input target.
 ## Shortcut override mode ##
 
 When shortcut override mode is on, all shortcut key combinations are sent to the application instead of triggering window commands.
+Escape sequences in modifyOtherKeys mode and (since 3.8.3) user-defined 
+key assignments configured with option KeyFunctions stay in effect.
 
 | **sequence**  | **override** |
 |:--------------|:-------------|
@@ -445,12 +447,18 @@ so if both reporting modes are enabled, only one report is sent.
 
 ## Font glyph coverage enquiry ##
 
-Fonts vary widely in their Unicode coverage, i.e. they usually miss glyphs for many characters. The following sequence can be used to enquire about support for a specified list of characters.
+Fonts vary widely in their Unicode coverage, i.e. they usually miss glyphs for many characters. 
+The following sequence can be used to enquire about support for a specified list of characters.
 
 > `^[]7771;?;`_char0_`;`_char1_...`^G`
 
-Characters shall be specified with their decimal Unicode codepoint. Any number of characters can be given. Mintty replies with the same sequence, except that the question mark is replaced with an exclamation mark and that codes for characters that the current font does not have a glyph for are omitted.
-The function only works for characters in the Unicode BMP, smaller than U+10000.
+Characters shall be specified with their decimal Unicode codepoint. 
+Any number of characters can be given. 
+Mintty replies with the same sequence, except that the question mark is 
+replaced with an exclamation mark and that codes for characters that the 
+current font does not have a glyph for are omitted.
+From mintty 3.8.3, the function works for all characters, 
+also beyond the Unicode BMP, so for characters greater than U+FFFF.
 
 
 ## Wide characters ##

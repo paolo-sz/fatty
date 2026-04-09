@@ -135,7 +135,8 @@ scriptlib=-lusp10
 #downldlib="${SYSTEMROOT}/System32/urlmon.dll"
 downldlib=
 ifneq ($(platform), msys)
-  emojilib=-lgdiplus
+  emojilib = -lGdiPlus
+  scriptlib += -lDWrite
 endif
 extralibs=$(scriptlib) $(downldlib) $(emojilib) -lshlwapi
 LDFLAGS := -L$(shell $(CC) -print-file-name=w32api) -static-libgcc -static-libstdc++

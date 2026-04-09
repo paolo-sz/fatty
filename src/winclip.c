@@ -1,6 +1,6 @@
 // winclip.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-23 Andy Koppe, 2018-2025 Thomas Wolff
+// Based on code from mintty by 2008-23 Andy Koppe, 2018-2026 Thomas Wolff
 // Adapted from code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -1351,7 +1351,11 @@ static void
   TERM_VAR_REF(true)
     
   //printf("OpenClipboard win_paste\n");
-  if (!OpenClipboard(null))
+  // according to Windows doc, OpenClipboard(null) should be sufficient 
+  // for reading from the clipboard, but reportedly this may fail
+  // (https://cygwin.com/pipermail/cygwin/2026-February/259438.html)
+  // so let's make it more reliable
+  if (!OpenClipboard(wnd))
     return;
 
   if (cfg.input_clears_selection)
@@ -1380,7 +1384,8 @@ static void
 char *
 get_clipboard(void)
 {
-  if (!OpenClipboard(null))
+  // let's make this more reliable, see above
+  if (!OpenClipboard(wnd))
     return 0;
 
   HGLOBAL data;
@@ -1539,6 +1544,12 @@ dt_drop(IDropTarget *this_, IDataObject *obj,
       when CF_UNICODETEXT: paste_unicode_text(data);
       when CF_HDROP: paste_hdrop((HDROP)data);
     }
+
+    if (cfg.drop_focus & 1) {
+      // raise window to focus if enabled for terminal window:
+      SetForegroundWindow(wnd);
+      // these do not work: BringWindowToTop SetActiveWindow SetFocus
+    }
   }
   else {
     // support drag-and-drop to certain input fields
@@ -1575,6 +1586,12 @@ dt_drop(IDropTarget *this_, IDataObject *obj,
       // this will only work with the DIALOG_CLASS target
       SendMessage(h, WM_USER, (WPARAM)widget, (LPARAM)drop);
       free(drop);
+    }
+
+    if (cfg.drop_focus & 2) {
+      // raise window to focus if enabled for Options dialog:
+      SetForegroundWindow(wnd);
+      // these do not work: BringWindowToTop SetActiveWindow SetFocus
     }
   }
   return 0;

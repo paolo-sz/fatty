@@ -102,6 +102,8 @@ extern void win_zoom_font(int, bool sync_size_with_font);
 extern void win_set_font_size(int, bool sync_size_with_font);
 extern uint win_get_font_size(void);
 
+extern bool dw_check_glyphs(xchar * xcs, uint num, cattrflags attr);
+extern bool dw_has_glyph(xchar xc, cattrflags attr);
 extern void win_check_glyphs(wchar *wcs, uint num, cattrflags attr);
 #define get_errch(...) (get_errch)(term_p, ##__VA_ARGS__)
 extern wchar (get_errch)(struct term *term_p, wchar *wcs, cattrflags attr);

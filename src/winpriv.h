@@ -197,6 +197,8 @@ extern bool get_scroll_lock(void);
 extern void sync_scroll_lock(bool locked);
 extern void win_keyclick(void);
 
+#define wslwinpath(...) (wslwinpath)(term_p, ##__VA_ARGS__)
+extern char * (wslwinpath)(struct term* term_p, string path);
 extern wchar * dewsl(wchar * wpath);
 extern void shell_exec(wstring wpath);
 extern void win_init_drop_target(void);

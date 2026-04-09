@@ -137,6 +137,8 @@ bool checked_desktop_config = false;
 bool title_settable = true;
 static string report_geom = 0;
 static bool report_moni = false;
+static bool report_fonts = false;
+static int dynfonts = 0;
 bool report_config = false;
 bool report_child_pid = false;
 bool report_child_tty = false;
@@ -246,6 +248,8 @@ static BOOL (WINAPI * pGetLayeredWindowAttributes)(HWND, COLORREF *, BYTE *, DWO
 #if WINVER >= 0x0601
 static BOOL (WINAPI * pGetGestureInfo)(HGESTUREINFO, GESTUREINFO *) = 0;
 static BOOL (WINAPI * pCloseGestureInfoHandle)(HGESTUREINFO) = 0;
+static BOOL (WINAPI * pGetGestureConfig)(HWND, DWORD, DWORD, UINT*, GESTURECONFIG*, UINT) = 0;
+static BOOL (WINAPI * pSetGestureConfig)(HWND, DWORD, UINT, GESTURECONFIG*, UINT) = 0;
 #endif
 
 
@@ -331,9 +335,80 @@ is_win_dark_mode(void)
 }
 
 
-// WSL path conversion, using wsl.exe
-#define wslwinpath(...) (wslwinpath)(term_p, ##__VA_ARGS__)
+/*
+   Capture output of cmd, using Windows CreateProcess
+   - variants with Posix functions work
+     - with delay (forkpty)
+     - not in standalone deployment (fork)
+     - not at all (popen)
+ */
 static char *
+cmd_out_capture_start_process(char * cmd)
+{
+  HANDLE readPipe, writePipe;
+  SECURITY_ATTRIBUTES sa;
+  ZeroMemory(&sa, sizeof(sa));
+  sa.nLength = sizeof(sa);
+  sa.bInheritHandle = TRUE;
+  // Create pipe for stdout
+  if (!CreatePipe(&readPipe, &writePipe, &sa, 0))
+    return 0;
+
+  // Ensure read handle is not inherited
+  SetHandleInformation(readPipe, HANDLE_FLAG_INHERIT, 0);
+
+  STARTUPINFOW si;
+  ZeroMemory(&si, sizeof(si));
+  si.cb = sizeof(si);
+  si.dwFlags = STARTF_USESTDHANDLES;
+  //si.dwFlags = STARTF_USESTDHANDLES | STARTF_USESHOWWINDOW;
+  //si.wShowWindow = SW_HIDE;
+
+  si.hStdOutput = writePipe;
+  si.hStdError  = writePipe;  // optional: capture stderr too
+  si.hStdInput = GetStdHandle(STD_INPUT_HANDLE);  // not needed here
+
+  PROCESS_INFORMATION pi;
+  ZeroMemory(&pi, sizeof(pi));
+
+  wchar * wcmd = cs__mbstowcs(cmd);  // support non-ASCII paths
+  bool res = CreateProcessW(NULL, wcmd,
+                            NULL, NULL,
+                            TRUE,  // inherit handles
+                            CREATE_NO_WINDOW,
+                            NULL, NULL,
+                            &si, &pi);
+  free(wcmd);
+  if (!res) {
+    CloseHandle(readPipe);
+    CloseHandle(writePipe);
+    return 0;
+  }
+
+  CloseHandle(writePipe);  // parent doesn't write
+
+  // Read output
+  static char buffer[MAX_PATH + 1];
+  DWORD bytesRead;
+  // we need only one line of output
+  ReadFile(readPipe, buffer, sizeof(buffer) - 1, &bytesRead, NULL);
+
+  CloseHandle(readPipe);
+
+  WaitForSingleObject(pi.hProcess, INFINITE);
+  CloseHandle(pi.hProcess);
+  CloseHandle(pi.hThread);
+
+  if (bytesRead > 0) {
+    buffer[bytesRead] = 0;
+    return buffer;
+  }
+  else
+    return 0;
+}
+
+// WSL path conversion, using wsl.exe
+char *
 (wslwinpath)(struct term* term_p, string path)
 {
   TERM_VAR_REF(true);
@@ -346,25 +421,51 @@ static char *
     // wslpath -w fails in some cases during pathname postprocessing
     // ~ needs to be unquoted to be expanded by sh
     // other paths should be quoted; pathnames with quotes are not handled
+    //
+    // this used to be wrapped into a WSL `sh -c` but for obscure reason, 
+    // invoking wsl directly here injected some nasty escape sequences, 
+    // among them a device attributes request, which would embed the 
+    // response after exiting mintty if invoked from another terminal -
+    // to prevent this, the whole invocation could be wrapped into another 
+    // outer `sh -c`; fortunately, it turns out the both `sh` 
+    // wrappers are not needed (anymore)
+    bool specdist = wslname && *wslname;
+    // handle ~ unquoted so the shell can expand it
+    // paths beginning with ~/ are handled below
     if (*path == '~')
-      wslcmd = asform("wsl -d %ls sh -c 'wslpath -m ~ 2>/dev/null'", wslname);
+      wslcmd = asform("wsl %s %ls wslpath -m ~", 
+                      specdist ? "-d" : "", specdist ? wslname : W(""));
     else
-      wslcmd = asform("wsl -d %ls sh -c 'wslpath -m \"%s\" 2>/dev/null'", wslname, path);
+      wslcmd = asform("wsl %s %ls wslpath -m '%s'", 
+                      specdist ? "-d" : "", specdist ? wslname : W(""),
+                      path);
+
+#ifdef use_popen_for_wslpath
+#warning the popen version interprets ~ host-side (not WSL-side)
+#warning the popen version fails standalone
     FILE * wslpopen = popen(wslcmd, "r");
-    char line[MAX_PATH + 1];
-    char * got = fgets(line, sizeof line, wslpopen);
-    pclose(wslpopen);
+    char * got = 0;
+    if (wslpopen) {
+      static char line[MAX_PATH + 1];
+      got = fgets(line, sizeof line, wslpopen);
+      pclose(wslpopen);
+    }
+#else
+    char * got = cmd_out_capture_start_process(wslcmd);
+#endif
+    //printf("<%s> -> [WSL %ls] <%s>\n", wslcmd, wslname, line);
     free(wslcmd);
     if (!got)
       return 0;
+
     // adjust buffer
-    int len = strlen(line);
-    if (line[len - 1] == '\n')
-      line[len - 1] = 0;
+    int len = strlen(got);
+    if (len && got[len - 1] == '\n')
+      got[len - 1] = 0;
     // return path string
-    if (*line)
-      return strdup(line);
-    else  // file does not exist
+    if (*got)
+      return strdup(got);
+    else
       return 0;
   };
 
@@ -391,11 +492,13 @@ static char *
       else
         abspath = strdup(path);
       trace_guard(("wslwinpath abspath %s\n", abspath));
+#ifdef reject_relative_path
       if (*abspath != '/') {
         // failed to determine an absolute path
         free(abspath);
         return 0;
       }
+#endif
     }
     else
       abspath = strdup(path);
@@ -628,6 +731,10 @@ load_dwm_funcs(void)
       (BOOL (*)(HGESTUREINFO, GESTUREINFO*))((void (*)(void))GetProcAddress(user32, "GetGestureInfo"));
     pCloseGestureInfoHandle =
       (BOOL (*)(HGESTUREINFO))((void (*)(void))GetProcAddress(user32, "CloseGestureInfoHandle"));
+    pGetGestureConfig =
+      (BOOL (*)(HWND, DWORD, DWORD, UINT*, GESTURECONFIG*, UINT))((void (*)(void))GetProcAddress(user32, "GetGestureConfig"));
+    pSetGestureConfig =
+      (BOOL (*)(HWND, DWORD, UINT, GESTURECONFIG*, UINT))((void (*)(void))GetProcAddress(user32, "SetGestureConfig"));
 #endif
   }
   if (uxtheme) {
@@ -3464,6 +3571,23 @@ static void
     term_height -= SEARCHBAR_HEIGHT;
   }
 
+  if (IsZoomed(wnd)) {
+    // ensure window will be maximised after changed monitor dimensions, e.g.
+    // - after changing DPI/zoom factor
+    // - after moving window to other monitor (git-for-windows/git#6085)
+    // avoid complete (and error-prone) refactoring of window resizing code;
+    // as a workaround, clone the essential code of win_maximise(1):
+
+   /* Resize ourselves to exactly cover the nearest monitor. */
+    MONITORINFO mi;
+    get_my_monitor_info(&mi);
+    RECT fr = mi.rcMonitor;
+    // set window size
+    SetWindowPos(wnd, HWND_TOP, fr.left, fr.top,
+                 fr.right - fr.left, fr.bottom - fr.top,
+                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+  }
+
   if (scale_font_with_size && term.cols != 0 && term.rows != 0) {
     // calc preliminary size (without font scaling), as below
     // should use term_height rather than rows; calc and store in term_resize
@@ -4886,47 +5010,72 @@ static struct {
           "PAN",
           "ROTATE",
           "TWOFINGERTAP",
-          "PRESSANDTAP"};
-        printf("WM_GESTURE %X %d:%s %d/%d %16llX +%d\n", gi.dwFlags, gi.dwID, gesturename[gi.dwID - 1], gi.ptsLocation.x, gi.ptsLocation.y, gi.ullArguments, gi.cbExtraArgs);
+          "PRESSANDTAP"
+        };
+        printf("WM_GESTURE (mm %d as %d os %d) %X %d:%s %d/%d %16llX +%d\n", 
+               term.mouse_mode, term.on_alt_screen, term.show_other_screen, 
+               gi.dwFlags, gi.dwID, gesturename[gi.dwID - 1], gi.ptsLocation.x, gi.ptsLocation.y, gi.ullArguments, gi.cbExtraArgs);
 #endif
+
+        if (!term.mouse_mode && !term.on_alt_screen)
+          break;
+        if (term.show_other_screen)
+          break;
 
         bool handled = false;
         switch (gi.dwID) {
            when GID_ZOOM:
+             // touch zooming apparently works implicitly
              //handled = true;
-           when GID_PAN: {
-             static int pan_x, pan_y;
-             int x = gi.ptsLocation.x;
-             int y = gi.ptsLocation.y;
-             //int finger_delta = gi.ullArguments;
+           when GID_PAN: 
+             if (cfg.touch_scroll) {
+               static int pan_x, pan_y;
+               int x = gi.ptsLocation.x;
+               int y = gi.ptsLocation.y;
 
-             if (gi.dwFlags & GF_BEGIN) {
-               pan_x = x;
-               pan_y = y;
-             }
-             else if (gi.dwFlags & GF_INERTIA) {
-               // not observed
-             }
-             else {  // regardless of whether (gi.dwFlags & GF_END) or not
-               POINT wpos = {.x = x, .y = y};
-               ScreenToClient(wnd, &wpos);
-               int height, width;
-               win_get_pixels(&height, &width, false);
-               height += OFFSET + 2 * PADDING;
-               width += 2 * PADDING;
-               int delta = y - pan_y;
-               (void)pan_x;
-               //printf("%d %d %d %d %d\n", wpos.y, wpos.x, height, width, delta);
-               if (delta && wpos.y >= 0 && wpos.y < height) {
-                 if (wpos.x >= 0 && wpos.x < width)
-                   win_mouse_wheel(wpos, false, delta);
+               if (gi.dwFlags & GF_BEGIN) {
+                 // remember position touched, for subsequent delta
+                 pan_x = x;
+                 pan_y = y;
                }
+               else {  // regardless of whether (gi.dwFlags & GF_END) or not
+                 static int finger_delta = 400;
+                 if (gi.ullArguments)
+                   finger_delta = gi.ullArguments;
+                 POINT wpos = {.x = x, .y = y};
+                 ScreenToClient(wnd, &wpos);
+                 int height, width;
+                 win_get_pixels(&height, &width, false);
+                 height += OFFSET + 2 * PADDING;
+                 width += 2 * PADDING;
+                 bool horiz = abs(x - pan_x) > abs(y - pan_y);
+                 int delta = horiz ? x - pan_x : y - pan_y;
+                 //printf("%d %d %d %d hor %d delta %d\n", wpos.y, wpos.x, height, width, horiz, delta);
 
-               pan_x = x;
-               pan_y = y;
+                 // heuristic adjustment of scrolling speed
+                 if (term.on_alt_screen)
+                   delta *= 2;
+                 if (term.mouse_mode)
+                   delta /= 2;
+                 if (!(gi.dwFlags & GF_INERTIA))
+                   delta *= 2;
+                 delta = delta * finger_delta / 400;
+
+                 if (horiz) {
+                   // experimental; check speed scaling
+                   horscroll(delta / 20);
+                 }
+                 else if (delta && wpos.y >= 0 && wpos.y < height) {
+                   if (wpos.x >= 0 && wpos.x < width)
+                     win_mouse_wheel(wpos, false, delta);
+                 }
+
+                 // remember position reached, for subsequent delta
+                 pan_x = x;
+                 pan_y = y;
+               }
+               handled = true;
              }
-             handled = true;
-           }
            when GID_ROTATE:
              //handled = true;
            when GID_TWOFINGERTAP:
@@ -7119,8 +7268,7 @@ main(int argc, char *argv[])
 #endif
       when '~':
         start_home = true;
-        chdir(home);
-        trace_dir(asform("~: %s", home));
+        // defer chdir to after options handling in case of -~ --WSL...
       when '': {
         int res = chdir(optarg);
         trace_dir(asform("^D: %s", optarg));
@@ -7228,9 +7376,8 @@ main(int argc, char *argv[])
           when 'm':
             report_moni = true;
           when 'f':
-            list_fonts(true);
-            exit_fatty(0);
-            exit(0);
+            report_fonts = true;
+            // defer list_fonts to after loading temporary fonts
           when 'R':
             list_printers();
             exit_fatty(0);
@@ -7373,6 +7520,61 @@ main(int argc, char *argv[])
       when 'P':
         set_arg_option("ConPTY", optarg);
     }
+  }
+  //printf("WSL <%ls>\n", wslname);
+
+#ifdef debug_wslwinpath
+  show_info(wslwinpath("~"));
+  show_info(wslwinpath("~/abc"));
+  show_info(wslwinpath("/ab/cd"));
+  show_info(wslwinpath("/ö€"));
+  show_info(wslwinpath("/a b/c d"));
+  show_info(wslwinpath("a b/c d") ?: "NULL");
+  show_info(wslwinpath("ab/cd") ?: "NULL");
+  show_info(wslwinpath("ö€") ?: "NULL");
+#endif
+
+  // change to home directory if requested
+  if (start_home) {
+    if (support_wsl) {
+      // set WSL home as reference for relative save and log filenames
+      char * home = wslwinpath("~");
+      // starting the WSL session in home dir is achieved below by parameters
+      // here we change the terminal working dir for file saving
+      if (home)
+        chdir(home);
+      trace_dir(asform("~: %s", home));
+    }
+    else {
+      chdir(home);
+      trace_dir(asform("~: %s", home));
+    }
+  }
+
+  // Provide temporary fonts
+  auto add_font = [](wchar_t * fn) -> void
+  {
+    int n = AddFontResourceExW(fn, FR_PRIVATE, 0);
+    if (n) {
+      if (report_fonts) {
+        if (!dynfonts)
+          printf("Adding dynamic fonts:\n");
+        printf("   %ls (%d)\n", fn, n);
+      }
+      dynfonts += n;
+    }
+    else
+      printf("Failed to add font %ls\n", fn);
+  };
+  handle_file_resources(W("fonts/*"), add_font);
+  //printf("Added %d fonts\n", dynfonts);
+
+  if (report_fonts) {
+    if (dynfonts)
+      printf(" - Added %d fonts\n", dynfonts);
+    printf("Available monospace fonts:\n");
+    list_fonts(true);
+    exit(0);
   }
 
   copy_config(const_cast<char *>("main after -o"), &file_cfg, &cfg);
@@ -7876,19 +8078,6 @@ main(int argc, char *argv[])
   class_atom = RegisterClassExW(&tmp_wndc);
 
 
-  // Provide temporary fonts
-  static int dynfonts = 0;
-  auto add_font = [](wchar * fn)
-  {
-    int n = AddFontResourceExW(fn, FR_PRIVATE, 0);
-    if (n)
-      dynfonts += n;
-    else
-      printf("Failed to add font %ls\n", fn);
-  };
-  handle_file_resources(W("fonts/*"), add_font);
-  //printf("Added %d fonts\n", dynfonts);
-
   // Initialise the fonts, thus also determining their width and height.
   if (per_monitor_dpi_aware && pGetDpiForMonitor) {
     // we cannot avoid double win_init_fonts completely because of 
@@ -8306,6 +8495,21 @@ main(int argc, char *argv[])
       trace_winsize("launch");
     }
   }
+
+#if WINVER >= 0x0601
+  // Set up touch screen behaviour.
+  // The PAN gesture will be handled like mouse scroll events.
+  if (pSetGestureConfig && cfg.touch_scroll && cfg.touch_scroll > 1) {
+    GESTURECONFIG gc;
+    UINT uiGcs = 1;
+    ZeroMemory(&gc, sizeof(gc));
+    gc.dwID  = GID_PAN;
+    pGetGestureConfig(wnd, 0, 0, &uiGcs, &gc, sizeof(GESTURECONFIG));
+    //printf("gc pan %d %02X %02X\n", gc.dwID, gc.dwWant, gc.dwBlock);
+    gc.dwWant = cfg.touch_scroll;
+    pSetGestureConfig(wnd, 0, uiGcs, &gc, sizeof(GESTURECONFIG));
+  }
+#endif
 
   configure_taskbar(app_id);
 

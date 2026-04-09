@@ -83,6 +83,7 @@ typedef struct {
   font_spec font;
   font_spec fontfams[12];
   wstring font_choice;
+  string font_subst;
   wstring font_sample;
   bool show_hidden_fonts;
   char font_smoothing;
@@ -147,6 +148,8 @@ typedef struct {
   wstring mouse_pointer;
   wstring appmouse_pointer;
   wstring pixmouse_pointer;
+  int touch_scroll;
+  int drop_focus;
   // Selection
   bool input_clears_selection;
   bool copy_on_select;

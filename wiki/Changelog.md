@@ -1,4 +1,32 @@
 Terminal features
+  * Font glyph coverage enquiry also works beyond the Unicode BMP (~#1352).
+  * Suppress ReGIS delay command on graphics refresh.
+  * Ensure refresh of blinking graphics (broken since 3.7.9).
+  * Fix emoji sequence rendering in context of font or changing attributes.
+
+Character rendering
+  * Font substitution mechanism checks glyph coverage and selects suitable alternative font (#1352).
+
+Keyboard handling
+  * After IME option switch, reset Control state to avoid input misinterpretation (#1353).
+  * User-defined key assignments (setting KeyFunctions) stay in effect in shortcut override mode (~#1351).
+
+Window handling
+  * Drag-and-drop onto terminal or Options sets window focus (#1354).
+  * Keep window maximised after changing monitor dimensions (git-for-windows/git#6085).
+
+Other
+  * Restore Windows XP compatibility.
+  * Fix WSL home dir conversion (option -~).
+  * Make reading from clipboard more reliable (https://cygwin.com/pipermail/cygwin/2026-February/259438.html).
+
+Configuration
+  * New option DropFocus (#1354).
+  * New option FontSubst (#1352).
+
+### 3.8.2 (15 February 2026) ###
+
+Terminal features
   * Change HTML print/export to write unwrapped lines by default (#1336).
   * New escape sequence variation CSI 10 ; 8 i to print scrollback and screen (#1336).
   * Revise HTML blinking and invisible attributes; enable copying (#1336).
@@ -10,11 +38,25 @@ Terminal features
 Graphics support
   * ReGIS vector graphics support.
 
+Character rendering
+  * Optimise self-drawn Box Drawing characters for some speed-up (#1349).
+  * Howto: configure proper font-rendered box drawing characters (#1349).
+
 Keyboard handling
   * Fix sticky modifier while in IME input mode (#1345).
 
+Touch screen handling
+  * Touch scrolling by recognition of Windows PAN gesture (#1073).
+
 Window handling
   * Enable terminal rewrap on resize by default.
+  * Declare per-monitor high DPI support in manifest (#1339).
+
+Other
+  * The "About" display includes the mintty process ID.
+  * Enable saving image and HTML dumps to home directory, also in WSL (mintty/wsltty#372).
+  * Wiki: configuration example for text-to-speech output (~#1350).
+  * Fix log filter.
 
 Configuration
   * New option ExportHTMLUnwrapped (#1336).
@@ -22,6 +64,7 @@ Configuration
   * Change default setting RewrapOnResize=yes.
   * Renamed option ImageClipChars from SixelClipChars, keeping old name as alias.
   * New options ReGISFont, ReGISTension, ReGISGrid.
+  * New option TouchScroll.
 
 ### 3.8.1 (18 September 2025) ###
 

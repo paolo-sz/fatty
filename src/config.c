@@ -100,6 +100,7 @@ const config default_cfg = {
               {name : W(""), size : 0, weight : 400, isbold : false},
               {name : W("Courier New"), size : 0, weight : 400, isbold : false}},
   font_choice : W(""),
+  font_subst : "",
   font_sample : W(""),
   show_hidden_fonts : false,
   font_smoothing : FS_DEFAULT,
@@ -164,6 +165,8 @@ const config default_cfg = {
   mouse_pointer : W("ibeam"),
   appmouse_pointer : W("arrow"),
   pixmouse_pointer : W("cross"),
+  touch_scroll : 1,
+  drop_focus : 3,
   // Selection
   input_clears_selection : true,
   copy_on_select : true,
@@ -412,6 +415,7 @@ options[] = {
   // Text
   {"Font", OPT_WSTRING, offcfg(font.name)},
   {"FontChoice", OPT_WSTRING, offcfg(font_choice)},
+  {"FontSubst", OPT_STRING, offcfg(font_subst)},
   {"FontSample", OPT_WSTRING, offcfg(font_sample)},
   {"FontSize", OPT_INT | OPT_LEGACY, offcfg(font.size)},
   {"FontHeight", OPT_INT, offcfg(font.size)},
@@ -507,6 +511,8 @@ options[] = {
   {"MousePointer", OPT_WSTRING, offcfg(mouse_pointer)},
   {"AppMousePointer", OPT_WSTRING, offcfg(appmouse_pointer)},
   {"PixMousePointer", OPT_WSTRING, offcfg(pixmouse_pointer)},
+  {"TouchScroll", OPT_INT, offcfg(touch_scroll)},
+  {"DropFocus", OPT_INT, offcfg(drop_focus)},
 
   // Selection
   {"ClearSelectionOnInput", OPT_BOOL, offcfg(input_clears_selection)},
@@ -862,7 +868,7 @@ save_filename(char * suf)
   // expand initial ~ or $variable
   char * sep;
   if (*pat == '~' && pat[1] == '/') {
-    char * pat1 = asform("%s%s", home, pat + 1);
+    char * pat1 = asform("%s%s", support_wsl ? (wslwinpath)(win_active_terminal(), "~") : home, pat + 1);
     free(pat);
     pat = pat1;
   }
@@ -3929,7 +3935,7 @@ fontenum(const ENUMLOGFONTW *lpelf, const NEWTEXTMETRICW *lpntm, DWORD fontType,
     fn = renewn(fn, wcslen(fn) + 1);
 
     if (pdata->report)
-      printf("%03ld %ls|%ls [2m[%ls|%ls][0m\n", (long int)lfp->lfWeight, fn, st, lfp->lfFaceName, lpelf->elfStyle);
+      printf("   %03ld %ls|%ls [2m[%ls|%ls][0m\n", (long int)lfp->lfWeight, fn, st, lfp->lfFaceName, lpelf->elfStyle);
     else
       enterfontlist(fn, lfp->lfWeight, st);
   }

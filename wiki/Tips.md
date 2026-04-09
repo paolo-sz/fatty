@@ -201,9 +201,9 @@ for WSL interaction:
 * Terminal types for Options menu are offered as they exist on WSL.
 * Shortcut start directory fallback handling.
 * Handling of option GuardNetworkPaths.
-* Handling of option ExitCommands..
-* Handling of option DropCommands..
-* Handling of option UserCommands..
+* Handling of option ExitCommands.
+* Handling of option DropCommands.
+* Handling of options UserCommands / CtxMenuFunctions.
 * Display of start or exit error messages.
 * Handling of foreground working directory.
 
@@ -483,6 +483,28 @@ manage this setting themselves):
 ```
 stty -ixon
 ```
+
+
+## Terminal mode broken ##
+
+A terminal may yield broken output if terminal modes got changed.
+This is a common problem of all terminals and may affect all kinds 
+of mode-dependent character display, as modified by auto-wrap, 
+scrolling region and origin modes, inverse video, hidden cursor, 
+various ways of changing the character encoding, and others.
+Likewise, the terminal line settings may have been changed for some 
+application-specific reason and not properly changed back.
+These problem may arise particularly after
+* binary output to the screen
+* buggy output
+* incomplete output (e.g. after output of a file containing a ^Z with a DOS/Windows cmd tool like type or copy without /B)
+* irregular termination of an application
+
+To fix the state and restore proper behaviour, do one of the following:
+* reset most terminal attributes with a Soft Terminal Reset `echo -e '\e[!p'`
+* reset terminal attributes with a Full Reset `echo -e '\ec'`
+* restore interactive terminal line settings with `stty sane`
+* combine the above with `reset`
 
 
 ## Readline configuration ##
@@ -998,14 +1020,18 @@ specifications preceding over the more general script specifications.
 FontChoice=Greek:3;|Greek Extended:4
 ```
 
+### Box Drawing characters ###
+
 For Box Drawing characters (U+2500..U+257F), most fonts do not provide 
 proper glyphs for seamless box drawing. The following font configuration 
-would fix that. However, option BoxDrawing (default on) overrides this 
-and lets mintty draw box drawing characters itself.
+would fix that. However, self-drawn graphics may render a bit slower, 
+particularly on slower machines.
+The following combination of settings would disable self-drawing for 
+box charcters and also configure a suitable secondary font for them.
 ```
+BoxDrawing=no
 FontChoice=|Box Drawing:3
 Font3=DejaVu Sans Mono
-BoxDrawing=no
 ```
 
 ### Dynamic fonts ###
@@ -1687,6 +1713,15 @@ consider to reduce ambiguities. Note that a future (or currently patched)
 version of the `uniq` tool is needed to cover non-ASCII keyboard shortcuts.
 
 
+## Text-to-speech ##
+
+To support speech output of a text selection, configure a key combination 
+to invoke a speech generation program:
+```
+KeyFunctions=F12:`espeak "$MINTTY_SELECT"`
+```
+
+
 ## Character information display ##
 
 Diagnostic display of current character information can be toggled 
@@ -1702,7 +1737,7 @@ and the character information output simply overwrite each other.
 
 Mintty supports a few extension features:
 * Application-specific drag-and-drop transformations (option `DropCommands`)
-* User-defined commands and filters for context menu (option `UserCommands`)
+* User-defined commands and filters for context menu (options `UserCommands` / `CtxMenuFunctions`)
 * User-defined functions for key combinations (option `KeyFunctions`)
 * User-defined function entries for system menu (option `SysMenuFunctions`)
 

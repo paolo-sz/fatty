@@ -1,6 +1,6 @@
 ﻿// windialog.c (part of FaTTY)
 // Copyright 2015 Juho Peltonen
-// Based on code from mintty by 2008-11 Andy Koppe, -2024 Thomas Wolff
+// Based on code from mintty by 2008-11 Andy Koppe, -2026 Thomas Wolff
 // Based on code from PuTTY-0.60 by Simon Tatham and team.
 // Licensed under the terms of the GNU General Public License v3 or later.
 
@@ -990,8 +990,8 @@ win_show_about(void)
   DWORD win_version = GetVersion();
   uint build = HIWORD(win_version);
   char * aboutfmt =
-    asform("%s [Windows %u]\n%s\n%s\n%s\n\n%s", 
-           VERSION_TEXT, build, COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT), _(ABOUT_TEXT));
+    asform("%s [Windows %u] {PID %u}\n%s\n%s\n%s\n\n%s", 
+           VERSION_TEXT, build, getpid(), COPYRIGHT, LICENSE_TEXT, _(WARRANTY_TEXT), _(ABOUT_TEXT));
   char * abouttext = asform(aboutfmt, WEBSITE);
 #endif
   free(aboutfmt);

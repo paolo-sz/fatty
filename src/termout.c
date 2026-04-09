@@ -1566,7 +1566,7 @@ void
   cattrflags attr = term.curs.attr.attr;
   ucschar c = hwc ? combine_surrogates(hwc, wc) : wc;
 
-  // determine alternative font
+  // determine alternative font configured as script-specific secondary font
   uchar cf = scriptfont(c);
   // handle configured glyph shift
   uint glyph_shift = cf >> 4;  // extract glyph shift / glyph centering flag
@@ -1587,6 +1587,46 @@ void
   if (glyph_shift)
     term.curs.attr.attr |= ATTR_GLYPHSHIFT;
 #endif
+
+  // check glyph, switch to alternative font if configured for substitution
+  // 4 approaches were considered and test:
+  // 1. check here with the glyph checking function dw_check_glyphs;
+  //    this raises a huge performance penalty
+  // 2. do it in the rendering loop (term_paint) instead;
+  //    while fast in user response, that increases 
+  //    CPU consumption significantly without further optimisation
+  // 3. check here with single-character glyph checking function HasCharacter;
+  //    small performance penalty; cache detection font objects to avoid it
+  // 4. check here against a list of supported character ranges;
+  //    determined from the font once on-demand in the checking function;
+  //    not fully implemented as approach 3. turns out well
+  // for further optimisation, only non-ASCII characters are checked
+  string fs = cfg.font_subst;
+  if (*fs && c > 0x7F) {
+    cattrflags substattr = term.curs.attr.attr;
+    bool ok = dw_has_glyph(c, term.curs.attr.attr);
+    while (!ok) {
+      if (ok)
+        break;
+      int fn, len;
+      if (sscanf(fs, "%d%n", &fn, &len) > 0) {
+        if (fn > 0 && fn <= 10) {
+          substattr &= ~FONTFAM_MASK;
+          substattr |= ((cattrflags)fn << ATTR_FONTFAM_SHIFT);
+          ok = dw_has_glyph(c, substattr);
+          if (ok) {
+            term.curs.attr.attr = substattr;
+            break;
+          }
+        }
+        fs += len;
+        while (*fs == ' ' || *fs == ',' || *fs == ';')
+          fs ++;
+      }
+      else
+        break;
+    }
+  }
 
   // Auto-expanded glyphs
   if (width == 2
@@ -4980,19 +5020,25 @@ static void
     when 7771: {  // Enquire about font support for a list of characters
       if (*s++ != '?')
         return;
+      xchar xcs[term.cmd_len];
       wchar wcs[term.cmd_len];
       uint n = 0;
       while (*s) {
         if (*s++ != ';')
           return;
-        wcs[n++] = strtoul(s, &s, 10);
+        ulong c = strtoul(s, &s, 10);
+        xcs[n] = c;
+        wcs[n] = c;
+        n++;
       }
-      win_check_glyphs(wcs, n, term.curs.attr.attr);
+      bool dw = dw_check_glyphs(xcs, n, term.curs.attr.attr);
+      if (!dw)
+        win_check_glyphs(wcs, n, term.curs.attr.attr);
       s = term.cmd_buf;
       for (size_t i = 0; i < n; i++) {
         *s++ = ';';
-        if (wcs[i])
-          s += sprintf(s, "%u", wcs[i]);
+        if (dw ? xcs[i] : wcs[i])
+          s += sprintf(s, "%u", xcs[i]);
       }
       *s = 0;
       child_printf("\e]7771;!%s%s", term.cmd_buf, osc_fini());
