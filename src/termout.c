@@ -47,6 +47,17 @@ extern "C" {
  */
 #define CPAIR(x, y) ((x) << 8 | (y))
 
+/* This is an incrementing assignment in saturation mode, 
+   i.e. the result does not overflow but is limited by the maximum value.
+ */
+#define MAX_OF_TYPE(T) \
+        ( (T)-1 > (T)0 \
+          ? (T)-1 \
+          : (T)(((unsigned long long)1 << (sizeof(T) * 8 - 1)) - 1) \
+        )
+#define assignmax(v, e)	{typeof(v) _v = e; v = _v >= v ? _v : MAX_OF_TYPE(typeof(v));}
+
+
 static string primary_da1 = "\e[?1;2c";
 static string primary_da2 = "\e[?62;2;3;4;6;9;15;29c";
 static string primary_da3 = "\e[?63;2;3;4;6;9;11;15;29c";
@@ -1588,8 +1599,8 @@ void
     term.curs.attr.attr |= ATTR_GLYPHSHIFT;
 #endif
 
-  // check glyph, switch to alternative font if configured for substitution
-  // 4 approaches were considered and test:
+  // check glyph, switch to alternative font if configured for substitution;
+  // 4 approaches were considered and tested:
   // 1. check here with the glyph checking function dw_check_glyphs;
   //    this raises a huge performance penalty
   // 2. do it in the rendering loop (term_paint) instead;
@@ -6028,7 +6039,7 @@ static void
         else if (c >= '0' && c <= '9') {
           uint i = term.csi_argc - 1;
           if (i < lengthof(term.csi_argv)) {
-            term.csi_argv[i] = 10 * term.csi_argv[i] + c - '0';
+            assignmax(term.csi_argv[i], 10 * term.csi_argv[i] + c - '0');
             if ((int)term.csi_argv[i] < 0)
               term.csi_argv[i] = INT_MAX;  // capture overflow
             term.csi_argv_defined[i] = 1;
@@ -6088,7 +6099,7 @@ static void
       when OSC_NUM:
         switch (c) {
           when '0' ... '9':  /* OSC command number */
-            term.cmd_num = term.cmd_num * 10 + c - '0';
+            assignmax(term.cmd_num, term.cmd_num * 10 + c - '0');
             if (term.cmd_num < 0)
               term.cmd_num = -99;  // prevent wrong valid param
           when ';':
@@ -6206,7 +6217,7 @@ static void
             //printf("DCS param %c\n", c);
             if (term.csi_argc < 2) {
               uint i = term.csi_argc;
-              term.csi_argv[i] = 10 * term.csi_argv[i] + c - '0';
+              assignmax(term.csi_argv[i], 10 * term.csi_argv[i] + c - '0');
             }
           when ';' case_or ':':  /* DCS parameter separator */
             //printf("DCS param sep %c\n", c);

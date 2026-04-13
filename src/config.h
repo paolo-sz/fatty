@@ -61,10 +61,10 @@ typedef struct {
   colour fg_colour, bold_colour, blink_colour, bg_colour, cursor_colour;
   colour tek_fg_colour, tek_bg_colour, tek_cursor_colour;
   colour tek_write_thru_colour, tek_defocused_colour;
-  colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
   int tek_glow;
   int tek_strap;
   colour underl_colour, hover_colour;
+  colour tab_fg_colour, tab_bg_colour, tab_attention_bg_colour, tab_active_bg_colour;
   int disp_space, disp_clear, disp_tab;
   bool underl_manual;
   colour sel_fg_colour, sel_bg_colour;
@@ -77,6 +77,7 @@ typedef struct {
   bool blurred;
   bool opaque_when_focused;
   char cursor_type;
+  int cursor_size;
   bool cursor_blinks;
   int config_themes;
   // Text

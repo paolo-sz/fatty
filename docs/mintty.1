@@ -982,6 +982,7 @@ It can be assigned to a modifier key in the Options menu, section Keys,
 or to the CapsLock key.
 The Compose key function can also be assigned to another key combination 
 using user-definable function \fBcompose\fP in setting \fBKeyFunctions\fP.
+Since 3.8.3, shortcut override mode no longer disables a user-assigned Compose key.
 
 Details: Mintty extracts a list of compose key combinations from the 
 current X11 cygwin package, file 
@@ -1550,6 +1551,15 @@ The line cursor is displayed with the width set in the Accessibility Options
 control panel / Ease of Access Center, mouse panel or Optimize visual display.
 
 .TQ
+\fBCursor size\fP (CursorSize=0)
+This option sets the default width of underscore and vertical line cursors, 
+using values as defined for the dynamic cursor size escape sequence 
+\fIhttps://github.com/mintty/mintty/wiki/CtrlSeqs#cursor\-size\fP, 
+which would in turn override the configured default.
+The default (value 0) determines a suitable size based on the 
+system-configured caret width.
+
+.TQ
 \fBCursor blink\fP (CursorBlinks=yes)
 If enabled, the cursor blinks at the rate set in the Keyboard control panel.
 
@@ -1696,6 +1706,9 @@ Examples:
 .br
   FontChoice=Greek:3;|Greek Extended:4
 .ee
+
+Note that setting FontSubst may be a better choice to configure 
+font substitution as automatically determined by glyph coverage:
 .en
 \fBFont substitution sequence checked by glyph support\fP (FontSubst=):
 With this setting, a sequence of alternative fonts can be specified for 
@@ -1711,7 +1724,7 @@ Example:
 .br
   FontSubst=1,2,3
 .br
-  Font1=Jigmo1
+  Font1=Jigmo
 .br
   Font2=Jigmo2
 .br
@@ -3511,8 +3524,9 @@ which is often Ctrl+Pause) also needs that modifier in the key definition
 to be matched.
 
 \fINote:\fP Like in xterm, a key redefinition takes precedence over 
-modifyOtherKeys mode (ESC sequence). Shortcut override mode however 
-disables key redefinitions.
+modifyOtherKeys mode (ESC sequence).
+Since 3.8.3, shortcut override mode no longer disables the user-assigned 
+key functions, and particularly not a user-assigned Compose key.
 
 \fINote:\fP Since 3.8.3, key functions also persist against shortcut override mode.
 
