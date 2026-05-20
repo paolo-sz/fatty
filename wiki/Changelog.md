@@ -10,6 +10,8 @@ Character rendering
 Keyboard handling
   * After IME option switch, reset Control state to avoid input misinterpretation (#1353).
   * User-defined key assignments (setting KeyFunctions) stay in effect in shortcut override mode (~#1351).
+  * Restrict VT220 application keypad sequences to VT220 mode by default (#1357).
+  * Support previous special VT220-style keypad sequences if Escape key mode enabled (~#1357).
 
 Window handling
   * Drag-and-drop onto terminal or Options sets window focus (#1354).
@@ -25,6 +27,7 @@ Configuration
   * New option DropFocus (#1354).
   * New option FontSubst (#1352).
   * New option CursorSize (#1360).
+  * New option OldAppKeypad (#1357).
 
 ### 3.8.2 (15 February 2026) ###
 

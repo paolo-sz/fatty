@@ -3577,7 +3577,18 @@ C	M	+C	+A	"	"
     // Mintty-specific: produce app_pad codes not only when vt220 mode is on,
     // but also in PC-style mode when app_cursor_keys is off, to allow the
     // numpad keys to be distinguished from the cursor/editing keys.
-    if (term.app_keypad && (!term.app_cursor_keys || term.vt220_keys)) {
+    // 3.8.3: drop this specific behaviour by default (#1357)
+    //        but enable it on either of
+    //        – setting OldAppKeypad
+    //        – or if Escape key mode is active, based on the assumption 
+    //          that an application that uses Escape key mode 
+    //          should also be prepared to interpret VT220 keypad codes
+    if (term.app_keypad &&
+        (term.vt220_keys || (!term.app_cursor_keys && 
+                             (term.app_escape_key || cfg.old_app_keypad))
+        )
+       )
+    {
       // If NumLock is on, Shift must have been pressed to override it and
       // get a VK code for an editing or cursor key code.
       if (numlock)

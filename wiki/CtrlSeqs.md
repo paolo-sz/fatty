@@ -64,6 +64,10 @@ The first controls application escape key mode, where the escape key sends a key
 | `^[[?7727l`   | normal        | `^[` or `^\`   |
 | `^[[?7727h`   | application   | `^[O[`         |
 
+Escape key mode also enables VT220 application keypad sequences with 
+application keypad mode in non-VT220 keyboard mode (the default until 3.8.2, 
+see [Keypad usage](https://github.com/mintty/mintty/wiki/Tips#keypad-usage).
+
 When application escape key mode is off, the escape key can be be configured to send `^\` instead of the standard `^[`. This allows the escape key to be used as one of the special keys in the terminal line settings (as set with the **[stty](http://www.opengroup.org/onlinepubs/009695399/utilities/stty.html)** utility).
 
 | **sequence**  | **keycode** |

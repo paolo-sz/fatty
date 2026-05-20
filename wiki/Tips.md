@@ -709,6 +709,29 @@ See the manual page for options and details about
 
 See also the [[Keycodes]] wiki page.
 
+### Keypad usage ###
+
+Input sequences sent by the numeric keypad keys ("application keypad") 
+and the small cursor keypad keys ("editing keypad") vary with modes:
+* application keypad mode (ESC = or DECSET 66)
+* application cursor keys mode (DECSET 1)
+* VT220 keyboard mode
+
+Since it is a waste of finger movement resources to have identical 
+sequences for both, applications should benefit from being able to 
+distinguish the two keypads. Traditionally, this is only possible in 
+VT220 keyboard mode.
+Mintty until 3.8.2 had a special behaviour to also send 
+VT220 application keypad codes in non-VT220 mode 
+with application keypad mode enabled but application cursor keys disabled 
+(a combination that does not occur with applications that control 
+their screen settings via terminfo) but this used to confuse some 
+applications [issue #1357](https://github.com/mintty/mintty/issues/1357).
+From 3.8.3, this is no longer the default but can be enabled either by 
+setting option OldAppKeypad or if Escape key mode (DECSET 7727) is active, 
+based on the assumption that an application that uses Escape key mode 
+should also be prepared to interpret VT220 keypad codes.
+
 ### Backarrow key configuration ###
 
 By default, mintty sends `^?` (ASCII DEL) as the keycode for the Backarrow key.

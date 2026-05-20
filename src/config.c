@@ -151,6 +151,7 @@ const config default_cfg = {
   manage_leds : 7,
   enable_remap_ctrls : false,
   old_keyfuncs_keypad : false,
+  old_app_keypad : false,
   // Mouse
   clicks_place_cursor : false,
   middle_click_action : MC_PASTE,
@@ -497,6 +498,7 @@ options[] = {
   {"ManageLEDs", OPT_INT, offcfg(manage_leds)},
   {"ShootFoot", OPT_BOOL, offcfg(enable_remap_ctrls)},
   {"OldKeyFunctionsKeypad", OPT_BOOL, offcfg(old_keyfuncs_keypad)},
+  {"OldAppKeypad", OPT_BOOL, offcfg(old_app_keypad)},
 
   // Mouse
   {"ClicksPlaceCursor", OPT_BOOL, offcfg(clicks_place_cursor)},

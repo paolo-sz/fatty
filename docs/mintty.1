@@ -1145,7 +1145,6 @@ Note also that this feature is overridden by option \fBSessionGeomSync\fP.
 
 .TQ
 .B Ctrl+Shift+letter shortcuts
-
 An alternative set of shortcuts for clipboard and window commands using
 \fBCtrl+Shift+letter\fP combinations is available.  These can be enabled on the
 Keys pane of the Options dialog.
@@ -2191,6 +2190,15 @@ On pressing ESC or Enter key while IME (input method editor)
 input compose conversion is active, this setting will restore IME state to 
 Latin alphabet input mode or alphanumeric mode.
 This does not affect non-IME keyboard input operation.
+
+.TQ
+\fBOld special application keypad behaviour\fP (OldAppKeypad=0)
+Until 3.8.2, VT220-style application keypad keys would also be sent 
+in non-VT220 mode if application keypad mode is enabled and application 
+cursor keys mode is disabled.
+This behaviour is no longer the default but heuristically enabled 
+(see \fIhttps://github.com/mintty/mintty/wiki/Tips#keypad-usage\fP).
+With this option, the previous default can be restored.
 
 .TQ
 \fBOld modified special keys\fP (OldModifyKeys=0)
