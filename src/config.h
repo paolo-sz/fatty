@@ -234,6 +234,7 @@ typedef struct {
   int char_narrowing;
   char emojis;
   char emoji_placement;
+  bool emoji_width;
   wstring save_filename;
   wstring app_id;
   wstring app_name;

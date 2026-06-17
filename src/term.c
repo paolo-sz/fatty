@@ -413,7 +413,7 @@ void
     term.readline_mouse_1 = cfg.clicks_place_cursor;
     term.readline_mouse_2 = cfg.clicks_place_cursor;
     term.readline_mouse_3 = cfg.clicks_place_cursor;
-    term.emoji_width = false;
+    term.emoji_width = cfg.emoji_width;
   }
 
   term.virtuallines = 0;
@@ -3825,7 +3825,14 @@ void
           }
         }
 
-        if ((tattr.attr & TATTR_WIDE) == 0
+        int elen = (tattr.attr & FONTFAM_MASK) >> ATTR_FONTFAM_SHIFT;
+        if ((tattr.attr & TATTR_EMOJI) && elen == 1) {
+          // if we are determined to display emoji presentation 
+          // but the emoji length is only 1 cell,
+          // narrow the emoji graphics in order not to get clipped
+          tattr.attr |= TATTR_NARROW;
+        }
+        else if ((tattr.attr & TATTR_WIDE) == 0
             && cfg.char_narrowing < 100
             && win_char_width(xch, tattr.attr) == 2
             // && !(line->lattr & LATTR_MODE) ? "do not tamper with graphics"
@@ -3841,12 +3848,19 @@ void
 
           if (
               // do not narrow various symbol ranges;
+              // (excemption from the else case that triggers auto-narrowing)
               // this is a bit redundant with Symbol overhang below
                  (xch >= 0x2190 && xch <= 0x25FF)
               || (xch >= 0x27C0 && xch <= 0x2BFF)
              )
           {
-            //tattr.attr |= TATTR_NARROW1; // ?
+            if (wcschr(W("⌚⌛⏩⏪⏫⏬⏰⏳⬛⬜⭐⭕"), xch)) {
+              // narrow text presentation symbols (excempt from excemption)
+              // that are typically too wide and would overhang
+              tattr.attr |= TATTR_NARROW;
+              // prevent clearing of TATTR_NARROW flag
+              tattr.attr &= ~TATTR_OVERHANG;
+            }
           }
           else {
 #ifdef failed_attempt_to_tame_narrowing
@@ -4275,7 +4289,9 @@ void
     overlay:;
     bool do_overlay = false;
 
-    int maxtextlen = max(term.cols, 16);
+    //int maxtextlen = max(term.cols, 16);
+    // set up a buffer sufficient for the whole line, including all combinings
+    int maxtextlen = max((int)(line->size), 16);
     wchar text[maxtextlen];
     cattr textattr[maxtextlen];
     int textlen = 0;
@@ -4652,12 +4668,27 @@ void
      /* Append combining and overstrike characters, combine surrogates */
       if (d->cc_next) {
         termchar *dd = d;
+        int Fitzpatrick = 0;
         while (dd->cc_next && textlen < maxtextlen) {
 #ifdef debug_surrogates
           wchar prev = dd->chr;
 #endif
           dd += dd->cc_next;
           wchar tchar = dd->chr;
+
+          // detect Fitzpatrick
+          // U+1F3FB..U+1F3FF EMOJI MODIFIER FITZPATRICKs
+          // UTF-16: D83C DFFB .. D83C DFFF
+          if (tchar == 0xD83C && dd->cc_next) {
+            termchar *ddnext = dd + dd->cc_next;
+            wchar tnext = ddnext->chr;
+            if (tnext >= 0xDFFB && tnext <= 0xDFFF)
+              Fitzpatrick = 1;
+          }
+          else if (Fitzpatrick == 1)
+            Fitzpatrick ++;
+          else
+            Fitzpatrick = 0;
 
           // skip joined ALEF:
           // if ALEF was handled like a combining char in order to trigger 
@@ -4704,8 +4735,17 @@ void
           }
           textattr[textlen] = tattr;
 
-          if (cfg.emojis && tchar == 0xFE0E)
+          // we could try to limit the VS15/VS16 skip cases below
+          // as flagged during output, but that didn't work out
+          //bool emoji_width = d->attr.attr & TATTR_EMOJI_WIDTH;
+
+          // append combining character for rendering (tweak some modifiers)
+          if (tchar == 0xFE0E)
             ; // skip text style variation selector
+          else if (tchar == 0xFE0F)
+            ; // skip emoji style variation selector
+          else if (Fitzpatrick)
+            ; // skip Fitzpatrick if written as combining in emoji width mode
           else if (tchar >= 0x2066 && tchar <= 0x2069)
             // hide bidi isolate mark glyphs (if handled zero-width)
             text[textlen++] = 0x200B;  // zero width space

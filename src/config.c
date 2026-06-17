@@ -253,6 +253,7 @@ const config default_cfg = {
   char_narrowing : 75,
   emojis : EMOJIS_NOTO,
   emoji_placement : EMPL_STRETCH,
+  emoji_width : false,
   save_filename : W("fatty.%Y-%m-%d_%H-%M-%S"),
   app_id : W(""),
   app_name : W(""),
@@ -611,6 +612,7 @@ options[] = {
   {"CharNarrowing", OPT_INT, offcfg(char_narrowing)},
   {"Emojis", OPT_EMOJIS, offcfg(emojis)},
   {"EmojiPlacement", OPT_EMOJI_PLACEMENT, offcfg(emoji_placement)},
+  {"EmojiWidth", OPT_BOOL, offcfg(emoji_width)},
   {"SaveFilename", OPT_WSTRING, offcfg(save_filename)},
   {"AppID", OPT_WSTRING, offcfg(app_id)},
   {"AppName", OPT_WSTRING, offcfg(app_name)},
@@ -3313,6 +3315,78 @@ theme_handler(control *ctrl, int event)
 #ifdef debug_scheme
     printf("EVENT_DROP <%ls>\n", dragndrop);
 #endif
+#if CYGWIN_VERSION_API_MINOR >= 74
+    if (wcsncmp(W("https://ciembor.github.io/4bit/"), dragndrop, 31) == 0) {
+      wchar * scheme = wcsstr(dragndrop, W("?scheme="));
+      if (scheme) {
+        //<https://ciembor.github.io/4bit/?s=2ilAAA8PC0eEsZAGNbAABVcEAFonEJxBkrROID6HGFY1HMA#?scheme=000000:DFDFDF:DFDFDF:000000:94314A:4A9431:947B31:314A94:7B3194:31947B:DFDFDF:555555:DA90A3:A3DA90:DAC890:90A3DA:C890DA:90DAC8:FFFFFF>
+        scheme += 8;
+        // colour scheme string
+        char * sch = null;
+        sch = strdup("scheme:;");
+
+        auto schapp = [&](char * name)
+        {
+          int c;
+          if (swscanf(scheme, W("%06X"), &c) == 1) {
+            scheme += 6;
+            if (*scheme == ':')
+              scheme ++;
+#if defined(debug_scheme) && debug_scheme > 1
+            printf("%s=%s\n", name, val);
+#endif
+            int len = sch ? strlen(sch) : 0;
+            sch = renewn(sch, len + strlen(name) + 11);
+            sprintf(&sch[len], "%s=#%06X;", name, c);
+          }
+        };
+
+        schapp(const_cast<char *>("BackgroundColour"));
+        schapp(const_cast<char *>("ForegroundColour"));
+        schapp(const_cast<char *>("CursorColour"));
+        schapp(const_cast<char *>("Black"));
+        schapp(const_cast<char *>("Red"));
+        schapp(const_cast<char *>("Green"));
+        schapp(const_cast<char *>("Yellow"));
+        schapp(const_cast<char *>("Blue"));
+        schapp(const_cast<char *>("Magenta"));
+        schapp(const_cast<char *>("Cyan"));
+        schapp(const_cast<char *>("White"));
+        schapp(const_cast<char *>("BoldBlack"));
+        schapp(const_cast<char *>("BoldRed"));
+        schapp(const_cast<char *>("BoldGreen"));
+        schapp(const_cast<char *>("BoldYellow"));
+        schapp(const_cast<char *>("BoldBlue"));
+        schapp(const_cast<char *>("BoldMagenta"));
+        schapp(const_cast<char *>("BoldCyan"));
+        schapp(const_cast<char *>("BoldWhite"));
+#if defined(debug_scheme)
+        printf("4bit %s\n", sch);
+#endif
+
+        // indicate downloaded scheme, to be named to Save
+        dlg_editbox_set_w(ctrl, DOWNLOADED);
+        // or preset a name for saving, use coded scheme tag as preset name
+        wchar * name = (wchar *)&dragndrop[34];
+        name -= 5;
+        wcsncpy(name, W("4bit-"), 5);
+        wchar * fin = wcsstr(dragndrop, W("#?scheme="));
+        * fin = 0;
+        dlg_editbox_set_w(ctrl, name);
+
+        // set actual colours values as scheme
+        wstring wsch = cs__utftowcs(sch);
+        wstrset(newtheme_ref, wsch);
+        delete(wsch);
+        do_apply = true;
+      }
+      else {
+        win_bell(&new_cfg);  // Could not extract scheme from URL
+        win_show_warning(_("Could not load web theme"));
+      }
+    }
+    else
+#endif
     if (wcsncmp(W("data:text/plain,"), dragndrop, 16) == 0) {
       // indicate availability of downloaded scheme to be stored
       dlg_editbox_set_w(ctrl, DOWNLOADED);
@@ -3356,6 +3430,8 @@ theme_handler(control *ctrl, int event)
 #endif
             )
     {
+      // comefrom https://iterm2colorschemes.com/
+      // comefrom https://github.com/mskyaxl/wsl-terminal/tree/master/src/etc/themes
       char * url = cs__wcstoutf(dragndrop);
       char * sch = download_scheme(url);
       //printf("scheme %s\n", sch);
@@ -3428,6 +3504,9 @@ theme_handler(control *ctrl, int event)
   //printf("name %ls scheme %s\n", scheme_name ?: W("(null)"), scheme ?: "(null)");
   enable_widget(store_button, scheme_name && scheme);
   delete(theme_boxval);
+#ifdef debug_theme
+  printf("theme_handler: apply %d name <%ls> scheme <%s>\n", do_apply, scheme_name ?: W("null"), scheme ?: "");
+#endif
   if (scheme_name)
     free(scheme_name);
   if (scheme)

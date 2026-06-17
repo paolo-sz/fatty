@@ -32,9 +32,9 @@ These escape sequences cause mintty to report its identification.
 
 Mintty supports the primary device attributes request conditionally:
 
-| **request** | **response**                             |
-|:------------|:-----------------------------------------|
-| `^[[c`      | `^[[?65;1;2;4;6;9;11;15;21;22;28;29;52c` |
+| **request** | **response**                               |
+|:------------|:-------------------------------------------|
+| `^[[c`      | `^[[?65;1;2;3;4;6;9;11;15;21;22;28;29;52c` |
 
 Tags 1, 22, and extended tag 52 are only included if the respective features 
 are not disabled (e.g. by setting Suppress options). Tags 11, 21, 28 are 
@@ -579,8 +579,6 @@ For values, see setting `Emojis` in the manual.
 
 ## Emoji width mode ##
 
-— EXPERIMENTAL —
-
 By default, mintty displays emojis, particularly emoji sequences, in a 
 grid cell width as defined by the locale function wcswidth. 
 This can yield emoji display in variable width, from 1 cell up to 8 cells, 
@@ -591,12 +589,14 @@ rendering of emojis, an application can choose to display emojis
 always in 2-cell width, matching the appearance of emoji graphics, 
 albeit compromising system-defined string width.
 
+Emoji width mode can be configured as default with option `EmojiWidth`.
+
 | **sequence**  | **emoji width**                          |
 |:--------------|:-----------------------------------------|
 | `^[[?2027l`   | wcwidth/wcswidth                         |
 | `^[[?2027h`   | 2-cell (mode setting of other terminals) |
 | `^[[?7769l`   | wcwidth/wcswidth                         |
-| `^[[?7769h`   | 2-cell (mintty mode setting)             |
+| `^[[?7769h`   | 2-cell (mintty mode setting, deprecated) |
 
 The following rules describe the character sequences to be handled as 
 2-cell emojis:
@@ -607,10 +607,12 @@ The following rules describe the character sequences to be handled as
    regardless of whether it has a glyph in the current glyph set.
 1. Appending variation selector U+FE0F as a combining character changes any 
    character to double-width.
-2. Appending a zero-width joiner U+200D or a Fitzpatrick modifier 
-   or a TAG (U+E0020..U+E007F) also forces any character to double-width.
-3. Fitzpatrick modifiers have zero width except at line beginning.
-4. The zero-width joiner U+200D forces the subsequent character to 
+2. Appending variation selector U+FE0E as a combining character changes any 
+   character to single-width.
+3. Appending a zero-width joiner U+200D or a Fitzpatrick modifier 
+   or a TAG (U+E0020..U+E007F) to an emoji character enforces double-width.
+4. Fitzpatrick modifiers have zero width except at line beginning.
+5. The zero-width joiner U+200D forces the subsequent character to 
    also be treated like a combining character, thus not add any width.
 
 Note that by rule 0 neither actual glyph availabilty nor the listing 
@@ -622,6 +624,17 @@ Unicode versions and emoji graphic resources.
 Note that other terminals support a “Unicode width” mode which may deviate 
 from the rules applied by mintty; a common specification is not yet agreed.
 For this reason, there are currently 2 mode setting sequences.
+
+
+## Variation selectors ##
+
+The combining characters VARIATION SELECTOR 15 (U+FE0E) and VARIATION 
+SELECTOR 16 (U+FE0F) can be appended (as combining characters) to 
+modify character width:
+  * VS15 (U+FE0E) enforces text presentation of an emoji character.
+    In emoji width mode, it also enforces single-cell width character.
+  * VS16 (U+FE0F) enforces graphic emoji presentation of an emoji character.
+    In emoji width mode, it also enforces double-cell width character.
 
 
 ## Background image ##

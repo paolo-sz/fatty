@@ -896,14 +896,15 @@ mintty supports direct drag-and-drop import of theme files in
 iTerm2 format, Windows terminal format, or JSON-embedded mintty format.
 Look for the following repositories:
 * https://iterm2colorschemes.com/
-* https://github.com/oumu/mintty-color-schemes
-* https://github.com/goreliu/wsl-terminal/tree/master/src/etc/themes
+* https://github.com/mskyaxl/wsl-terminal/tree/master/src/etc/themes
+* https://github.com/pine2D/mintty-color-schemes
 * [4bit Terminal Color Scheme Designer](http://ciembor.github.io/4bit/#)
 
 The [4bit Terminal Color Scheme Designer](http://ciembor.github.io/4bit/#) 
 lets you nicely craft and tune a colour scheme in various dimensions 
 (like hue, saturation, lightness) that affect colours consistently.
-Select “Download Scheme” – “mintty” for the mintty format.
+Select “Download Scheme” – “mintty” for the mintty format,
+or drag-and-drop the tuned scheme from the URL bar onto the mintty Options theme field.
 
 Mintty also provides the command-line script ```mintheme``` which can 
 display the themes available in the mintty configuration directories or 
@@ -1106,12 +1107,14 @@ Character width can be modified by a number of configuration or dynamic settings
 * `Charset`: may affect CJK ambiguous-width handling if used with `Locale`
 * `Font`: may affect CJK ambiguous-width handling if locale support fails
 * `PrintableControls`: makes C1 or C0 control characters visible (width 1)
-* [DECSET 2521](https://github.com/mintty/mintty/wiki/CtrlSeqs#lamalef-joining): renders Arabic LAM/ALEF ligatures in single-cell width
+* `EmojiWidth`: sets default of emoji width mode
 * [DECSET 2027](https://github.com/mintty/mintty/wiki/CtrlSeqs#emoji-width-mode): “emoji width” mode, enforcing 2-cell wide emojis
+* [DECSET 2521](https://github.com/mintty/mintty/wiki/CtrlSeqs#lamalef-joining): renders Arabic LAM/ALEF ligatures in single-cell width
 * [OSC 701](https://github.com/mintty/mintty/wiki/CtrlSeqs#locale): changes locale/charset, may affect ambiguous width handling
 * OSC 50: changes font, may affect ambiguous width handling (with `Locale`)
 * [OSC 77119](https://github.com/mintty/mintty/wiki/CtrlSeqs#wide-characters): turns some character ranges to wide characters
 * [PEC](https://github.com/mintty/mintty/wiki/CtrlSeqs#explicit-character-width): explicit character width attribute
+* Appending variation selectors 15 or 16 (U+FE0E, U+FE0F) in emoji width mode.
 
 See the [mintty manual](http://mintty.github.io/mintty.1.html) and
 [Control Sequences](https://github.com/mintty/mintty/wiki/CtrlSeqs)
@@ -1121,6 +1124,13 @@ Note that with any of these settings, actual width properties as
 rendered on the screen and width assumptions of the `wcwidth` function 
 will be inconsistent then for the impacted characters, which may confuse 
 screen applications (such as editors) that rely on `wcwidth` information.
+
+### Unicode version enquiry ###
+
+If mintty is configured to use its own width tables (rather than the locale 
+API), the Secondary Device Attributes request (escape sequence `^[[>c`) 
+can be used to request the Unicode version which will be reported as the 
+third parameter of the response.
 
 ### Ambiguous width setting ###
 
