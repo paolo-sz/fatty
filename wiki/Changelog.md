@@ -1,3 +1,5 @@
+  * Tweak keep-window-maximised fix not to resize the terminal incorrectly (#1370).
+
 ### 3.8.3 (09 June 2026) ###
 
 Terminal features

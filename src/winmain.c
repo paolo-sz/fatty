@@ -2735,12 +2735,13 @@ show_win_status(char * tag, HWND wnd)
   LONG style = GetWindowLong(wnd, GWL_STYLE);
   int h, w;
   win_get_pixels(&h, &w, false);
-  printf("%s[%d:%p] show %d y normal %dx%d (%dx%d @%d:%d) max %d zoom %d\n", 
+  printf("%s[%d:%p] show %d y normal %dx%d (%dx%d @%d:%d) child %d max %d zoom %d\n", 
          tag, getpid(), wnd, 
          pl.showCmd, 
          h / cell_height, w / cell_width,
          fr.bottom - fr.top, fr.right - fr.left, fr.top, fr.left,
-         style & WS_MAXIMIZE,
+         !!(style & WS_CHILD),
+         !!(style & WS_MAXIMIZE),
          IsZoomed(wnd)
         );
   bool layered = GetWindowLong(wnd, GWL_EXSTYLE) & WS_EX_LAYERED;
@@ -3502,6 +3503,36 @@ static void
   norm_extra_height = extra_height;
 }
 
+/*
+  Fix fullscreen state after changing DPI or monitor (see below);
+  this must be invoked before calculating term_height and term_width, 
+  or after invoking child_resize, but not in between!
+  As it causes recursion of win_adapt_term_size, it would otherwise 
+  resize the client to the incorrect previous values (#1370).
+ */
+static void
+fix_zoomed()
+{
+  //printf("<fix_zoomed %d\n", IsZoomed(wnd));
+  if (IsZoomed(wnd)) {
+    // ensure window will be maximised after changed monitor dimensions, e.g.
+    // - after changing DPI/zoom factor
+    // - after moving window to other monitor (git-for-windows/git#6085)
+    // avoid complete (and error-prone) refactoring of window resizing code;
+    // as a workaround, clone the essential code of win_maximise(1):
+
+   /* Resize ourselves to exactly cover the nearest monitor. */
+    MONITORINFO mi;
+    get_my_monitor_info(&mi);
+    RECT fr = mi.rcMonitor;
+    // set window size
+    SetWindowPos(wnd, HWND_TOP, fr.left, fr.top,
+                 fr.right - fr.left, fr.bottom - fr.top,
+                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
+  }
+  //printf(">fix_zoomed %d\n", IsZoomed(wnd));
+}
+
 #define do_win_adapt_term_size(...) (do_win_adapt_term_size)(term_p, ##__VA_ARGS__)
 static void
 (do_win_adapt_term_size)(struct term* term_p, bool sync_size_with_font, bool scale_font_with_size, bool quick_reflow)
@@ -3549,6 +3580,9 @@ static void
     return;
   }
 
+  // fix the fullscreen state before calculating term_height and term_width
+  fix_zoomed();
+
  /* Current window sizes ... */
   RECT cr, wr;
   GetClientRect(wnd, &cr);
@@ -3569,23 +3603,6 @@ static void
   }
   if (!sync_size_with_font && win_search_visible()) {
     term_height -= SEARCHBAR_HEIGHT;
-  }
-
-  if (IsZoomed(wnd)) {
-    // ensure window will be maximised after changed monitor dimensions, e.g.
-    // - after changing DPI/zoom factor
-    // - after moving window to other monitor (git-for-windows/git#6085)
-    // avoid complete (and error-prone) refactoring of window resizing code;
-    // as a workaround, clone the essential code of win_maximise(1):
-
-   /* Resize ourselves to exactly cover the nearest monitor. */
-    MONITORINFO mi;
-    get_my_monitor_info(&mi);
-    RECT fr = mi.rcMonitor;
-    // set window size
-    SetWindowPos(wnd, HWND_TOP, fr.left, fr.top,
-                 fr.right - fr.left, fr.bottom - fr.top,
-                 SWP_FRAMECHANGED | SWP_NOACTIVATE | SWP_NOZORDER);
   }
 
   if (scale_font_with_size && term.cols != 0 && term.rows != 0) {
@@ -3644,6 +3661,9 @@ static void
     struct winsize ws = {(unsigned short)rows, (unsigned short)cols, (unsigned short)(cols * cell_width), (unsigned short)(rows * cell_height)};
     WIN_FOR_EACH_CHILD(child_resize(&ws));
   }
+
+  // we could fix the fullscreen state here
+  //fix_zoomed();
 
   win_invalidate_all(false);
 
@@ -8169,6 +8189,7 @@ main(int argc, char *argv[])
     horflush();
     horbar = _horbar;
   }
+  show_win_status("create", wnd);
 
   // Workaround for failing title parameter:
   if (pEnableNonClientDpiScaling)
