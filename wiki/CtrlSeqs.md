@@ -615,7 +615,7 @@ The following rules describe the character sequences to be handled as
 5. The zero-width joiner U+200D forces the subsequent character to 
    also be treated like a combining character, thus not add any width.
 
-Note that by rule 0 neither actual glyph availabilty nor the listing 
+Note that by rule 0 neither actual glyph availability nor the listing 
 of an emoji sequence in Unicode data is required; this is important to 
 keep screen width predictable for applications; otherwise screen 
 positioning would be hardly manageable with respect to changing 
@@ -929,10 +929,14 @@ blinking interval in milliseconds.
 | **4**   | underscore   | no        |
 | **5**   | line         | yes       |
 | **6**   | line         | no        |
-| **7**   | box          | yes       |
-| **8**   | box          | no        |
+| **7**   | default      | default   |
+| **11**  | box          | yes       |
+| **12**  | box          | no        |
 
 Note: There is one space character before the `q`.
+
+Note: Private values 11, 12 had to be moved from previous values 7, 8 
+as xterm 411 added value 7.
 
 ### Cursor size ###
 

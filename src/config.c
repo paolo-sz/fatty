@@ -42,7 +42,7 @@ static wstring rc_filename = 0;
 static char linebuf[444];
 
 wchar * config_log = 0;
-char * keyclick = 0;
+void * keyclick = 0;
 
 
 // all entries need initialisation in options[] or crash...
@@ -1897,11 +1897,37 @@ fix_config(void)
   cfg.scrollback_lines = min(cfg.scrollback_lines, cfg.max_scrollback_lines);
 }
 
+/*
+  Set up audio output:
+  apparently, Windows cannot simply play a sound -
+  it needs to establish an audio session, 
+  causing a delay on first playing a sound;
+  so we play a silent dummy sound initially in order to 
+  avoid the delay on the first key click
+ */
+static void
+init_keyclick()
+{
+  unsigned char wav100[4454] = {
+    0x52, 0x49, 0x46, 0x46, 0x5e, 0x11, 0x00, 0x00, 
+    0x57, 0x41, 0x56, 0x45, 0x66, 0x6d, 0x74, 0x20, 
+    0x10, 0x00, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 
+    0x22, 0x56, 0x00, 0x00, 0x44, 0xac, 0x00, 0x00, 
+    0x02, 0x00, 0x10, 0x00, 0x64, 0x61, 0x74, 0x61, 0x3a, 0x11 };
+  memset(wav100 + 42, 0, 4454 - 42);
+  keyclick = wav100;
+  win_keyclick();
+  //keyclick = 0;
+}
+
 static void
 post_config(void)
 {
-  if (keyclick)
+  if (keyclick) {
     free(keyclick);
+    keyclick = 0;
+  }
+
   if (*cfg.keyclick) {
     wchar * click = wcsdup(cfg.keyclick);
     if (!wcschr(click, '.')) {
@@ -1915,16 +1941,14 @@ post_config(void)
       FILE * clickf = fopen(cfn, "r");
       if (clickf) {
         struct stat cstat;
-        fstat(fileno(clickf), &cstat);
-        keyclick = (char *)malloc(cstat.st_size);
-        fread(keyclick, 1, cstat.st_size, clickf);
-        fclose(clickf);
+        if (fstat(fileno(clickf), &cstat) == 0) {
+          // set up audio output
+          init_keyclick();
 
-        // despite preloading the wave sound into memory, initial playback 
-        // suffers from a delay, so we play the sound once here to 
-        // preload the actual audio output and not delay initial key click;
-        // it would be nice to be able to mute this...
-        win_keyclick();
+          keyclick = (char *)malloc(cstat.st_size);
+          fread(keyclick, 1, cstat.st_size, clickf);
+        }
+        fclose(clickf);
       }
       free(cfn);
     }

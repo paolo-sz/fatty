@@ -1840,6 +1840,7 @@ In emoji width mode, emojis are always displayed in 2-cell width,
 matching the appearance of emoji graphics, rather than locale-conformant.
 This option sets the default of emoji width mode, which can also be switched 
 by an escape sequence, DECSET 2027.
+.br
 (Corresponds partially to the xterm resource \fBemojiWidth\fP.)
 
 .TQ
@@ -2205,6 +2206,7 @@ allowed to detect a Ctrl+Menu sequence as AltGr.
 \fBFormat of escape sequences for encoding modified keys\fP \%(FormatOtherKeys=1)
 This setting selects the escape sequence format for encoded modified 
 keys in modifyOtherKeys mode.
+.br
 (Corresponds to the xterm resource \fBformatOtherKeys\fP.)
 
 .TQ
@@ -2285,7 +2287,7 @@ Checkbox for enabling the font zooming shortcuts \fBCtrl+plus/minus/zero\fP.
 \fBAlt+Fn shortcuts\fP (AltFnShortcuts=yes)
 Checkbox for enabling the use of combinations of Alt and functions keys as
 shortcuts, for example \fBAlt+F4\fP for closing the window or \fBAlt+F11\fP
-fortoggling  full screen mode.  Disable to have \fBAlt+Fn\fP combinations
+for toggling full screen mode.  Disable to have \fBAlt+Fn\fP combinations
 sent to applications instead.
 
 .TQ
@@ -2691,11 +2693,13 @@ tool uses a dedicated variable (\fBGNUTERM\fP) to trigger output mode.
 \fBAnswerback\fP (Answerback=)
 The answerback string is sent in response to the \fB^E\fP (ENQ) character.
 By default, this is empty.
+.br
 (Corresponds to the xterm resource \fBanswerbackString\fP.)
 
 .TQ
 \fBAlternate screen\fP (NoAltScreen=false)
 With this setting, the alternate screen can be disabled.
+.br
 (Corresponds to the xterm resource \fBtiteInhibit\fP, 
 switchable by an escape sequence.)
 
@@ -2703,6 +2707,7 @@ switchable by an escape sequence.)
 \fBEnable 132-column mode switching\fP (Enable132ColumnSwitching=false)
 With this setting, DECSET 3 escape sequences to switch 80/132 column modes 
 are enabled initially. This can be changed later dynamically (DECSET 40).
+.br
 (Corresponds to the xterm resource \fBc132\fP, switchable by an escape sequence.)
 
 .TQ
@@ -2720,7 +2725,9 @@ Reverse Wraparound mode initially disabled (but switchable), complying with xter
 \fBTAB character may wrap to next line\fP (WrapTab=0)
 Setting this to 1, a TAB character after the last column in the line 
 (i.e. in pending wrap state) will wrap to the next line and display there.
+.br
 (Corresponds to the xterm command-line option \fB\-cu\fP.)
+
 Setting this to 2, a TAB character moving up to the line end will also 
 set the pending wrap condition, so that a subsequent character will wrap.
 
@@ -2797,6 +2804,7 @@ The general BellFile setting corresponds to bell volume 8 (default).
 The sound is also played when it is changed.
 .en
 \fBFlash\fP (BellFlash=no): Briefly flash the terminal or window.
+.br
 (Corresponds to the xterm resource \fBvisualBell\fP.)
 .en
 \fBFlash style\fP (BellFlashStyle=4): Tune the style to flash the 
@@ -2817,14 +2825,17 @@ terminal or window; this is a bitmask composed of the following values:
 .en
 \fBHighlight in taskbar\fP (BellTaskbar=yes): Change the colour of mintty's
 taskbar entry if the mintty window is not active.
+.br
 (Corresponds to the xterm resource \fBbellIsUrgent\fP, 
 switchable by an escape sequence.)
 .en
 \fBPopup on bell\fP (BellPopup=no): Popup mintty to desktop foreground.
+.br
 (Corresponds to the xterm resource \fBpopOnBell\fP, 
 switchable by an escape sequence.)
 .en
 \fBMinimum delay between bells\fP (BellInterval=100): Multiple bells within this many milliseconds will sound as one.
+.br
 (Corresponds to the xterm resource \fBbellSuppressTime\fP.)
 ./ul
 
@@ -3143,6 +3154,7 @@ When this is disabled, keyboard input or pasting does not clear selection highli
 \fBErase top lines into scrollback buffer\fP (EraseToScrollback=true)
 With this setting, lines cleared in the top part of the screen are scrolled 
 into the scrollback buffer, so they can be restored.
+.br
 (Corresponds roughly to the xterm resource \fBcdXtraScroll\fP.)
 
 .TQ
@@ -3156,6 +3168,7 @@ for a while; if the buffer exceeds the size configured with this parameter
 \fBTrim trailing space from selection on copy\fP (TrimSelection=true)
 When this is disabled, trailing space that was written to the terminal 
 in a line is included in the selection buffer.
+.br
 (Corresponds to the xterm resource \fBtrimSelection\fP.)
 
 .TQ
@@ -3212,6 +3225,7 @@ Controls characters are non\-printing by default and as specified by
 the locale width. Setting PrintableControls=1 enables visual indication of 
 "C1" control characters (range U+80...U+9F); PrintableControls=2 would 
 also make "C0" (normal) control characters visible.
+.br
 (Value 1 corresponds to the xterm resource \fBallowC1Printable\fP.)
 
 \fIWarning:\fP With this option, control character display is inconsistent 
@@ -4158,6 +4172,7 @@ Valid values are Windows predefined cursor names
 (appstarting, arrow, cross, hand, help, ibeam, icon, no, size, sizeall, sizenesw, sizens, sizenwse, sizewe, uparrow, wait).
 or cursor file names which are looked up in subdirectory \fIpointers\fP of 
 a mintty resource directory; supported file types are .cur, .ico, .ani.
+.br
 (Corresponds to the xterm resource \fBpointerShape\fP.)
 
 .TQ

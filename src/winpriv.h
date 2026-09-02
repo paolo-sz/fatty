@@ -217,11 +217,11 @@ extern int sync_level(void);
 
 extern int search_monitors(int * minx, int * miny, HMONITOR lookup_mon, int get_primary, MONITORINFO *mip);
 
-#define win_set_ime_open(...) (win_set_ime_open)(term_p, ##__VA_ARGS__)
-extern void (win_set_ime_open)(struct term* term_p, bool);
 #define win_set_ime(...) (win_set_ime)(term_p, ##__VA_ARGS__)
-extern void (win_set_ime)(struct term* term_p, bool open);
+extern void (win_set_ime)(struct term* term_p, bool native);
 extern bool win_get_ime(void);
+#define term_indicate_ime(...) (term_indicate_ime)(term_p, ##__VA_ARGS__)
+extern void (term_indicate_ime)(struct term* term_p, bool);
 
 extern bool is_win_dark_mode(void);
 extern void win_dark_mode(HWND w);

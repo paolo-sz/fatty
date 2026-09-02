@@ -79,6 +79,11 @@ typedef UINT_PTR uintptr_t;
 #endif
 #define GWL_TIMEMASK ~1
 
+#if CYGWIN_VERSION_API_MINOR >= 74
+#define COBJMACROS
+#include <msctf.h>
+#endif
+
 
 bool icon_is_from_shortcut = false;
 
@@ -167,6 +172,8 @@ static bool wsltty_appx = true;
 static bool wsltty_appx = false;
 #endif
 OSVERSIONINFO winver;
+
+static void win_save_restore_ime_status(bool save);
 
 
 static HBITMAP caretbm;
@@ -3072,7 +3079,7 @@ void
 win_keyclick(void)
 {
   if (keyclick && 0 == fork()) {
-    PlaySound(keyclick, inst, SND_MEMORY);
+    PlaySound((char *)keyclick, inst, SND_MEMORY);
     exit(0);
   }
 }
@@ -4500,7 +4507,7 @@ static struct {
       && message != WM_MOUSEMOVE && message != WM_NCMOUSEMOVE
 # endif
 # ifndef debug_minor_messages
-      && !strstr(wm_name, "_GET") && !strstr(wm_name, "_IME")
+      && !strstr(wm_name, "_GET")
 # endif
      )
 # ifdef debug_only_sizepos_messages
@@ -5271,11 +5278,11 @@ static struct {
 #endif
 
     when WM_INPUTLANGCHANGE:
-      win_set_ime_open(ImmIsIME(GetKeyboardLayout(0)) && ImmGetOpenStatus(imc));
+      term_indicate_ime(win_get_ime());
 
     when WM_IME_NOTIFY:
-      if (wp == IMN_SETOPENSTATUS)
-        win_set_ime_open(ImmGetOpenStatus(imc));
+      if (wp == IMN_SETOPENSTATUS || wp == IMN_SETCONVERSIONMODE)
+        term_indicate_ime(win_get_ime());
 
     when WM_IME_STARTCOMPOSITION:
       ImmSetCompositionFont(imc, &lfont);
@@ -5405,6 +5412,7 @@ static struct {
       // tab management: do not repeat here; may cause tab switching
       //win_set_tab_focus('F');  // unhide this tab and hide others
 
+      win_save_restore_ime_status(false);
       win_sys_style(true);
       CreateCaret(wnd, caretbm, 0, 0);
       //flash_taskbar(false);  /* stop; not needed when leaving search bar */
@@ -5415,6 +5423,7 @@ static struct {
     when WM_KILLFOCUS:
       win_show_mouse();
       term_set_focus(false, false);
+      win_save_restore_ime_status(true);
       win_sys_style(false);
       win_destroy_tip();
       DestroyCaret();
@@ -6056,17 +6065,142 @@ win_global_keyboard_hook(bool on)
     UnhookWindowsHookEx(kb_hook);
 }
 
+
+/*
+   Detect whether the current keyboard layout has IME support.
+ */
+static bool
+win_has_ime(void)
+{
+  /* The following methods should reportedly report the desired info:
+	ImmIsIME(GetKeyboardLayout(0))
+		bogus, always returns TRUE
+	ImmGetIMEFileNameW(GetKeyboardLayout(0), 0, 0)
+		always returns 0, might work for legacy IME methods
+  */
+
+  // try legacy IME method first
+  if (ImmGetIMEFileNameW(GetKeyboardLayout(0), 0, 0))
+    return true;
+
+#if CYGWIN_VERSION_API_MINOR >= 74
+
+  // query TSF (Windows Text Service Framework) about IME
+  // (this approach was distilled via ChatGPT)
+
+  HRESULT hr;
+  ITfInputProcessorProfiles *profiles = NULL;
+  ITfInputProcessorProfileMgr *mgr = NULL;
+  TF_INPUTPROCESSORPROFILE profile;
+
+  hr = CoCreateInstance(
+         CLSID_TF_InputProcessorProfiles,
+         NULL,
+         CLSCTX_INPROC_SERVER,
+         IID_ITfInputProcessorProfiles,
+         (void **)&profiles);
+
+  if (FAILED(hr))
+    return false;
+
+  hr = ITfInputProcessorProfiles_QueryInterface(
+         profiles,
+         IID_ITfInputProcessorProfileMgr,
+         (void **)&mgr);
+
+  if (FAILED(hr)) {
+    ITfInputProcessorProfiles_Release(profiles);
+    return false;
+  }
+
+  ZeroMemory(&profile, sizeof(profile));
+
+  hr = ITfInputProcessorProfileMgr_GetActiveProfile(
+         mgr,
+         GUID_TFCAT_TIP_KEYBOARD,
+         &profile);
+
+  int is_ime = SUCCEEDED(hr)
+               && profile.dwProfileType == TF_PROFILETYPE_INPUTPROCESSOR;
+
+  ITfInputProcessorProfileMgr_Release(mgr);
+  ITfInputProcessorProfiles_Release(profiles);
+
+  return is_ime;
+
+#else
+  return true;
+#endif
+}
+
+/*
+   Return IME native input mode.
+   Purpose:
+   	indication of IME input via cursor style/colour (IMECursorColour)
+ */
 bool
 win_get_ime(void)
 {
-  return ImmGetOpenStatus(imc);
+  //printf("win_get_ime [isIME %d IMEfn %d has_IME %d open %d]\n", ImmIsIME(GetKeyboardLayout(0)), ImmGetIMEFileNameW(GetKeyboardLayout(0), 0, 0), win_has_ime(), ImmGetOpenStatus(imc));
+
+  // check the open status and the CMODE_NATIVE flag,
+  // but only if the current keyboard layout has an IME
+
+  if (!win_has_ime())
+    return false;
+
+  if (!ImmGetOpenStatus(imc))
+    return false;
+
+  DWORD conv, sent;
+  if (ImmGetOpenStatus(imc) && ImmGetConversionStatus(imc, &conv, &sent))
+    return conv & IME_CMODE_NATIVE;
+  else
+    return false;
 }
 
+/*
+   Switch IME native input mode.
+   Purpose:
+   	- set/reset explicitly by ESC sequence
+   	- clear on input (option KeyAlphaMode)
+ */
 void
 (win_set_ime)(struct term* term_p, bool open)
 {
   ImmSetOpenStatus(imc, open);
-  win_set_ime_open(open);
+
+  DWORD conversion, sentence;
+  if (ImmGetConversionStatus(imc, &conversion, &sentence)) {
+    if (open)
+      conversion |= IME_CMODE_NATIVE;
+    else
+      conversion &= ~IME_CMODE_NATIVE;
+    ImmSetConversionStatus(imc, conversion, sentence);
+  }
+
+  // change cursor (if IMECursorColour configured)
+  term_indicate_ime(open && win_has_ime());
+}
+
+/*
+   Save or restore IME conversion mode
+ */
+static void
+win_save_restore_ime_status(bool save)
+{
+static bool saved_IME = false;
+static DWORD conversion = 0;
+  DWORD sentence;
+
+  if (save) {
+    saved_IME = ImmGetConversionStatus(imc, &conversion, &sentence);
+  }
+  else if (saved_IME) {
+    DWORD oldconv;
+    if (ImmGetConversionStatus(imc, &oldconv, &sentence))
+      ImmSetConversionStatus(imc, conversion, sentence);
+  }
 }
 
 

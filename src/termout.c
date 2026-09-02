@@ -3769,8 +3769,16 @@ static void
       if (arg0 == 4)
         term.modify_other_keys = 0;
     when CPAIR(' ', 'q'):     /* DECSCUSR: set cursor style */
-      term.cursor_type = arg0 ? (arg0 - 1) / 2 : -1;
-      term.cursor_blinks = arg0 ? arg0 % 2 : -1;
+      if (arg0 == 7) {  // xterm 411: restore configured cursor style
+        term.cursor_type = -1;
+        term.cursor_blinks = -1;
+      }
+      else {
+        if (arg0 > 10)
+          arg0 -= 4;  // sync private values 11, 12 with previous 7, 8
+        term.cursor_type = arg0 ? (arg0 - 1) / 2 : -1;
+        term.cursor_blinks = arg0 ? arg0 % 2 : -1;
+      }
       if (term.cursor_blinks)
         term.cursor_blink_interval = arg1;
       term.cursor_invalid = true;
