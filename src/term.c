@@ -3331,6 +3331,11 @@ void
   bool &markpos_valid = term.markpos_valid;
   int & markpos = term.markpos;
   
+#ifdef debug_term_paint_timing
+  ulong t0 = mtime();
+  int out_text_count = 0;
+#endif
+
   //if (kb_trace) printf("[%ld] term_paint\n", mtime());
 
 #ifdef use_display_scrolling
@@ -4340,6 +4345,9 @@ void
 
     auto out_text = [&](int x, int y, wchar *text, int len, cattr attr, cattr *textattr, ushort lattr, char has_rtl, char has_sea)
     {
+#ifdef debug_term_paint_timing
+      out_text_count ++;
+#endif
 #ifdef debug_out_text
       wchar t[len + 1]; wcsncpy(t, text, len); t[len] = 0;
       for (int i = len - 1; i >= 0 && t[i] == ' '; i--)
@@ -4818,6 +4826,10 @@ void
   }
 
   term.cursor_invalid = false;
+
+#ifdef debug_term_paint_timing
+  printf("term_paint chunks %d %ldms\n", out_text_count, mtime() - t0);
+#endif
 }
 
 void

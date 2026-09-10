@@ -2468,7 +2468,7 @@ static void
           ulong m = term.csi_argv[i + 4];
           ulong y = term.csi_argv[i + 5];
           ulong k = term.csi_argv[i + 1] == 4 ? term.csi_argv[i + 6] : 0;
-          if (c <= f && m <= f && y <= f && k <= f) {
+          if (f > 0 && c <= f && m <= f && y <= f && k <= f) {
             uint r = (f - c) * (f - k) / f * 255 / f;
             uint g = (f - m) * (f - k) / f * 255 / f;
             uint b = (f - y) * (f - k) / f * 255 / f;
@@ -2527,7 +2527,7 @@ static void
           ulong m = term.csi_argv[i + 4];
           ulong y = term.csi_argv[i + 5];
           ulong k = term.csi_argv[i + 1] == 4 ? term.csi_argv[i + 6] : 0;
-          if (c <= f && m <= f && y <= f && k <= f) {
+          if (f > 0 && c <= f && m <= f && y <= f && k <= f) {
             uint r = (f - c) * (f - k) / f * 255 / f;
             uint g = (f - m) * (f - k) / f * 255 / f;
             uint b = (f - y) * (f - k) / f * 255 / f;
@@ -2562,7 +2562,7 @@ static void
           ulong m = term.csi_argv[i + 4];
           ulong y = term.csi_argv[i + 5];
           ulong k = term.csi_argv[i + 1] == 4 ? term.csi_argv[i + 6] : 0;
-          if (c <= f && m <= f && y <= f && k <= f) {
+          if (f > 0 && c <= f && m <= f && y <= f && k <= f) {
             uint r = (f - c) * (f - k) / f * 255 / f;
             uint g = (f - m) * (f - k) / f * 255 / f;
             uint b = (f - y) * (f - k) / f * 255 / f;
@@ -4506,7 +4506,7 @@ static void
     when DCS_ESCAPE: {     // DECRQSS
       cattr attr = term.curs.attr;
       if (!strcmp(s, "m")) { // SGR
-        char buf[90], *p = buf;
+        char buf[222], *p = buf;
         p += sprintf(p, "\eP1$r0");
 
         if (attr.attr & ATTR_BOLD)
@@ -4999,6 +4999,7 @@ static void
                 if (bf) {
                   string bf1 = asform("%c%s", *term.cmd_buf, bf);
                   wchar * bn = cs__mbstowcs(bf1);
+                  delete(bf1);
                   if (!bn) {
                     delete(bf);
                     break;

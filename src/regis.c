@@ -17,6 +17,10 @@ extern "C" {
 #include <math.h>
 #include <windows.h>
 
+// ensure availability of isnan, isnanf not provided on some systems (#1378)
+#define isnanf isnan
+
+
 #if CYGWIN_VERSION_API_MINOR >= 74
 #define use_gdiplus
 #endif

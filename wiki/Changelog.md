@@ -1,9 +1,12 @@
 Terminal features
   * Add DECSCUSR 7 to restore cursor style as configured (xterm 411).
   * Move private DECSCUSR 7, 8 box style to 11, 12.
+  * Fix crash on invalid CYM(K) colour settings via SGR (#1382).
+  * Fix DECRQSS SGR reporting (#1383).
 
 Window handling
   * Tweak keep-window-maximised fix not to resize the terminal incorrectly (#1370).
+  * Fix handling of DropCommands invalid trailing % format (#1384).
 
 Keyboard handling
   * Tweak keyclick, avoid initial phantom click sound.
