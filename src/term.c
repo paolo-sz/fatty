@@ -2293,6 +2293,8 @@ void
   TERM_VAR_REF(true)
   bool &markpos_valid = term.markpos_valid;
   
+  //printf("term_do_scroll %d..%d %d sb %d\n", topline, botline, lines, sb);
+
   if (term.hovering) {
     term.hovering = false;
     win_update_term(true);
@@ -2390,15 +2392,28 @@ void
 
     // Move graphics if within the scroll region
     for (imglist * cur = term.imgs.first; cur; cur = cur->next) {
-      if (cur->top - term.virtuallines >= topline) {
+      long long int imgtop = cur->top - term.virtuallines;
+      if (imgtop >= topline && imgtop < botline)
         cur->top += lines;
-      }
     }
   }
-  else {
+  else {  // Move up lines
     int seltop = topline;
 
+    // adjust image anchor positions
     term.virtuallines += lines;
+
+    // Move graphics: this is by default achieved by setting their 
+    // top relative to term.virtuallines; however:
+    // images outside a DECSTBM scrolling region must not be scrolled (#1381),
+    // so compensate for their implicit movement, 
+    // but only within the visible screen area 
+    // (scrollback positions need to be handled separately)
+    for (imglist * cur = term.imgs.first; cur; cur = cur->next) {
+      long long int imgtop = cur->top - term.virtuallines + lines;
+      if (imgtop >= 0 && (imgtop < topline || imgtop >= botline))
+        cur->top += lines;
+    }
 
     // Only push lines into the scrollback when scrolling off the top of the
     // normal screen and scrollback is actually enabled.
@@ -4828,7 +4843,10 @@ void
   term.cursor_invalid = false;
 
 #ifdef debug_term_paint_timing
-  printf("term_paint chunks %d %ldms\n", out_text_count, mtime() - t0);
+static ulong tprev = 0;
+  ulong t1 = mtime();
+  printf("term_paint chunks %d used %ldms delta %ldms\n", out_text_count, t1 - t0, t1 - tprev);
+  tprev = t1;
 #endif
 }
 
