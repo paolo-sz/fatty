@@ -4976,9 +4976,14 @@ static void
 
   switch (term.cmd_num) {
     when 0 case_or 2: {
-	  wchar *ws = cs__mbstowcs(s);
-	  win_tab_set_title(ws);  // ignore icon title
-	  free(ws);
+      wchar *ws = cs__mbstowcs(s);
+      win_tab_set_title(ws);  // ignore icon title
+      free(ws);
+    }
+    when 21: {
+      wchar *ws = cs__mbstowcs(s);
+      win_tab_set_title(ws);  // DECSWT (VT520, xterm 411)
+      free(ws);
     }
     when 4:   do_colour_osc(true, 4, false);
     when 5:   do_colour_osc(true, 5, false);
