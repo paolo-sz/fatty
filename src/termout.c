@@ -2855,6 +2855,8 @@ static void
           term.curs.rewrap_on_resize = state;
         when 2027 case_or 7769: /* Emoji 2-cell width mode */
           term.emoji_width = state;
+        when 7720: /* Wide graphic characters mode */
+          term.wide_graphics = state;
       }
     }
     else { /* SM/RM: set/reset mode */
@@ -2975,6 +2977,8 @@ static int
         return 2 - term.on_alt_screen;
       when 1047:       /* alternate screen */
         return 2 - term.on_alt_screen;
+      when 1046:       /* enable/disable alternate screen switching */
+        return 2 - !cfg.disable_alternate_screen;  // as fixed in xterm 412
       when 1048:       /* save/restore cursor */
         return 4;
       when 1049:       /* cursor & alternate screen */
@@ -3043,6 +3047,8 @@ static int
         return 2 - term.curs.rewrap_on_resize;
       when 2027 case_or 7769: /* Emoji 2-cell width mode */
         return 2 - term.emoji_width;
+      when 7720: /* Wide graphic characters mode */
+        return 2 - term.wide_graphics;
       othwise:
         return 0;
     }
@@ -5704,6 +5710,14 @@ static void
 
         term.in_mb_char = false;
 
+        // determine self-drawing configuration
+        int box_drawing = cfg.box_drawing;
+        if (box_drawing < 0 && !(box_drawing & 1))
+          box_drawing -= 2;
+
+        // save attributes to allow temporary self-drawing flags
+        cattrflags asav = term.curs.attr.attr;
+
         // Fetch previous high surrogate
         wchar hwc = term.high_surrogate;
         term.high_surrogate = 0;
@@ -5731,10 +5745,49 @@ static void
             if (term.emoji_width && term.curs.x && hwc == 0xD83C && wc >= 0xDFFB && wc <= 0xDFFF)
               width = 0;
 
+            // detect and mark non-BMP self-drawn characters
+            xchar xc = combine_surrogates(hwc, wc);
+            if ((box_drawing & 0x11)
+                && xc >= 0x1CC00
+                &&
+                (
+                 // Symbols for Legacy Computing Supplement (U+1CC00-U+1CEBF)
+                    (xc >= 0x1CC21 && xc <= 0x1CC2F)  // separated quadrants
+                 || (xc >= 0x1CD00 && xc <= 0x1CDE5)  // octants
+                 || (xc >= 0x1CE51 && xc <= 0x1CEAF)
+                  //(xc >= 0x1CE51 && xc <= 0x1CE8F)  // separated sextants
+                  //(xc >= 0x1CE90 && xc <= 0x1CEAF)  // sixteenth and quarter blocks
+                 // Symbols for Legacy Computing (U+1FB00-U+1FBFF)
+                 || (xc >= 0x1FB00 && xc <= 0x1FBAE)
+                  //(xc >= 0x1FB00 && xc <= 0x1FB3B)  // sextants
+                  //(xc >= 0x1FB3C && xc <= 0x1FB6F)  // diagonal blocks
+                  //(xc >= 0x1FB70 && xc <= 0x1FB8B)  // eighth blocks
+                  //(xc >= 0x1FB8C && xc <= 0x1FB94)  // half-shaded blocks
+                  //(xc >= 0x1FB95 && xc <= 0x1FB9F)  // various
+                  //(xc >= 0x1FBA0 && xc <= 0x1FBAE)  // box drawing diagonals
+                 || (xc >= 0x1FBCE && xc <= 0x1FBF9)
+                  //(xc >= 0x1FBCE && xc <= 0x1FBCF)  // third blocks
+                  //(xc >= 0x1FBD0 && xc <= 0x1FBDF)  // box drawing diagonals
+                  //(xc >= 0x1FBE0 && xc <= 0x1FBE3)  // half circle arcs
+                  //(xc >= 0x1FBE4 && xc <= 0x1FBE7)  // quarter blocks
+                  //(xc >= 0x1FBE8 && xc <= 0x1FBEB)  // half circle fills
+                  //(xc >= 0x1FBEC && xc <= 0x1FBEF)  // quarter circle fills
+                  //(xc >= 0x1FBF0 && xc <= 0x1FBF9)  // segmented digits
+                )
+               )
+            {
+              term.curs.attr.attr &= ~FONTFAM_MASK;
+              term.curs.attr.attr |= (cattrflags)11 << ATTR_FONTFAM_SHIFT;
+              if (term.wide_graphics)
+                width = 2;
+            }
+
             write_ucschar(hwc, wc, width);
+            term.curs.attr.attr = asav;
           }
           else
             write_error();
+
           continue;
         }
 
@@ -5769,15 +5822,14 @@ static void
             return wc;
         };
 
-        cattrflags asav = term.curs.attr.attr;
-
         // Some more special graphic renderings
         // Do these before the NRCS switch below as that transforms 
         // some characters into this range which would then get 
         // doubly-transformed
-        if ((cfg.box_drawing && wc >= 0x2500 && wc <= 0x257F)
-         || (wc >= 0x2580 && wc <= 0x259F)
-         || (wc >= 0xE0B0 && wc <= 0xE0BF && wc != 0xE0B5 && wc != 0xE0B7)
+        // - see similar condition below to apply wide graphic characters mode
+        if (((box_drawing & 0x03) && wc >= 0x2500 && wc <= 0x257F)
+         || ((box_drawing & 0x05) && wc >= 0x2580 && wc <= 0x259F)
+         || ((box_drawing & 0x09) && wc >= 0xE0B0 && wc <= 0xE0BF && wc != 0xE0B5 && wc != 0xE0B7)
            )
         {
           term.curs.attr.attr &= ~FONTFAM_MASK;
@@ -5966,6 +6018,15 @@ static void
           // non-BMP characters (see case if is_low_surrogate(wc) above)
           if (win_char_width(wc, term.curs.attr.attr) < 2)
             term.curs.attr.attr |= TATTR_EXPAND;
+        }
+        else if (term.wide_graphics && wc >= 0x2500 &&
+            (wc <= 0x259F
+          || ((box_drawing & 0x09) && wc >= 0xE0B0 && wc <= 0xE0BF && wc != 0xE0B5 && wc != 0xE0B7)
+            )
+           )
+        {
+          // Wide graphic characters mode
+          width = 2;
         }
         else {
 #if HAS_LOCALES

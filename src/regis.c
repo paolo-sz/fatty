@@ -25,8 +25,6 @@ extern "C" {
 #define use_gdiplus
 #endif
 
-#undef __cplusplus
-
 #ifdef debug_regis
 
 #include <signal.h>
@@ -48,6 +46,9 @@ sigsegv(int sig)
 #include <gdiplus/gdiplus.h>
 #include <gdiplus/gdiplusflat.h>
 #include <gdiplus/gdipluscolor.h>
+
+using namespace Gdiplus;
+using namespace Gdiplus::DllExports;
 
 #ifdef debug_gdiplus
 
@@ -99,7 +100,7 @@ static GpPen * gpen = 0;
 static void
 gdiplus_init(void)
 {
-  static GdiplusStartupInput gi = {1, NULL, FALSE, FALSE};
+  static GdiplusStartupInput gi(NULL, FALSE, FALSE);
   static ULONG_PTR gis = 0;
   if (!gis) {
     gp(GdiplusStartup(&gis, &gi, NULL));
@@ -1160,7 +1161,9 @@ static struct macro {
         GpBrush * gbr;
         if (controls->ghatch) {
           //GpHatch * gbr;
-          gp(GdipCreateHatchBrush(controls->ghatch, fg, 0, &gbr));
+          GpHatch * hatch_brush = nullptr;
+          gp(GdipCreateHatchBrush(controls->ghatch, fg, 0, &hatch_brush));
+          gbr = hatch_brush;
         }
         else if (controls->pattern != 1) {
           // pattern fill: map pen style pattern to hatch brush
@@ -1176,11 +1179,15 @@ static struct macro {
             when 9: hatch = HatchStyleNarrowHorizontal;
             othwise: hatch = HatchStyle10Percent;
           }
-          gp(GdipCreateHatchBrush(hatch, fg, 0, &gbr));
+          GpHatch * hatch_brush = nullptr;
+          gp(GdipCreateHatchBrush(hatch, fg, 0, &hatch_brush));
+          gbr = hatch_brush;
         }
         else {
           //GpSolidFill * gbr;
-          gp(GdipCreateSolidFill(fg, &gbr));
+          GpSolidFill * solid_brush = nullptr;
+          gp(GdipCreateSolidFill(fg, &solid_brush));
+          gbr = solid_brush;
         }
         gp(GdipFillPath(gr, gbr, gpath));
         gp(GdipDeleteBrush(gbr));

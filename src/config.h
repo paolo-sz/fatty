@@ -210,6 +210,7 @@ typedef struct {
   bool logging;
   int log_filter;
   wstring title;
+  bool pad_taskbar_icon;
   bool create_utmp;
   char window;
   int x, y;
@@ -264,7 +265,7 @@ typedef struct {
   int padding;
   int ligatures;
   int ligatures_support;
-  bool box_drawing;
+  int box_drawing;
   int handle_dpichanged;
   int check_version_update;
   string word_chars;

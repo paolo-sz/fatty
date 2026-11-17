@@ -3504,6 +3504,7 @@ void
   }
 
   wchar * origtext = 0;
+  wchar * realtext = text;  // for use in character property detection
   if (boxpower || boxcoded || dectcs) {
     // keep orig text in separate ref
     origtext = text;
@@ -3532,7 +3533,7 @@ void
   int ulen = 0;
   for (int i = 0; i < len; i++) {
     ulen++;
-    if (char1ulen(&text[i]) == 2)
+    if (char1ulen(&realtext[i]) == 2)
       i++;  // skip low surrogate;
   }
 
@@ -4238,7 +4239,7 @@ skip_drawing:;
       }
       DeleteObject(SelectObject(dc, oldpen));
     };
-    auto trio = [&](char x1, char y1, char x2, char y2, char x3, char y3, bool chord)
+    auto trio = [&](char x1, char y1, char x2, char y2, char x3, char y3, bool chord, colour c)
     {
       bool lefthalf = x1;
       if (chord && lefthalf) {
@@ -4252,8 +4253,9 @@ skip_drawing:;
       int _x3 = char_width * x3 / 8;
       int _y3 = char_height * y3 / 8;
 
-      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
-      HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(fg));
+      SetArcDirection(dc, AD_COUNTERCLOCKWISE);
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, c));
+      HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(c));
       if (chord) {
         if (lefthalf)
           // Powerline left half circle U+E0B6: trichord(8, 0, 0, 4, 8, 8);
@@ -4273,13 +4275,55 @@ skip_drawing:;
       DeleteObject(SelectObject(dc, oldbrush));
       DeleteObject(SelectObject(dc, oldpen));
     };
+    auto arcpie = [&](bool pie, char x1, char y1, char x2, char y2, char x3, char y3, char x4, char y4)
+    {  // top-left, bottom-right, start radial, end radial; anti-clockwise
+      int _x1 = char_width * x1 / 8;
+      int _y1 = char_height * y1 / 8;
+      int _x2 = char_width * x2 / 8;
+      int _y2 = char_height * y2 / 8;
+      int _x3 = char_width * x3 / 8;
+      int _y3 = char_height * y3 / 8;
+      int _x4 = char_width * x4 / 8;
+      int _y4 = char_height * y4 / 8;
+
+      SetArcDirection(dc, AD_COUNTERCLOCKWISE);
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+      if (pie) {
+        HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(fg));
+        Pie(dc, xi + _x1, y0 + _y1, xi + _x2, y0 + _y2,
+                xi + _x3, y0 + _y3, xi + _x4, y0 + _y4);
+        DeleteObject(SelectObject(dc, oldbrush));
+      }
+      else
+        Arc(dc, xi + _x1, y0 + _y1, xi + _x2, y0 + _y2,
+                xi + _x3, y0 + _y3, xi + _x4, y0 + _y4);
+      DeleteObject(SelectObject(dc, oldpen));
+    };
+    auto poly12 = [&](signed char pp[])
+    {
+      POINT p[5];
+      int len = 0;
+      for (int i = 0; i < 10; ) {
+        if (pp[i] < 0)
+          break;
+        p[len].x = xi + char_width * pp[i ++] / 12;
+        p[len].y = y0 + char_height * pp[i ++] / 12;
+        len ++;
+      }
+
+      HPEN oldpen = (HPEN)SelectObject(dc, CreatePen(PS_SOLID, 0, fg));
+      HBRUSH oldbrush = (HBRUSH)SelectObject(dc, CreateSolidBrush(fg));
+      Polygon(dc, p, len);
+      DeleteObject(SelectObject(dc, oldbrush));
+      DeleteObject(SelectObject(dc, oldpen));
+    };
     auto triangle = [&](char x1, char y1, char x2, char y2, char x3, char y3)
     {
-      trio(x1, y1, x2, y2, x3, y3, false);
+      trio(x1, y1, x2, y2, x3, y3, false, fg);
     };
     auto trichord = [&](char x1, char y1, char x2, char y2, char x3, char y3)
     {
-      trio(x1, y1, x2, y2, x3, y3, true);
+      trio(x1, y1, x2, y2, x3, y3, true, fg);
     };
     auto rectdraw = [&](char l, char t, char r, char b, char sol, colour c)
     {
@@ -4296,6 +4340,65 @@ skip_drawing:;
       ct /= 8;
       cr /= 8;
       cb /= 8;
+      //printf("25XX <%d%%%d %d%%%d %d%%%d %d%%%d\n", cl, dl, ct, dt, cr, dr, cb, db);
+      int cl_ = cl;
+      int ct_ = ct;
+      int cr_ = cr;
+      int cb_ = cb;
+      if (dl) {
+        if (sol & 0x1)
+          dl = 0;
+        else
+          cl_++;
+      }
+      if (dt) {
+        if (sol & 0x8)
+          dt = 0;
+        else
+          ct_++;
+      }
+      if (dr) {
+        if (sol & 0x4) {
+          dr = 0;
+          cr_++;
+        }
+      }
+      if (db) {
+        if (sol & 0x2) {
+          db = 0;
+          cb_++;
+        }
+      }
+      //printf("25XX >%d%%%d %d%%%d %d%%%d %d%%%d\n", cl, dl, ct, dt, cr, dr, cb, db);
+      //printf("Rect %d %d %d %d\n", xi + cl_, y0 + ct_, xi + cr_, y0 + cb_);
+      HBRUSH br = CreateSolidBrush(c);
+      RECT tmp_rec = {xi + cl_, y0 + ct_, xi + cr_, y0 + cb_};
+      FillRect(dc, &tmp_rec, br);
+      DeleteObject(br);
+      if (dl)
+        linedraw(cl, ct, cl, cb, colmix(8 - dl));
+      if (dt)
+        linedraw(cl, ct, cr, ct, colmix(8 - dt));
+      if (dr)
+        linedraw(cr, ct, cr, cb, colmix(dr));
+      if (db)
+        linedraw(cl, cb, cr, cb, colmix(db));
+    };
+    auto rectdraw12 = [&](char l, char t, char r, char b, char sol, colour c)
+    {
+      // solid 0b1111 top right bottom left
+      int cl = char_width * l;
+      int ct = char_height * t;
+      int cr = char_width * r;
+      int cb = char_height * b;
+      int dl = cl % 12;
+      int dt = ct % 12;
+      int dr = cr % 12;
+      int db = cb % 12;
+      cl /= 12;
+      ct /= 12;
+      cr /= 12;
+      cb /= 12;
       //printf("25XX <%d%%%d %d%%%d %d%%%d %d%%%d\n", cl, dl, ct, dt, cr, dr, cb, db);
       int cl_ = cl;
       int ct_ = ct;
@@ -4482,7 +4585,9 @@ skip_drawing:;
     };
     auto boxcurve = [&](char q)
     {
-      int x1, y1, x2, y2, xc, yc, a;
+      int x1, y1, x2, y2, xc, yc;
+      int start;
+      int sweep = 90;
       //int r = 5;
       int r = char_width / 2 + 1;
       // adjust endpoint by 1 to compensate for the missing endpoint
@@ -4494,7 +4599,7 @@ skip_drawing:;
           y2 = char_height / 2;
           xc = char_width / 2 + r;
           yc = char_height / 2 - r;
-          a = 180;
+          start = 180;
         when 2:  // lower right quarter ╭ upper left border arc
           x1 = char_width;
           y1 = char_height / 2;
@@ -4502,7 +4607,7 @@ skip_drawing:;
           y2 = char_height + 1;
           xc = char_width / 2 + r;
           yc = char_height / 2 + r;
-          a = 90;
+          start = 90;
         when 3:  // lower left quarter ╮ upper right border arc
           x1 = char_width / 2;
           y1 = char_height;
@@ -4510,7 +4615,7 @@ skip_drawing:;
           y2 = char_height / 2;
           xc = char_width / 2 - r;
           yc = char_height / 2 + r;
-          a = 0;
+          start = 0;
         when 4:  // upper left quarter ╯ lower right border arc
           x1 = 0;
           y1 = char_height / 2;
@@ -4518,11 +4623,11 @@ skip_drawing:;
           y2 = -1;
           xc = char_width / 2 - r;
           yc = char_height / 2 - r;
-          a = 270;
+          start = 270;
       };
       setpen(pen);
       MoveToEx(dc, xi + x1, y0 + y1, null);
-      AngleArc(dc, xi + xc, y0 + yc, r, a, 90);
+      AngleArc(dc, xi + xc, y0 + yc, r, start, sweep);
       LineTo(dc, xi + x2, y0 + y2);
     };
 
@@ -4530,7 +4635,14 @@ skip_drawing:;
     for (int i = 0; i < len; i++) {
       //setclipr(xi, yclip, 1);
 
-      switch (origtext[i]) {
+      xchar xc = origtext[i];
+      if (is_high_surrogate(xc) && i + 1 < len && is_low_surrogate(origtext[i + 1])) {
+        xc = combine_surrogates(xc, origtext[i + 1]);
+      }
+      else if (is_low_surrogate(xc)) {
+        continue;  // also skip double char_width increment
+      }
+      switch (xc) {
         // Box Drawing (U+2500-U+257F)
         // ─━│┃┄┅┆┇┈┉┊┋┌┍┎┏┐┑┒┓└┕┖┗┘┙┚┛├┝┞┟┠┡┢┣┤┥┦┧┨┩┪┫┬┭┮┯┰┱┲┳┴┵┶┷┸┹┺┻┼┽┾┿
         // ╀╁╂╃╄╅╆╇╈╉╊╋╌╍╎╏═║╒╓╔╕╖╗╘╙╚╛╜╝╞╟╠╡╢╣╤╥╦╧╨╩╪╫╬╭╮╯╰╱╲╳╴╵╶╷╸╹╺╻╼╽╾╿
@@ -4636,6 +4748,436 @@ skip_drawing:;
         when 0x259F: rectsolid(4, 4, 8, 8, 0xF);
                    rectsolid(4, 0, 8, 4, 0xE);
                    rectsolid(0, 4, 4, 8, 0x7);
+
+        // Symbols for Legacy Computing (U+1FB00-U+1FBFF)
+#if CYGWIN_VERSION_API_MINOR >= 74
+        when 0x1FB00 ... 0x1FB3B:  {// sextants
+          static char sextantslist[] = {
+            0b100000, 0b010000, 0b110000, 0b001000, 0b101000, 0b011000,
+            0b111000, 0b000100, 0b100100, 0b010100, 0b110100, 0b001100,
+            0b101100, 0b011100, 0b111100, 0b000010, 0b100010, 0b010010,
+            0b110010, 0b001010, 0b011010, 0b111010, 0b000110, 0b100110,
+            0b010110, 0b110110, 0b001110, 0b101110, 0b011110, 0b111110,
+            0b000001, 0b100001, 0b010001, 0b110001, 0b001001, 0b101001,
+            0b011001, 0b111001, 0b000101, 0b100101, 0b110101, 0b001101,
+            0b101101, 0b011101, 0b111101, 0b000011, 0b100011, 0b010011,
+            0b110011, 0b001011, 0b101011, 0b011011, 0b111011, 0b000111,
+            0b100111, 0b010111, 0b110111, 0b001111, 0b101111, 0b011111
+          };
+          char sextants = sextantslist[xc - 0x1FB00];
+          // rectdraw12(left, top, right, bottom, 0xF, fg);
+          if (sextants & 0b100000)
+            rectdraw12(0, 0, 6, 4, 0xF, fg);
+          if (sextants & 0b010000)
+            rectdraw12(6, 0, 12, 4, 0xF, fg);
+          if (sextants & 0b001000)
+            rectdraw12(0, 4, 6, 8, 0xF, fg);
+          if (sextants & 0b000100)
+            rectdraw12(6, 4, 12, 8, 0xF, fg);
+          if (sextants & 0b000010)
+            rectdraw12(0, 8, 6, 12, 0xF, fg);
+          if (sextants & 0b000001)
+            rectdraw12(6, 8, 12, 12, 0xF, fg);
+        }
+        when 0x1FB3C ... 0x1FB6F:  {// diagonal blocks
+          static signed char diagonalblocks [][10] = {
+            {0, 8, 0, 12, 6, 12, -1},
+            {0, 8, 0, 12, 12, 12, -1},
+            {0, 4, 0, 12, 6, 12, -1},
+            {0, 4, 0, 12, 12, 12, -1},
+            // U+1FB40
+            {0, 0, 0, 12, 6, 12, -1},
+            {0, 4, 0, 12, 12, 12, 12, 0, 6, 0},
+            {0, 4, 0, 12, 12, 12, 12, 0, -1},
+            {0, 8, 0, 12, 12, 12, 12, 0, 6, 0},
+            {0, 8, 0, 12, 12, 12, 12, 0, -1},
+            {0, 12, 12, 12, 12, 0, 6, 0, -1},
+            {0, 8, 0, 12, 12, 12, 12, 4, -1},
+            {6, 12, 12, 12, 12, 8, -1},
+            {0, 12, 12, 12, 12, 8, -1},
+            {6, 12, 12, 12, 12, 4, -1},
+            {0, 12, 12, 12, 12, 4, -1},
+            {6, 12, 12, 12, 12, 0, -1},
+            {0, 0, 0, 12, 12, 12, 12, 4, 6, 0},
+            {0, 0, 0, 12, 12, 12, 12, 4, -1},
+            {0, 0, 0, 12, 12, 12, 12, 8, 6, 0},
+            {0, 0, 0, 12, 12, 12, 12, 8, -1},
+            // U+1FB50
+            {0, 0, 0, 12, 12, 12, 6, 0, -1},
+            {0, 4, 0, 12, 12, 12, 12, 8, -1},
+            {0, 0, 0, 8, 6, 12, 12, 12, 12, 0},
+            {0, 0, 0, 8, 12, 12, 12, 0, -1},
+            {0, 0, 0, 4, 6, 12, 12, 12, 12, 0},
+            {0, 0, 0, 4, 12, 12, 12, 0, -1},
+            {0, 0, 6, 12, 12, 12, 12, 0, -1},
+            {0, 0, 0, 4, 6, 0, -1},
+            {0, 0, 0, 4, 12, 0, -1},
+            {0, 0, 0, 8, 6, 0, -1},
+            {0, 0, 0, 8, 12, 0, -1},
+            {0, 0, 0, 12, 6, 0, -1},
+            {0, 0, 0, 8, 12, 4, 12, 0, -1},
+            {0, 0, 0, 12, 6, 12, 12, 8, 12, 0},
+            {0, 0, 0, 12, 12, 8, 12, 0, -1},
+            {0, 0, 0, 12, 6, 12, 12, 4, 12, 0},
+            // U+1FB60
+            {0, 0, 0, 12, 12, 4, 12, 0, -1},
+            {0, 0, 0, 12, 6, 12, 12, 0, -1},
+            {6, 0, 12, 4, 12, 0, -1},
+            {0, 0, 12, 4, 12, 0, -1},
+            {6, 0, 12, 8, 12, 0, -1},
+            {0, 0, 12, 8, 12, 0, -1},
+            {6, 0, 12, 12, 12, 0, -1},
+            {0, 0, 0, 4, 12, 8, 12, 0, -1},
+            {0, 0, 6, 6, 0, 12, 12, 12, 12, 0},
+            {0, 0, 0, 12, 12, 12, 12, 0, 6, 6},
+            {0, 0, 0, 12, 12, 12, 6, 6, 12, 0},
+            {0, 0, 0, 12, 6, 6, 12, 12, 12, 0},
+            {0, 0, 0, 12, 6, 6, -1},
+            {0, 0, 6, 6, 12, 0, -1},
+            {6, 6, 12, 12, 12, 0, -1},
+            {6, 6, 0, 12, 12, 12, -1},
+          };
+          poly12(diagonalblocks[xc - 0x1FB3C]);
+        }
+#endif
+        // 0x1FB70 ... 0x1FB8B:  // eighth blocks
+        when 0x1FB70: rect(1, 0, 2, 8);
+        when 0x1FB71: rect(2, 0, 3, 8);
+        when 0x1FB72: rect(3, 0, 4, 8);
+        when 0x1FB73: rect(4, 0, 5, 8);
+        when 0x1FB74: rect(5, 0, 6, 8);
+        when 0x1FB75: rect(6, 0, 7, 8);
+        when 0x1FB76: rect(0, 1, 8, 2);
+        when 0x1FB77: rect(0, 2, 8, 3);
+        when 0x1FB78: rect(0, 3, 8, 4);
+        when 0x1FB79: rect(0, 4, 8, 5);
+        when 0x1FB7A: rect(0, 5, 8, 6);
+        when 0x1FB7B: rect(0, 6, 8, 7);
+        when 0x1FB7C: rectsolid(0, 0, 1, 8, 0xFF); rectsolid(0, 7, 8, 8, 0xFF);
+        when 0x1FB7D: rectsolid(0, 0, 1, 8, 0xFF); rectsolid(0, 0, 8, 1, 0xFF);
+        when 0x1FB7E: rectsolid(0, 0, 8, 1, 0xFF); rectsolid(7, 0, 8, 8, 0xFF);
+        when 0x1FB7F: rectsolid(0, 7, 8, 8, 0xFF); rectsolid(7, 0, 8, 8, 0xFF);
+        when 0x1FB80: rect(0, 0, 8, 1); rect(0, 7, 8, 8);
+        when 0x1FB81: rect(0, 0, 8, 1); rect(0, 2, 8, 3); rect(0, 4, 8, 5); rect(0, 7, 8, 8);
+        when 0x1FB82: rect(0, 0, 8, 2);
+        when 0x1FB83: rect(0, 0, 8, 3);
+        when 0x1FB84: rect(0, 0, 8, 5);
+        when 0x1FB85: rect(0, 0, 8, 6);
+        when 0x1FB86: rect(0, 0, 8, 7);
+        when 0x1FB87: rect(7, 0, 8, 8);
+        when 0x1FB88: rect(6, 0, 8, 8);
+        when 0x1FB89: rect(4, 0, 8, 8);
+        when 0x1FB8A: rect(3, 0, 8, 8);
+        when 0x1FB8B: rect(2, 0, 8, 8);
+        // 0x1FB8C ... 0x1FB94:  // half-shaded blocks
+        when 0x1FB8C: rectsolcol(0, 0, 4, 8, 3);
+        when 0x1FB8D: rectsolcol(4, 0, 8, 8, 3);
+        when 0x1FB8E: rectsolcol(0, 0, 8, 4, 3);
+        when 0x1FB8F: rectsolcol(0, 4, 8, 8, 3);
+        when 0x1FB90: rectsolcol(0, 0, 8, 8, 5);
+        when 0x1FB91: rectsolid(0, 0, 8, 4, 0xFF); rectsolcol(0, 4, 8, 8, 5);
+        when 0x1FB92: rectsolcol(0, 0, 8, 4, 5); rectsolid(0, 4, 8, 8, 0xFF);
+        // U+1FB93 Not Assigned
+        when 0x1FB94: rectsolcol(0, 0, 4, 8, 5); rectsolid(4, 0, 8, 8, 0xFF);
+        // various
+        when 0x1FB95:  // checker board
+          for (int i = 0; i < 4; i++)
+            for (int j = 0; j < 4; j++)
+              if (i % 2 == j % 2)
+                rectsolid(2 * j, 2 * i, 2 * j + 2, 2 * i + 2, 0xFF);
+        when 0x1FB96:  // inverse checker board
+          for (int i = 0; i < 4; i++)
+            for (int j = 0; j < 4; j++)
+              if (i % 2 != j % 2)
+                rectsolid(2 * j, 2 * i, 2 * j + 2, 2 * i + 2, 0xFF);
+        when 0x1FB97: rect(0, 1, 8, 3); rect(0, 5, 8, 7);
+        when 0x1FB98: {
+                        int offset = (attr.attr & TATTR_WIDE) ? 12 : 0;
+                        boxlines(false, 0, -24, 24, -12 + offset, -1, -1);
+                        boxlines(false, 0, -18, 24, -6 + offset, -1, -1);
+                        boxlines(false, 0, -12, 24, 0 + offset, -1, -1);
+                        boxlines(false, 0, -6, 24, 6 + offset, -1, -1);
+                        boxlines(false, 0, 0, 24, 12 + offset, -1, -1);
+                        boxlines(false, 0, 6, 24, 18 + offset, -1, -1);
+                        boxlines(false, 0, 12, 24, 24 + offset, -1, -1);
+                        boxlines(false, 0, 18, 24, 30 + offset, -1, -1);
+                        boxlines(false, 0, 24, 24, 36 + offset, -1, -1);
+                      }
+        when 0x1FB99: {
+                        int offset = (attr.attr & TATTR_WIDE) ? -12 : 0;
+                        boxlines(false, 0, 0, 24, -12 + offset, -1, -1);
+                        boxlines(false, 0, 6, 24, -6 + offset, -1, -1);
+                        boxlines(false, 0, 12, 24, 0 + offset, -1, -1);
+                        boxlines(false, 0, 18, 24, 6 + offset, -1, -1);
+                        boxlines(false, 0, 24, 24, 12 + offset, -1, -1);
+                        boxlines(false, 0, 30, 24, 18 + offset, -1, -1);
+                        boxlines(false, 0, 36, 24, 24 + offset, -1, -1);
+                        boxlines(false, 0, 42, 24, 30 + offset, -1, -1);
+                        boxlines(false, 0, 48, 24, 36 + offset, -1, -1);
+                      }
+        when 0x1FB9A:
+          poly12((signed char []){0, 0, 6, 6, 12, 0, -1});
+          poly12((signed char []){6, 6, 0, 12, 12, 12, -1});
+        when 0x1FB9B:
+          poly12((signed char []){0, 0, 0, 12, 6, 6, -1});
+          poly12((signed char []){6, 6, 12, 12, 12, 0, -1});
+        // triangular medium shades
+        when 0x1FB9C:
+          trio(0, 0, 0, 8, 8, 0, false, colmix(3));
+        when 0x1FB9D:
+          trio(0, 0, 8, 8, 8, 0, false, colmix(3));
+        when 0x1FB9E:
+          trio(0, 8, 8, 8, 8, 0, false, colmix(3));
+        when 0x1FB9F:
+          trio(0, 0, 0, 8, 8, 8, false, colmix(3));
+#if CYGWIN_VERSION_API_MINOR >= 74
+        when 0x1FBA0 ... 0x1FBAE:  {// box drawing diagonals
+          static char diaglist[] = {
+            0b1000, 0b0100, 0b0010, 0b0001, 0b1010, 0b0101, 0b0011, 0b1100,
+            0b1001, 0b0110, 0b0111, 0b1011, 0b1101, 0b1110, 0b1111
+          };
+          char diag = diaglist[xc - 0x1FBA0];
+          if (diag & 8)
+            boxlines(false, 0, 12, 12, 0, -1, -1);
+          if (diag & 4)
+            boxlines(false, 12, 0, 24, 12, -1, -1);
+          if (diag & 2)
+            boxlines(false, 12, 24, 0, 12, -1, -1);
+          if (diag & 1)
+            boxlines(false, 24, 12, 12, 24, -1, -1);
+        }
+#endif
+        // third blocks
+        when 0x1FBCE: poly12((signed char []){0, 0, 8, 0, 8, 12, 0, 12, -1});
+        when 0x1FBCF: poly12((signed char []){0, 0, 4, 0, 4, 12, 0, 12, -1});
+        // more box drawing diagonals
+        when 0x1FBD0: boxlines(false, 0, 24, 24, 12, -1, -1);
+        when 0x1FBD1: boxlines(false, 0, 12, 24, 0, -1, -1);
+        when 0x1FBD2: boxlines(false, 0, 0, 24, 12, -1, -1);
+        when 0x1FBD3: boxlines(false, 0, 12, 24, 24, -1, -1);
+        when 0x1FBD4: boxlines(false, 0, 0, 12, 24, -1, -1);
+        when 0x1FBD5: boxlines(false, 12, 0, 24, 24, -1, -1);
+        when 0x1FBD6: boxlines(false, 12, 24, 24, 0, -1, -1);
+        when 0x1FBD7: boxlines(false, 0, 24, 12, 0, -1, -1);
+        when 0x1FBD8: boxlines(false, 0, 0, 12, 12, 24, 0);
+        when 0x1FBD9: boxlines(false, 24, 0, 12, 12, 24, 24);
+        when 0x1FBDA: boxlines(false, 0, 24, 12, 12, 24, 24);
+        when 0x1FBDB: boxlines(false, 0, 0, 12, 12, 0, 24);
+        when 0x1FBDC: boxlines(false, 0, 0, 12, 24, 24, 0);
+        when 0x1FBDD: boxlines(false, 24, 0, 0, 12, 24, 24);
+        when 0x1FBDE: boxlines(false, 0, 24, 12, 0, 24, 24);
+        when 0x1FBDF: boxlines(false, 0, 0, 24, 12, 0, 24);
+        // half circle arcs
+        when 0x1FBE0: arcpie(false, 0, -4, 8, 4, 0, 0, 8, 0);
+        when 0x1FBE1: if (attr.attr & TATTR_WIDE)
+                        arcpie(false, 4, 0, 12, 8, 8, 0, 8, 8);
+                      else
+                        arcpie(false, 0, 0, 16, 8, 8, 0, 8, 8);
+        when 0x1FBE2: arcpie(false, 0, 4, 8, 12, 8, 8, 0, 8);
+        when 0x1FBE3: if (attr.attr & TATTR_WIDE)
+                        arcpie(false, -4, 0, 4, 8, 0, 8, 0, 0);
+                      else
+                        arcpie(false, -8, 0, 8, 8, 0, 8, 0, 0);
+        // quarter blocks
+        when 0x1FBE4: rectdraw(2, 0, 6, 4, 0, fg);
+        when 0x1FBE5: rectdraw(2, 4, 6, 8, 0, fg);
+        when 0x1FBE6: rectdraw(0, 2, 4, 6, 0, fg);
+        when 0x1FBE7: rectdraw(4, 2, 8, 6, 0, fg);
+        // half circle fills
+        when 0x1FBE8: arcpie(true, 0, -4, 8, 4, 0, 0, 8, 0);
+        when 0x1FBE9: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, 4, 0, 12, 8, 8, 0, 8, 8);
+                      else
+                        arcpie(true, 0, 0, 16, 8, 8, 0, 8, 8);
+        when 0x1FBEA: arcpie(true, 0, 4, 8, 12, 8, 8, 0, 8);
+        when 0x1FBEB: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, -4, 0, 4, 8, 0, 8, 0, 0);
+                      else
+                        arcpie(true, -8, 0, 8, 8, 0, 8, 0, 0);
+        // quarter circle fills
+        when 0x1FBEC: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, 4, -4, 12, 4, 0, 0, 8, 4);
+                      else
+                        arcpie(true, 0, -4, 16, 4, 0, 0, 8, 4);
+        when 0x1FBED: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, -4, 4, 4, 12, 8, 8, 0, 0);
+                      else
+                        arcpie(true, -8, 4, 8, 12, 8, 8, 0, 4);
+        when 0x1FBEE: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, 4, 4, 12, 12, 8, 4, 0, 8);
+                      else
+                        arcpie(true, 0, 4, 16, 12, 8, 4, 0, 8);
+        when 0x1FBEF: if (attr.attr & TATTR_WIDE)
+                        arcpie(true, -4, -4, 4, 4, 0, 4, 8, 0);
+                      else
+                        arcpie(true, -8, -4, 8, 4, 0, 4, 8, 0);
+        // segmented digits
+#if CYGWIN_VERSION_API_MINOR >= 74
+        when 0x1FBF0 ... 0x1FBF9: {
+          static char sepdigitslist[] = {
+            0b1111110, 0b0110000, 0b1101101, 0b1111001, 0b0110011,
+            0b1011011, 0b1011111, 0b1110010, 0b1111111, 0b1111011
+          };
+          char sepdigits = sepdigitslist[xc - 0x1FBF0];
+          int xoff = 1;
+          int qoff = 1;
+          if (sepdigits & 0b1000000)
+            boxlines(false, 6 + xoff, 3, 18, 3, -1, -1);
+          if (sepdigits & 0b0100000)
+            boxlines(false, 21 - xoff, 5, 21 - xoff, 10 + qoff, -1, -1);
+          if (sepdigits & 0b0010000)
+            boxlines(false, 21 - xoff, 15 - qoff, 21 - xoff, 19, -1, -1);
+          if (sepdigits & 0b0001000)
+            boxlines(false, 6 + xoff, 21, 18, 21, -1, -1);
+          if (sepdigits & 0b0000100)
+            boxlines(false, 4 + xoff, 15 - qoff, 4 + xoff, 19, -1, -1);
+          if (sepdigits & 0b0000010)
+            boxlines(false, 4 + xoff, 5, 4 + xoff, 10 + qoff, -1, -1);
+          if (sepdigits & 0b0000001)
+            boxlines(false, 6 + xoff, 12, 18, 12, -1, -1);
+        }
+#endif
+
+        // Symbols for Legacy Computing Supplement (U+1CC00-U+1CEBF)
+#if CYGWIN_VERSION_API_MINOR >= 74
+        when 0x1CC21 ... 0x1CC2F:  {// separated quadrants
+          static char sepquadrantslist[] = {
+            0b1000, 0b0100, 0b1100, 0b0010, 0b1010,
+            0b0110, 0b1110, 0b0001, 0b1001, 0b0101,
+            0b1101, 0b0011, 0b1011, 0b0111, 0b1111
+          };
+          char sepquadrants = sepquadrantslist[xc - 0x1CC21];
+          // rectdraw12(left, top, right, bottom, 0xF, fg);
+          if (sepquadrants & 0b1000)
+            rectdraw12(2, 1, 4, 5, 0xF, fg);
+          if (sepquadrants & 0b0100)
+            rectdraw12(8, 1, 10, 5, 0xF, fg);
+          if (sepquadrants & 0b0010)
+            rectdraw12(2, 7, 4, 11, 0xF, fg);
+          if (sepquadrants & 0b0001)
+            rectdraw12(8, 7, 10, 11, 0xF, fg);
+        }
+        when 0x1CD00 ... 0x1CDE5:  {// octants
+          static unsigned char octantslist[] = {
+            0x20, 0x60, 0xE0, 0x10, 0x90, 0xD0, 0x30, 0xB0, 
+            0x70, 0x08, 0x88, 0x48, 0xC8, 0xA8, 0x68, 0xE8, 
+            0x18, 0x98, 0x58, 0xD8, 0x38, 0xB8, 0x78, 0xF8, 
+            0x04, 0x84, 0x44, 0xC4, 0x24, 0xA4, 0x64, 0xE4, 
+            0x94, 0x54, 0xD4, 0x34, 0xB4, 0x74, 0xF4, 0x0C, 
+            0x8C, 0x4C, 0xCC, 0x2C, 0xAC, 0x6C, 0xEC, 0x1C, 
+            0x9C, 0x5C, 0xDC, 0x3C, 0xBC, 0x7C, 0x82, 0x42, 
+            0xC2, 0x22, 0xA2, 0x62, 0xE2, 0x12, 0x92, 0x52, 
+            0xD2, 0x32, 0xB2, 0x72, 0xF2, 0x8A, 0x4A, 0xCA, 
+            0x2A, 0x6A, 0xEA, 0x1A, 0x9A, 0xDA, 0x3A, 0xBA, 
+            0x7A, 0x06, 0x86, 0x46, 0xC6, 0x26, 0xA6, 0x66, 
+            0xE6, 0x16, 0x96, 0x56, 0xD6, 0x36, 0xB6, 0x76, 
+            0xF6, 0x0E, 0x8E, 0x4E, 0xCE, 0x2E, 0xAE, 0x6E, 
+            0xEE, 0x1E, 0x9E, 0x5E, 0xDE, 0x3E, 0xBE, 0x7E, 
+            0xFE, 0x81, 0x41, 0xC1, 0x21, 0xA1, 0x61, 0xE1, 
+            0x11, 0x91, 0x51, 0xD1, 0x31, 0xB1, 0x71, 0xF1, 
+            0x09, 0x89, 0x49, 0xC9, 0x29, 0xA9, 0x69, 0xE9, 
+            0x19, 0x99, 0x59, 0xD9, 0x39, 0xB9, 0x79, 0xF9, 
+            0x85, 0x45, 0xC5, 0x25, 0x65, 0xE5, 0x15, 0x95, 
+            0xD5, 0x35, 0xB5, 0x75, 0x0D, 0x8D, 0x4D, 0xCD, 
+            0x2D, 0xAD, 0x6D, 0xED, 0x1D, 0x9D, 0x5D, 0xDD, 
+            0x3D, 0xBD, 0x7D, 0xFD, 0x83, 0x43, 0xC3, 0x23, 
+            0xA3, 0x63, 0xE3, 0x13, 0x93, 0x53, 0xD3, 0x33, 
+            0xB3, 0x73, 0xF3, 0x0B, 0x8B, 0x4B, 0xCB, 0x2B, 
+            0xAB, 0x6B, 0xEB, 0x1B, 0x9B, 0x5B, 0xDB, 0x3B, 
+            0xBB, 0x7B, 0xFB, 0x07, 0x87, 0x47, 0xC7, 0x27, 
+            0xA7, 0x67, 0xE7, 0x17, 0x97, 0x57, 0xD7, 0x37, 
+            0xB7, 0x77, 0xF7, 0x8F, 0x4F, 0xCF, 0x2F, 0x6F, 
+            0xEF, 0x1F, 0x9F, 0xDF, 0xBF, 0x7F
+          };
+          unsigned char octants = octantslist[xc - 0x1CD00];
+          // rectdraw12(left, top, right, bottom, 0xF, fg);
+          if (octants & 0x80)
+            rectdraw12(0, 0, 6, 3, 0xF, fg);
+          if (octants & 0x40)
+            rectdraw12(6, 0, 12, 3, 0xF, fg);
+          if (octants & 0x20)
+            rectdraw12(0, 3, 6, 6, 0xF, fg);
+          if (octants & 0x10)
+            rectdraw12(6, 3, 12, 6, 0xF, fg);
+          if (octants & 0x08)
+            rectdraw12(0, 6, 6, 9, 0xF, fg);
+          if (octants & 0x04)
+            rectdraw12(6, 6, 12, 9, 0xF, fg);
+          if (octants & 0x02)
+            rectdraw12(0, 9, 6, 12, 0xF, fg);
+          if (octants & 0x01)
+            rectdraw12(6, 9, 12, 12, 0xF, fg);
+        }
+        when 0x1CE51 ... 0x1CE8F:  {// separated sextants
+          static char sepsextantslist[] = {
+            0b100000, 0b010000, 0b110000, 0b001000, 0b101000, 0b011000,
+            0b111000, 0b000100, 0b100100, 0b010100, 0b110100, 0b001100,
+            0b101100, 0b011100, 0b111100, 
+            0b000010, 0b100010, 0b010010, 0b110010, 0b001010, 0b101010, 
+            0b011010, 0b111010, 0b000110, 0b100110, 0b010110, 0b110110, 
+            0b001110, 0b101110, 0b011110, 0b111110, 
+            0b000001, 0b100001, 0b010001, 0b110001,
+            0b001001, 0b101001, 0b011001, 0b111001, 0b000101, 0b100101,
+            0b010101, 0b110101, 0b001101, 0b101101, 0b011101, 0b111101,
+            0b000011, 0b100011, 0b010011, 0b110011, 0b001011, 0b101011,
+            0b011011, 0b111011, 0b000111, 0b100111, 0b010111, 0b110111,
+            0b001111, 0b101111, 0b011111, 0b111111
+          };
+          char sepsextants = sepsextantslist[xc - 0x1CE51];
+          // rectdraw12(left, top, right, bottom, 0xF, fg);
+          if (sepsextants & 0b100000)
+            rectdraw12(2, 1, 4, 3, 0xF, fg);
+          if (sepsextants & 0b010000)
+            rectdraw12(8, 1, 10, 3, 0xF, fg);
+          if (sepsextants & 0b001000)
+            rectdraw12(2, 5, 4, 7, 0xF, fg);
+          if (sepsextants & 0b000100)
+            rectdraw12(8, 5, 10, 7, 0xF, fg);
+          if (sepsextants & 0b000010)
+            rectdraw12(2, 9, 4, 11, 0xF, fg);
+          if (sepsextants & 0b000001)
+            rectdraw12(8, 9, 10, 11, 0xF, fg);
+        }
+        when 0x1CE90 ... 0x1CEAF:  {// sixteenth and quarter blocks
+          static char sixteenthblockslist [][4] = {
+            {0, 0, 2, 2},
+            {2, 0, 4, 2},
+            {4, 0, 6, 2},
+            {6, 0, 8, 2},
+            {0, 2, 2, 4},
+            {2, 2, 4, 4},
+            {4, 2, 6, 4},
+            {6, 2, 8, 4},
+            {0, 4, 2, 6},
+            {2, 4, 4, 6},
+            {4, 4, 6, 6},
+            {6, 4, 8, 6},
+            {0, 6, 2, 8},
+            {2, 6, 4, 8},
+            {4, 6, 6, 8},
+            {6, 6, 8, 8},
+            // quarter blocks
+            {4, 6, 8, 8},
+            {2, 6, 8, 8},
+            {0, 6, 6, 8},
+            {0, 6, 4, 8},
+            {0, 4, 2, 8},
+            {0, 2, 2, 8},
+            {0, 0, 2, 6},
+            {0, 0, 2, 4},
+            {0, 0, 4, 2},
+            {0, 0, 6, 2},
+            {2, 0, 8, 2},
+            {4, 0, 8, 2},
+            {6, 0, 8, 4},
+            {6, 0, 8, 6},
+            {6, 2, 8, 8},
+            {6, 4, 8, 8},
+          };
+          char * b = sixteenthblockslist[xc - 0x1CE90];
+          rectdraw(b[0], b[1], b[2], b[3], 0, fg);
+        }
+#endif
       }
 
       //clearclipr();
@@ -4754,11 +5296,6 @@ skip_drawing:;
 
   {
   
-  if (origtext) {
-    // we transfered the orig text pointer to origtext, so we free text
-    free(text);
-  }
-
   show_curchar_info('w');
 
   if (has_cursor && phase < 2) {
@@ -4911,6 +5448,11 @@ skip_drawing:;
 
   if (coord_transformed)
     SetWorldTransform(dc, &old_xform);
+
+  if (origtext) {
+    // we transfered the orig text pointer to origtext, so we free text
+    free(text);
+  }
 }
 
 

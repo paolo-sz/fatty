@@ -1435,6 +1435,22 @@ void
 }
 
 void
+toggle_app_cursor_keys(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  term.app_cursor_keys = !term.app_cursor_keys;
+}
+
+void
+toggle_app_keypad(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  term.app_keypad = !term.app_keypad;
+}
+
+void
 toggle_auto_repeat(struct term *term_p)
 {
   TERM_VAR_REF(true)
@@ -1558,7 +1574,7 @@ hyper_down(__attribute__((unused))struct term *term_p, uint key, mod_keys mods)
   (void)mods;
 }
 
-#define compose_down(...) (kb_select)(term_p, ##__VA_ARGS__)
+#define compose_down(...) (compose_down)(term_p, ##__VA_ARGS__)
 static void
 (compose_down)(struct term* term_p, uint key, mod_keys mods)
 {
@@ -1567,6 +1583,17 @@ static void
   compose_key = key;
   last_key_down = key;
   (void)mods;
+}
+
+#define toggle_ime(...) (toggle_ime)(term_p, ##__VA_ARGS__)
+static void
+(toggle_ime)(struct term* term_p, uint key, mod_keys mods)
+{
+  TERM_VAR_REF(true)
+
+  (void)key;
+  (void)mods;
+  win_set_ime(!win_get_ime());
 }
 
 #define kb_select(...) (kb_select)(term_p, ##__VA_ARGS__)
@@ -1587,6 +1614,15 @@ static void
   term.sel_end = term.sel_pos;
   term.sel_rect = mods & MDK_ALT;
   selection_pending = true;
+}
+
+#define mflags_ime(...) (mflags_ime)(term_p, ##__VA_ARGS__)
+static uint
+(mflags_ime)(struct term* term_p)
+{
+  TERM_VAR_REF(true)
+
+  return win_get_ime() ? MF_CHECKED : MF_UNCHECKED;
 }
 
 #define mflags_kb_select(...) (mflags_kb_select)(term_p, ##__VA_ARGS__)
@@ -1833,6 +1869,22 @@ mflags_vt220(struct term *term_p)
 }
 
 static uint
+mflags_app_cursor_keys(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.app_cursor_keys ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
+mflags_app_keypad(struct term *term_p)
+{
+  TERM_VAR_REF(true)
+    
+  return term.app_keypad ? MF_CHECKED : MF_UNCHECKED;
+}
+
+static uint
 mflags_auto_repeat(struct term *term_p)
 {
   TERM_VAR_REF(true)
@@ -1907,7 +1959,7 @@ mflags_tek_mode(__attribute__((unused))struct term *term_p)
 //    win_close_tabbar();
 //}
 
-#define toggle_reverse_video(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
+#define toggle_reverse_video(...) (toggle_reverse_video)(term_p, ##__VA_ARGS__)
 static void
 (toggle_reverse_video)(struct term *term_p)
 {
@@ -1917,7 +1969,7 @@ static void
   win_invalidate_all(false);
 }
 
-#define mflags_reverse_video(...) (mflags_dim_margins)(term_p, ##__VA_ARGS__)
+#define mflags_reverse_video(...) (mflags_reverse_video)(term_p, ##__VA_ARGS__)
 static uint
 (mflags_reverse_video)(struct term *term_p)
 {
@@ -2044,6 +2096,8 @@ static struct function_def cmd_defs[] = {
   {"export-html-all", {IDM_HTML_ALL}, 0},
   {"print-screen", {.fct = (print_screen)}, 0},
   {"toggle-vt220", {.fct = (toggle_vt220)}, mflags_vt220},
+  {"toggle-app-cursor-keys", {.fct = toggle_app_cursor_keys}, mflags_app_cursor_keys},
+  {"toggle-app-keypad", {.fct = toggle_app_keypad}, mflags_app_keypad},
   {"toggle-auto-repeat", {.fct = toggle_auto_repeat}, mflags_auto_repeat},
   {"toggle-bidi", {.fct = toggle_bidi}, mflags_bidi},
   {"toggle-lam-alef", {.fct = toggle_lam_alef}, mflags_lam_alef},
@@ -2055,6 +2109,7 @@ static struct function_def cmd_defs[] = {
   {"super", {.fct_key = super_down}, 0},
   {"hyper", {.fct_key = hyper_down}, 0},
   {"compose", {.fct_key = compose_down}, 0},
+  {"toggle-ime", {.fct_key = toggle_ime}, mflags_ime},
   {"kb-select", {.fct_key = kb_select}, mflags_kb_select},
   {"no-scroll", {.fct_key = no_scroll}, mflags_no_scroll},
   {"toggle-no-scroll", {.fct_key = toggle_no_scroll}, mflags_no_scroll},
@@ -2959,6 +3014,7 @@ C	M	+C	+A	"	"
   // On ESC or Enter key, restore keyboard IME state to alphanumeric mode.
   // (#1224, #1375)
   if (cfg.key_alpha_mode && !term.on_alt_screen
+   && !term.app_cursor_keys && !term.app_keypad
    && (key == VK_RETURN || key == VK_ESCAPE) && !mods
      )
   {

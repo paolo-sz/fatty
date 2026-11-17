@@ -404,8 +404,6 @@ void
     term.alt_wheel = false;
     term.echoing = false;
     term.bracketed_paste = false;
-    term.wide_indic = false;
-    term.wide_extra = false;
     term.disable_bidi = false;
     term.join_lam_alef = false;
     term.enable_bold_colour = cfg.bold_as_colour;
@@ -414,6 +412,9 @@ void
     term.readline_mouse_2 = cfg.clicks_place_cursor;
     term.readline_mouse_3 = cfg.clicks_place_cursor;
     term.emoji_width = cfg.emoji_width;
+    term.wide_graphics = 0;
+    term.wide_indic = false;
+    term.wide_extra = false;
   }
 
   term.virtuallines = 0;
@@ -4022,7 +4023,8 @@ void
      /* Margin indication */
       if (term.dim_margins &&
           (// in normal display:
-           i < term.marg_top || (i > term.marg_bot && i < term.rows)
+           i + term.disptop < term.marg_top
+           || (i + term.disptop > term.marg_bot && i < term.rows)
            // in status display:
            || (i >= term.rows && i < term.marg_top + term.rows)
            || (i > term.marg_bot + term.rows)

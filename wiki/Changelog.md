@@ -1,3 +1,7 @@
+Unicode and Emoji data
+  * Unicode 18.0 update.
+  * Emoji update.
+
 Terminal features
   * Add DECSCUSR 7 to restore cursor style as configured (xterm 411).
   * Move private DECSCUSR 7, 8 box style to 11, 12.
@@ -5,13 +9,32 @@ Terminal features
   * Fix DECRQSS SGR reporting (#1383).
   * Do not scroll images outside a DECSTBM scrolling region (#1381).
   * OSC 21 Set Window Title (DECSWT, vt520, xterm 411).
+  * Fix dimming of scrolling margins during scrollback display.
+  * Support DECRQM 1046 as fixed in xterm 412.
+  * New escape sequence DECSET 7720 to control wide graphics characters mode.
+
+Character rendering
+  * Implement self-drawn non-BMP block symbols for legacy computing (#935).
+  * Configure self-drawn symbol ranges more specifically (#1388).
+  * Add Symbols for Legacy Computing to FontChoice block group PictoSymbols.
+  * Fix self-drawn curves after ReGIS output.
+  * Wide graphics characters mode for Box/Block characters and Legacy Symbols (#935).
+  * Fix crash condition with shadow attribute and self-drawn characters.
 
 Window handling
   * Tweak keep-window-maximised fix not to resize the terminal incorrectly (#1370).
   * Fix handling of DropCommands invalid trailing % format (#1384).
+  * Padding taskbar title for stabilisation of its width is configurable (mintty/wsltty#379).
 
 Keyboard handling
   * Tweak keyclick, avoid initial phantom click sound.
+  * Do not reset IME (KeyAlphaMode) in full-screen applications (#1375).
+  * New user-definable function toggle-ime for IME active/open mode (#1375).
+
+Configuration
+  * More distinct values for setting BoxDrawing (#1388).
+  * New option PadTaskbarIcon (mintty/wsltty#379)..
+  * New user-definable functions toggle-app-cursor-keys, toggle-app-keypad.
 
 ### 3.8.3 (09 June 2026) ###
 
